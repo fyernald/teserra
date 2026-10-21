@@ -18,3 +18,7 @@ TEST_CASE("version: string is major.minor.patch of the numeric components", "[co
 TEST_CASE("version: matches the CMake project version", "[core][version]") {
     CHECK(teserra::kVersionString == TESERRA_TEST_PROJECT_VERSION);
 }
+
+TEST_CASE("version: deliberately failing test (CI check, never merged)", "[core][version]") {
+    CHECK(teserra::kVersionMajor == 99);
+}
