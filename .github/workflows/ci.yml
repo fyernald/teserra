@@ -28,10 +28,22 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # Runs vcvars64.bat of the newest Visual Studio on the runner and exports every environment
+      # variable it adds or changes, so later steps see MSVC, the Windows SDK and Ninja.
       - name: Set up MSVC developer environment
-        uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1.13.0
-        with:
-          arch: x64
+        shell: pwsh
+        run: |
+          $vswhere = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer\vswhere.exe"
+          $vs = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          $vcvars = Join-Path $vs "VC\Auxiliary\Build\vcvars64.bat"
+          $before = @{}
+          Get-ChildItem env: | ForEach-Object { $before[$_.Name] = $_.Value }
+          cmd /c "`"$vcvars`" >nul && set" | ForEach-Object {
+            if ($_ -match '^([^=]+)=(.*)$' -and $before[$Matches[1]] -ne $Matches[2]) {
+              "$($Matches[1])=$($Matches[2])" >> $env:GITHUB_ENV
+            }
+          }
+          Write-Host "MSVC environment from $vcvars"
 
       - name: Configure vcpkg
         shell: pwsh
@@ -67,8 +79,11 @@ jobs:
       - name: Build
         run: cmake --build --preset ci-windows
 
+      # The matcher turns Catch2's "file(line): FAILED:" lines into annotations on the source line.
       - name: Test
-        run: ctest --preset ci-windows
+        run: |
+          echo "::add-matcher::.github/problem-matchers/catch2.json"
+          ctest --preset ci-windows
 
       - name: Annotate test results
         if: always() && hashFiles('build/ci-windows/junit.xml') != ''
