@@ -1,5 +1,11 @@
-# Tests of the CMake helpers themselves. Each case configures the fixture project in layer_rule/ in a
-# separate build directory and checks the outcome.
+# Tests of the build system itself. Each case configures a fixture project in its own build directory
+# with the same generator and compiler as this build and checks the outcome.
+
+set(_teserra_fixture_args
+    -G "${CMAKE_GENERATOR}"
+    "-DCMAKE_MAKE_PROGRAM=${CMAKE_MAKE_PROGRAM}"
+    "-DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}"
+)
 
 function(_teserra_add_layer_rule_test case)
     cmake_parse_arguments(PARSE_ARGV 1 arg "" "EXPECT_OUTPUT" "")
@@ -8,9 +14,7 @@ function(_teserra_add_layer_rule_test case)
         COMMAND "${CMAKE_COMMAND}"
             -S "${CMAKE_CURRENT_SOURCE_DIR}/layer_rule"
             -B "${CMAKE_CURRENT_BINARY_DIR}/layer_rule_${case}"
-            -G "${CMAKE_GENERATOR}"
-            "-DCMAKE_MAKE_PROGRAM=${CMAKE_MAKE_PROGRAM}"
-            "-DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}"
+            ${_teserra_fixture_args}
             "-DTESERRA_FIXTURE_CASE=${case}"
     )
     if(arg_EXPECT_OUTPUT)
@@ -32,3 +36,14 @@ _teserra_add_layer_rule_test(rejects_same_layer
 _teserra_add_layer_rule_test(rejects_unknown_module
     EXPECT_OUTPUT "unknown module 'platform' in DEPENDS"
 )
+
+# Teserra consumed through add_subdirectory() keeps tests and examples off by default. A clean build
+# directory every time, so options cached by an earlier run cannot hide a changed default.
+add_test(NAME cmake.subproject.tests_and_examples_default_off
+    COMMAND "${CMAKE_COMMAND}"
+        -S "${CMAKE_CURRENT_SOURCE_DIR}/subproject"
+        -B "${CMAKE_CURRENT_BINARY_DIR}/subproject"
+        --fresh
+        ${_teserra_fixture_args}
+)
+set_tests_properties(cmake.subproject.tests_and_examples_default_off PROPERTIES LABELS "cmake")

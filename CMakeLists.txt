@@ -33,6 +33,7 @@ option(TESERRA_WARNINGS_AS_ERRORS "Treat compiler warnings as errors (/WX, -Werr
 
 if(TESERRA_BUILD_TESTS)
     enable_testing()
+    include(TeserraTesting)
 endif()
 
 # Engine modules, in layer order (docs/architecture/overview.md#layers). A module can only depend on
