@@ -1,0 +1,60 @@
+# Teserra code format (docs/guides/coding-standards.md#formatting). Checked in CI with the clang-format
+# version pinned in .github/workflows/ci.yml; other major versions may format slightly differently.
+---
+Language: Cpp
+BasedOnStyle: LLVM
+Standard: c++20
+
+# Layout
+ColumnLimit: 110
+IndentWidth: 4
+TabWidth: 4
+UseTab: Never
+ContinuationIndentWidth: 4
+AccessModifierOffset: -4
+IndentCaseLabels: true
+NamespaceIndentation: None
+FixNamespaceComments: true
+InsertNewlineAtEOF: true
+KeepEmptyLines:
+  AtStartOfBlock: false
+MaxEmptyLinesToKeep: 1
+
+# Braces and line breaking
+BreakBeforeBraces: Attach
+InsertBraces: true
+AllowShortFunctionsOnASingleLine: InlineOnly
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
+AllowShortBlocksOnASingleLine: Never
+AllowShortCaseLabelsOnASingleLine: false
+AllowShortLambdasOnASingleLine: All
+AllowShortEnumsOnASingleLine: false
+BreakTemplateDeclarations: Yes
+RequiresClausePosition: OwnLine
+BreakConstructorInitializers: BeforeColon
+PackConstructorInitializers: NextLineOnly
+BreakInheritanceList: BeforeColon
+AlignAfterOpenBracket: Align
+BinPackArguments: true
+BinPackParameters: true
+EmptyLineBeforeAccessModifier: LogicalBlock
+
+# Pointers and references bind to the type: T* p, T& r
+PointerAlignment: Left
+ReferenceAlignment: Pointer
+DerivePointerAlignment: false
+
+# Includes: the file's own header, then <teserra/...>, then third-party, then the standard library.
+# Teserra headers are always included with angle brackets and their full path.
+SortIncludes: CaseSensitive
+IncludeBlocks: Regroup
+MainIncludeChar: Any
+IncludeIsMainRegex: "(_test)?$"
+IncludeCategories:
+  - Regex: "^<teserra/"
+    Priority: 2
+  - Regex: "^<[a-z0-9_]+>$"
+    Priority: 4
+  - Regex: ".*"
+    Priority: 3

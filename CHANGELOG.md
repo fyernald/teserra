@@ -12,3 +12,4 @@ All notable user-visible changes to Teserra are documented here. The format foll
 - One-command build: `CMakePresets.json` (Windows MSVC/clang-cl, CI, prepared Linux presets) and vcpkg manifest mode with a pinned baseline (`cmake --workflow --preset windows-msvc-debug`).
 - Catch2 v3 test integration: `teserra_add_test()` registers each test case with CTest; `teserra_core_tests`; JUnit report from the `ci-windows` test preset.
 - GitHub Actions CI: `windows-msvc` job (build and tests with test annotations and a cached vcpkg) on every push to `main` and every pull request; CI badge in the README.
+- `.clang-format` and `.clang-tidy` (naming rules of ADR-0021), `format` / `format-check` / `check` targets and the CI `checks` job.
