@@ -1,0 +1,64 @@
+name: Bug report
+description: Something does not work as documented or crashes.
+title: "bug: <short description>"
+labels: ["type:bug", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting! Security issues: please use the [private form](https://github.com/fyernald/tessera/security/advisories/new) instead.
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      value: |
+        1.
+        2.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+      placeholder: "v0.1.0-alpha.5 or commit SHA"
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+      placeholder: "Windows 11 23H2"
+    validations:
+      required: true
+  - type: input
+    id: gpu
+    attributes:
+      label: GPU and driver version
+      placeholder: "NVIDIA RTX 3060, driver 581.xx"
+  - type: input
+    id: compiler
+    attributes:
+      label: Compiler (if building from source)
+      placeholder: "MSVC 19.40 / clang-cl 18"
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: The engine log file (next to the executable, `teserra.log`) or console output.
+      render: text
+  - type: textarea
+    id: extra
+    attributes:
+      label: Screenshots or additional context

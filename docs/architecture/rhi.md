@@ -1,0 +1,341 @@
+# Render Hardware Interface (RHI)
+
+The RHI is the only way the engine talks to the GPU. It is shaped like Vulkan, D3D12 and Metal (explicit objects, baked pipelines, recorded command lists, descriptor-set-style binding), and implemented first on OpenGL 4.5. Decisions: [ADR-0005](../adr/0005-explicit-rhi-design.md), [ADR-0004](../adr/0004-opengl-45-dsa-first-backend.md), [ADR-0017](../adr/0017-shader-pipeline.md), [ADR-0020](../adr/0020-generational-handles.md), [ADR-0024](../adr/0024-coordinate-conventions.md).
+
+> Everything above the [OpenGL backend mapping](#opengl-backend-mapping) section is backend-neutral. If you find a GL-ism above that line, it is a bug in this document.
+
+## Scope
+
+| v1 (v0.1) | Future |
+|---|---|
+| Graphics pipelines (vertex + fragment), buffers, 2D/2D-array textures, samplers, bind groups, render passes with load/store ops, swapchain, fences, uploads, readback, debug markers | Compute pipelines and storage textures, push constants, MSAA resolve, texture views, cube/3D textures in practice, timestamp queries, multiple queues, bindless resources, explicit barriers / render graph integration, multithreaded recording |
+| Backends: OpenGL 4.5, null | Vulkan 1.3, possibly Metal / D3D12 |
+
+v1 *defines* some future concepts (3D texture dimension, depth formats, perspective-ready pipeline state, instance step rate) so that adding them later does not change existing signatures. Every v1 feature must still be exercised by an example or a test.
+
+## Objects
+
+```mermaid
+classDiagram
+    class Device {
+      +createBuffer(BufferDesc) Result~BufferHandle~
+      +createTexture(TextureDesc) Result~TextureHandle~
+      +createSampler(SamplerDesc) Result~SamplerHandle~
+      +createShaderModule(ShaderModuleDesc) Result~ShaderModuleHandle~
+      +createBindGroupLayout(desc) Result~BindGroupLayoutHandle~
+      +createPipelineLayout(desc) Result~PipelineLayoutHandle~
+      +createGraphicsPipeline(desc) Result~GraphicsPipelineHandle~
+      +createBindGroup(desc) Result~BindGroupHandle~
+      +destroy(handle)
+      +writeBuffer() / writeTexture()
+      +acquireCommandList() CommandList&
+      +submit(CommandList&)
+      +beginFrame() / endFrame()
+      +swapchain() Swapchain&
+      +limits() DeviceLimits
+    }
+    class Swapchain {
+      +acquireNextImage() TextureHandle
+      +present()
+      +resize(width, height)
+    }
+    class CommandList {
+      +beginRenderPass(RenderPassDesc)
+      +bindPipeline(GraphicsPipelineHandle)
+      +bindGroup(index, BindGroupHandle, offsets)
+      +bindVertexBuffer(slot, BufferHandle, offset)
+      +bindIndexBuffer(BufferHandle, IndexType, offset)
+      +setViewport() / setScissor()
+      +draw() / drawIndexed()
+      +copyBufferToTexture() / copyTextureToBuffer()
+      +pushDebugGroup() / popDebugGroup()
+      +endRenderPass()
+    }
+    Device --> Swapchain
+    Device --> CommandList
+```
+
+| Object | Purpose | Mutable after creation? |
+|---|---|---|
+| `Device` | Factory and owner of all resources; submission; frame pacing | - |
+| `Swapchain` | Presentable images for a window | Resized via `resize()` |
+| `Buffer` | Linear memory: vertex, index, uniform, storage, readback | Contents only |
+| `Texture` | Images: sampled, render target, depth-stencil | Contents only |
+| `Sampler` | Filtering and addressing state | No |
+| `ShaderModule` | One compiled shader stage (`.tshader` blob) | No |
+| `BindGroupLayout` | Shape of a resource group (≈ `VkDescriptorSetLayout`) | No |
+| `PipelineLayout` | Ordered list of bind group layouts (+ push constants, future) | No |
+| `GraphicsPipeline` | Shaders + vertex layout + all fixed-function state + target formats | No |
+| `BindGroup` | Concrete resources matching a layout (≈ `VkDescriptorSet`) | No (create a new one) |
+| `CommandList` | Recorded GPU work for one submission | Reset per frame |
+| `Fence` | CPU-GPU synchronization point | Signaled/reset by device |
+
+## Conventions
+
+The RHI contract (all backends): clip-space depth `[0, 1]`; NDC +Y up; **top-left origin** for render targets, textures, viewports, scissors, uploads and readbacks; counter-clockwise front faces. See [ADR-0024](../adr/0024-coordinate-conventions.md). Backends are responsible for honoring this contract; the renderer never compensates for a backend.
+
+## Handles and resource lifetime
+
+- All objects are referenced by typed generational handles (`BufferHandle`, `TextureHandle`, ...). Null handle = default-constructed.
+- `Device::destroy(handle)` invalidates the handle **immediately** (CPU side). The backend **defers** destruction of the underlying GPU object until every frame that may still use it has completed (tracked per frame slot, `kMaxFramesInFlight = 2`).
+- `rhi::Unique<THandle>` is a move-only RAII owner (handle + `Device&`) for code that wants scope-based lifetime. Containers of resources (materials, render targets) own handles explicitly and destroy them in their destructors.
+- Descriptor structs carry an optional `debugName` that backends forward to their debug-labeling facility and that validation messages print.
+
+```mermaid
+stateDiagram-v2
+    [*] --> Live: create*()
+    Live --> PendingDestroy: destroy(handle)\n(handle now stale)
+    PendingDestroy --> Freed: frame slots in flight completed
+    Freed --> [*]
+```
+
+## Device creation and backend selection
+
+```cpp
+namespace teserra::rhi {
+
+enum class Backend : u8 { OpenGL, Vulkan, Null };
+
+struct DeviceDesc {
+    Backend backend = Backend::OpenGL;
+    bool enableValidation = TESERRA_DEBUG_BUILD;  // RHI-level validation, see below
+    bool enableBackendDebug = TESERRA_DEBUG_BUILD; // driver debug output / validation layers
+    SwapchainDesc swapchain;
+};
+
+// Factory: backends register at link time (teserra_engine links the enabled ones).
+[[nodiscard]] Result<std::unique_ptr<Device>> createDevice(const DeviceDesc& desc,
+                                                           platform::Window& window);
+[[nodiscard]] Result<std::unique_ptr<Device>> createHeadlessDevice(const DeviceDesc& desc);
+
+} // namespace teserra::rhi
+```
+
+- Backends are compiled in by CMake options (`TESERRA_RHI_OPENGL=ON`, `TESERRA_RHI_VULKAN=OFF`, null always on for tests). Asking for a backend that is not compiled in returns an `Error`.
+- `Device` is an abstract interface (virtual calls at resource-creation and submit granularity only; never per draw).
+
+## Resource descriptors
+
+```cpp
+enum class BufferUsage : u32 { Vertex = 1, Index = 2, Uniform = 4, Storage = 8, CopySrc = 16, CopyDst = 32 };
+enum class MemoryLocation : u8 { GpuOnly, Upload /* CPU writes, GPU reads */, Readback /* GPU writes, CPU reads */ };
+
+struct BufferDesc {
+    u64 sizeInBytes = 0;
+    BufferUsage usage{};
+    MemoryLocation memory = MemoryLocation::GpuOnly;
+    std::string_view debugName;
+};
+
+enum class TextureDimension : u8 { Tex2D, Tex2DArray, Tex3D, Cube };
+enum class TextureUsage : u32 { Sampled = 1, RenderTarget = 2, DepthStencil = 4, Storage = 8, CopySrc = 16, CopyDst = 32 };
+
+struct TextureDesc {
+    TextureDimension dimension = TextureDimension::Tex2D;
+    Format format = Format::Rgba8Srgb;
+    u32 width = 1, height = 1, depthOrLayers = 1;
+    u32 mipLevels = 1;     // kAllMips = full chain
+    u32 sampleCount = 1;
+    TextureUsage usage = TextureUsage::Sampled | TextureUsage::CopyDst;
+    std::string_view debugName;
+};
+
+struct SamplerDesc {
+    Filter minFilter = Filter::Linear, magFilter = Filter::Linear;
+    MipmapMode mipmapMode = MipmapMode::Linear;
+    AddressMode addressU = AddressMode::ClampToEdge, addressV = AddressMode::ClampToEdge,
+                addressW = AddressMode::ClampToEdge;
+    f32 maxAnisotropy = 1.0f;
+    std::optional<CompareOp> compare;   // shadow samplers (future use)
+    std::string_view debugName;
+};
+```
+
+`Format` is an engine enum (`R8Unorm`, `Rg8Unorm`, `Rgba8Unorm`, `Rgba8Srgb`, `Bgra8Unorm`, `Bgra8Srgb`, `R16Float`, `Rgba16Float`, `R32Float`, `Rgba32Float`, `Depth16Unorm`, `Depth24UnormStencil8`, `Depth32Float`, ...) with a `formatInfo()` table (bytes per texel, depth/stencil flags, sRGB flag). Vertex attribute formats use a separate `VertexFormat` enum (`Float2`, `Float3`, `Float4`, `Unorm8x4`, ...).
+
+### Graphics pipelines
+
+All fixed-function state is baked into the pipeline. There are no "set blend mode" commands.
+
+```cpp
+struct VertexBufferLayout { u32 stride; VertexStepRate stepRate = VertexStepRate::PerVertex; };
+struct VertexAttribute    { u32 location; u32 bufferIndex; VertexFormat format; u32 offset; };
+
+struct GraphicsPipelineDesc {
+    ShaderModuleHandle vertexShader;
+    ShaderModuleHandle fragmentShader;
+    PipelineLayoutHandle layout;
+    std::span<const VertexBufferLayout> vertexBuffers;
+    std::span<const VertexAttribute> vertexAttributes;
+    PrimitiveTopology topology = PrimitiveTopology::TriangleList;
+    RasterState raster;              // cullMode, frontFace (default CounterClockwise), fillMode, depthBias
+    DepthStencilState depthStencil;  // depthTest, depthWrite, compareOp, stencil (future)
+    std::span<const BlendState> colorBlend;  // one per color attachment
+    RenderTargetLayout targets;      // color formats, depth format, sampleCount
+    std::string_view debugName;
+};
+```
+
+The pipeline declares the **formats** of the render targets it draws into (like Vulkan dynamic rendering and Metal). Validation checks that the active render pass matches.
+
+## Binding model
+
+Shaders declare resources as `layout(set = S, binding = B)`. The RHI mirrors this:
+
+- A `BindGroupLayout` lists entries `{binding, type, visibility (stage mask)}`.
+  v1 types: `UniformBuffer` (optionally with dynamic offset), `StorageBuffer` (read-only), `SampledTexture` (a **combined** texture + sampler).
+- A `PipelineLayout` is an ordered list of up to **4** bind group layouts (`kMaxBindGroups`), plus a push-constant range (future; size 0 in v1).
+- A `BindGroup` binds concrete resources (buffer ranges, texture + sampler pairs) to a layout. Bind groups are immutable and cheap to create; create new ones instead of mutating.
+- `cmd.bindGroup(index, group, dynamicOffsets)` binds a group at a set index.
+
+**Frequency convention** (used by the renderer and all engine shaders):
+
+| Set | Frequency | Typical content |
+|---|---|---|
+| 0 | Per frame / per view | Camera matrices, time, viewport size |
+| 1 | Per pass | Pass-specific inputs (e.g. previous pass output) |
+| 2 | Per material | Textures, material parameter buffer |
+| 3 | Per draw | Per-object data via dynamic offset into a ring buffer |
+
+v1 limits (validated, also exposed through `DeviceLimits`): 4 groups, 8 bindings per group, binding numbers `0..7`. Combined texture+sampler is the only texture binding type in v1 because it maps directly onto every target API; separate samplers are a future extension.
+
+## Shaders
+
+- Authored once in GLSL 450 (Vulkan dialect). Compiled at build time by `teserra_shaderc` into `.tshader` blobs that contain SPIR-V, backend-specific translations, and reflection data ([ADR-0017](../adr/0017-shader-pipeline.md)).
+- `ShaderModuleDesc { ShaderStage stage; std::span<const std::byte> blob; std::string_view entryPoint = "main"; std::string_view debugName; }`.
+- In debug builds the device validates a `GraphicsPipelineDesc` against reflection: every resource the shaders use must be present in the pipeline layout with a compatible type, and vertex inputs must match the vertex layout.
+
+## Command recording and submission
+
+```mermaid
+sequenceDiagram
+    participant R as Renderer
+    participant CL as CommandList (stream)
+    participant D as Device
+    participant B as Backend
+    R->>D: beginFrame() (wait frame-slot fence, recycle lists, run deferred destroys)
+    R->>D: acquireCommandList()
+    D-->>R: CommandList& (empty, frame-slot owned)
+    R->>CL: beginRenderPass / bindPipeline / bindGroup / draw / endRenderPass
+    Note over CL: commands appended as POD records,<br/>no backend calls during recording
+    R->>D: submit(list)
+    D->>B: validate (debug) then translate/replay commands
+    R->>D: swapchain().present()
+    R->>D: endFrame() (signal frame-slot fence)
+```
+
+- A `CommandList` is a **backend-agnostic command stream**: a sequence of small POD records (`{CommandType type; u16 size;}` header + payload) appended into a reusable byte buffer. Recording performs no backend calls and no heap allocation after warm-up.
+- Recording rules (validated in debug): draws only inside a render pass; a pipeline must be bound before draw; bind groups must be compatible with the bound pipeline's layout; render passes do not nest; copies happen outside render passes.
+- `submit()` hands the stream to the backend, which **replays** (GL) or **translates** (Vulkan) it. Lists are owned by the device per frame slot and reset when the slot is reused.
+- v1 records on the main thread only. Because recording touches no backend state, multithreaded recording later only requires per-thread lists.
+
+```cpp
+// Per frame (illustrative)
+device.beginFrame();
+TextureHandle backbuffer = device.swapchain().acquireNextImage();
+
+CommandList& cmd = device.acquireCommandList();
+cmd.pushDebugGroup("Main pass");
+cmd.beginRenderPass({
+    .colorAttachments = {{ .texture = backbuffer, .loadOp = LoadOp::Clear,
+                           .storeOp = StoreOp::Store, .clearColor = {0.1f, 0.1f, 0.12f, 1.0f} }},
+});
+cmd.bindPipeline(trianglePipeline);
+cmd.bindGroup(0, frameGroup);
+cmd.bindVertexBuffer(0, vertexBuffer);
+cmd.draw({ .vertexCount = 3 });
+cmd.endRenderPass();
+cmd.popDebugGroup();
+
+device.submit(cmd);
+device.swapchain().present();
+device.endFrame();
+```
+
+### Render passes
+
+`RenderPassDesc` lists color attachments and an optional depth-stencil attachment, each with a texture handle (+ mip/layer), `LoadOp {Load, Clear, DontCare}`, `StoreOp {Store, DontCare}` and clear values. There are no persistent "framebuffer" objects in the API; backends cache whatever they need internally.
+
+### Synchronization and frames in flight
+
+- The device keeps `kMaxFramesInFlight = 2` frame slots. `beginFrame()` waits on the fence of the slot being reused; `endFrame()` signals it. This bounds CPU-ahead-of-GPU latency and makes per-frame ring buffers safe.
+- Hazards *within* a frame (render to texture, then sample it) are handled **implicitly** by the backend based on declared usage (render pass attachments, bind group contents). The renderer never issues barriers in v1.
+- `device.waitIdle()` exists for shutdown, resize and tests.
+
+### Uploads and readback
+
+- `writeBuffer(buffer, offset, bytes)` and `writeTexture(texture, region, bytes, rowPitch)` copy the caller's data immediately (caller may free it after the call) and are ordered **before** the next submitted command list.
+- `MemoryLocation::Upload` buffers may be persistently mapped (`device.map(buffer)` returns `std::span<std::byte>`), used by the renderer's per-frame ring buffers. The caller is responsible for not overwriting regions still in flight (the ring buffer partitions by frame slot).
+- Readback: `cmd.copyTextureToBuffer(texture, readbackBuffer, region)`, then after the frame's fence (or `waitIdle()` in tests), `map()` the readback buffer. Row 0 is the top row.
+
+## Validation layer
+
+With `enableValidation`, the RHI's common code checks before anything reaches a backend:
+
+- Descriptor sanity (non-zero sizes, usage flags consistent with memory location, format/usage compatibility, mip counts).
+- Handle liveness for every handle used in a descriptor or command.
+- Command stream state machine and pipeline/render-pass format compatibility.
+- Pipeline layout vs shader reflection; bind group vs layout.
+
+Violations log an error with the object's `debugName` and trigger `TESERRA_ASSERT`. Validation costs nothing in Release builds.
+
+## What must not leak out of the RHI
+
+This list is checked in review and partly by CI ([build-and-ci](../guides/build-and-ci.md#layer-and-leak-checks)):
+
+1. **No backend headers, types, enums or function names** in `engine/rhi/include/` or any module above the RHI. No `GLuint`, `GLenum`, `VkImage`, no backend object IDs in any public struct, not even as `u32`.
+2. **No "current state" semantics.** No `setBlendMode()`, `enableDepthTest()`, `bindTexture(unit)`, implicit "current program" or "current framebuffer". State is in pipelines, resources are in bind groups.
+3. **No per-uniform setters** (`setUniform("u_color", ...)`, uniform locations). All shader parameters flow through buffers in bind groups (and push constants later).
+4. **No backend-specific shader source** above the RHI. The renderer passes `.tshader` blobs.
+5. **No global/thread-local device or context.** The `Device` is passed explicitly.
+6. **No backend coordinate conventions.** Only the [RHI contract](#conventions).
+7. **No implicit resource lifetime.** Nothing is freed because it was unbound; nothing is kept alive because it is bound.
+8. **No hidden synchronous stalls** in the API. Operations that wait (`waitIdle`, fence waits) say so in their names.
+9. **No backend-specific limits as constants.** Limits come from `DeviceLimits`.
+
+## Null backend
+
+`teserra_rhi_null` implements `Device` without a GPU: resources are allocated in handle pools, uploads are copied into CPU memory, submitted command lists are validated and **kept for inspection**. Renderer unit tests use it to assert "this frame recorded N draws with pipeline P and bind group G" without a window or GPU ([testing strategy](../guides/testing-strategy.md#rhi-and-renderer-tests)).
+
+## Future: Vulkan backend mapping
+
+Planned mapping, to keep v1 decisions honest:
+
+| RHI | Vulkan 1.3 |
+|---|---|
+| `Device` | Instance, physical device, logical device, one graphics queue, VMA allocator |
+| `Swapchain` | `VkSwapchainKHR` created from the window's `NativeWindowHandle`; recreated on resize |
+| `CommandList` stream | Translated into a `VkCommandBuffer` at submit, with barriers derived from tracked resource states |
+| `RenderPassDesc` | Dynamic rendering (`vkCmdBeginRendering`); no `VkRenderPass` objects |
+| `GraphicsPipeline` | `VkPipeline` (dynamic rendering formats from `targets`), pipeline cache on disk |
+| `BindGroupLayout` / `BindGroup` | `VkDescriptorSetLayout` / `VkDescriptorSet` from per-frame descriptor pools |
+| `PipelineLayout` | `VkPipelineLayout` (+ push-constant range) |
+| Uploads | Staging ring buffer + copy commands |
+| `Fence` | `VkFence` per frame slot (timeline semaphores later) |
+| NDC +Y up | Negative viewport height |
+
+## OpenGL backend mapping
+
+This is the **only** section of the engine documentation where OpenGL specifics belong. Implementation lives in `engine/rhi/backends/opengl/`.
+
+| RHI concept | OpenGL 4.5 core (DSA) implementation |
+|---|---|
+| Device creation | Context provided by `platform::OpenGlContext`; functions loaded with glad via `getProcAddress`; `KHR_debug` callback routed to `TESERRA_LOG_*` (category `Rhi`); `glClipControl(GL_UPPER_LEFT, GL_ZERO_TO_ONE)` set once ([ADR-0024](../adr/0024-coordinate-conventions.md)) |
+| Buffer | `glCreateBuffers` + `glNamedBufferStorage` (immutable storage). `GpuOnly` → `GL_DYNAMIC_STORAGE_BIT` so `writeBuffer` can use `glNamedBufferSubData`; `Upload` → `GL_MAP_WRITE_BIT \| GL_MAP_PERSISTENT_BIT \| GL_MAP_COHERENT_BIT`, mapped once with `glMapNamedBufferRange`; `Readback` → `GL_MAP_READ_BIT \| GL_MAP_PERSISTENT_BIT` |
+| Texture | `glCreateTextures(target)` + `glTextureStorage2D/3D`; uploads via `glTextureSubImage*`; full mip chain via `glGenerateTextureMipmap` |
+| Sampler | `glCreateSamplers` + `glSamplerParameter*`; anisotropy only if `EXT_texture_filter_anisotropic` is present |
+| ShaderModule | GL GLSL payload of the `.tshader` blob, compiled with `glCreateShader`/`glCompileShader`; errors returned as `Error` with the shader's debug name |
+| GraphicsPipeline | Linked program (cached by shader pair) + VAO built with `glCreateVertexArrays`, `glVertexArrayAttribFormat`, `glVertexArrayAttribBinding`, `glVertexArrayBindingDivisor` + a captured `GlPipelineState` (raster, depth, blend) |
+| Pipeline binding | A backend-private state cache diffs the new `GlPipelineState` against the current GL state and issues only the changed calls |
+| Binding model | Flat GL binding = `setIndex * 8 + binding` for uniform buffers (`glBindBufferRange`) and combined textures (`glBindTextureUnit` + `glBindSampler`). The same function is used by `teserra_shaderc` when emitting GL GLSL, so shaders and backend always agree. Device creation verifies `GL_MAX_UNIFORM_BUFFER_BINDINGS` and `GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS` are ≥ 32 |
+| Dynamic offsets | `glBindBufferRange` with the dynamic offset applied; offsets validated against `GL_UNIFORM_BUFFER_OFFSET_ALIGNMENT` (exposed as `DeviceLimits::uniformBufferOffsetAlignment`) |
+| Push constants (future) | Emulated by a reserved uniform buffer binding (above the flat range) updated from a ring buffer |
+| Render pass | Offscreen attachments: framebuffer objects cached by attachment set (`glCreateFramebuffers`, `glNamedFramebufferTexture`); `LoadOp::Clear` → `glClearNamedFramebuffer*`; `LoadOp::DontCare` / `StoreOp::DontCare` → `glInvalidateNamedFramebufferData` |
+| Swapchain | The default framebuffer is never rendered to directly. The swapchain owns an internal color texture (sRGB) that render passes target; `present()` blits it to framebuffer 0 with a **vertical flip** (`glBlitNamedFramebuffer`, swapped Y coordinates), then calls `OpenGlContext::swapBuffers()`. Present mode → swap interval (`Fifo` = 1, `Immediate` = 0). Resize reallocates the internal texture |
+| CommandList | Replayed at `submit()` on the context thread; each record maps to a handful of GL calls |
+| Implicit hazards | GL orders commands implicitly; `glMemoryBarrier` only needed once storage writes exist (future) |
+| Fence | `glFenceSync` at `endFrame()`, `glClientWaitSync` in `beginFrame()` for the reused slot |
+| Debug groups / names | `glPushDebugGroup` / `glPopDebugGroup` / `glObjectLabel` |
+| Threading | The context is current only on the main thread; every GL call happens inside `Device`/`Swapchain` methods on that thread (asserted in debug) |
+
+Known semantic gaps handled here (and listed in [risks](../risks-and-open-questions.md)): command replay overhead, the `(set, binding)` remap, emulated fences/frames in flight, the swapchain blit, and load/store ops as clears/invalidates.

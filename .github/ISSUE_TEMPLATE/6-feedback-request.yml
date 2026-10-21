@@ -1,0 +1,60 @@
+name: Feedback request (maintainers)
+description: Ask testers specific questions about a published iteration build.
+title: "Feedback request: <build name> (<tag>)"
+labels: ["feedback"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Created by the maintainer when an iteration publishes a build. Testers answer in comments. See the [feedback loop](https://github.com/fyernald/tessera/blob/main/docs/process/development-process.md#feedback-loop).
+  - type: input
+    id: build
+    attributes:
+      label: Build
+      description: Link to the GitHub pre-release.
+    validations:
+      required: true
+  - type: textarea
+    id: whats-new
+    attributes:
+      label: What's new
+      description: The iteration's headline feature in two or three sentences, with a link to the epic.
+    validations:
+      required: true
+  - type: textarea
+    id: how-to-run
+    attributes:
+      label: How to run
+      value: |
+        1. Download the zip from the release and extract it.
+        2. Run `<example>.exe` (Windows may show a SmartScreen warning: "More info" → "Run anyway").
+        3. Press `F1` for controls / statistics where available.
+    validations:
+      required: true
+  - type: textarea
+    id: questions
+    attributes:
+      label: Questions
+      description: 3-6 specific, answerable questions.
+      value: |
+        1. Did it start? If not, what happened (attach `teserra.log`)?
+        2. Your OS, GPU and driver version?
+        3.
+    validations:
+      required: true
+  - type: input
+    id: deadline
+    attributes:
+      label: Feedback deadline
+      description: Default is 10 days, before the next iteration planning.
+    validations:
+      required: true
+  - type: textarea
+    id: known
+    attributes:
+      label: Known issues
+  - type: textarea
+    id: triage
+    attributes:
+      label: Triage outcome (filled at planning)
+      description: Issues created from the feedback, answers given, what changed.

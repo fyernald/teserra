@@ -1,0 +1,55 @@
+name: RFC (design proposal)
+description: Propose an architectural change, a new dependency, or a deviation from the pattern catalog. Accepted RFCs become ADRs.
+title: "RFC: <proposal>"
+labels: ["type:rfc", "needs-design", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        RFCs are required before changing a layer boundary, adding a dependency, or deviating from the [pattern catalog](https://github.com/fyernald/tessera/blob/main/docs/guides/patterns-and-conventions.md). Keep it concise.
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+    validations:
+      required: true
+  - type: textarea
+    id: motivation
+    attributes:
+      label: Motivation
+      description: What problem exists today? Who is affected?
+    validations:
+      required: true
+  - type: textarea
+    id: design
+    attributes:
+      label: Detailed design
+      description: Interfaces, data flow, diagrams. Small code sketches are welcome.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+    validations:
+      required: true
+  - type: textarea
+    id: impact
+    attributes:
+      label: Impact
+      description: Affected layers and backends, public API changes, migration, performance, build/dependency impact.
+    validations:
+      required: true
+  - type: textarea
+    id: readiness
+    attributes:
+      label: 3D / Vulkan / Linux readiness
+  - type: textarea
+    id: questions
+    attributes:
+      label: Unresolved questions
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Outcome (filled by maintainer)
+      description: Accepted → ADR-NNNN link / Rejected → reason.

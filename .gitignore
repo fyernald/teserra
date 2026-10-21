@@ -1,0 +1,29 @@
+# Build output
+/build/
+/out/
+/install/
+CMakeUserPresets.json
+compile_commands.json
+Testing/
+
+# vcpkg
+vcpkg_installed/
+
+# IDEs and tools
+.vs/
+.idea/
+.cache/
+*.user
+*.suo
+*.vcxproj.user
+.vscode/*
+!.vscode/extensions.json
+
+# Runtime artifacts
+*.log
+imgui.ini
+tests/golden/**/_actual/
+tests/golden/**/_diff/
+
+# Local planning fallback (never committed; the backlog lives in GitHub Projects)
+.local-backlog/

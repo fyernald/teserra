@@ -1,0 +1,79 @@
+name: Task
+description: A planned unit of engineering work (1-6 hours) that implements part of a feature or epic.
+title: "<area>: <imperative summary>"
+labels: ["type:task", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Tasks must meet the [Definition of Ready](https://github.com/fyernald/tessera/blob/main/docs/process/development-process.md#definition-of-ready) before they are scheduled. Anything over 6 h should be split.
+  - type: textarea
+    id: context
+    attributes:
+      label: Context / why
+      description: What problem does this solve? Which epic or feature does it belong to?
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope
+      description: What is included.
+    validations:
+      required: true
+  - type: textarea
+    id: non-goals
+    attributes:
+      label: Non-goals
+      description: What is explicitly out of scope.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: Testable checklist.
+      value: |
+        - [ ]
+        - [ ]
+    validations:
+      required: true
+  - type: textarea
+    id: notes
+    attributes:
+      label: Technical notes
+      description: Links to the relevant architecture doc / ADR, interface sketch, pitfalls.
+  - type: textarea
+    id: design-note
+    attributes:
+      label: Design note
+      description: Required if this touches a public interface, the RHI or the ECS.
+      value: |
+        - Problem / goal:
+        - Proposed interface:
+        - Alternatives considered:
+        - Impact on other layers / backends:
+        - Test plan:
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: Dependencies
+      description: "Blocked by / blocks (issue numbers)."
+  - type: textarea
+    id: future
+    attributes:
+      label: Future-proofing (3D / Vulkan / Linux)
+      description: How this keeps 3D, Vulkan and Linux additions cheap, or "n/a".
+  - type: textarea
+    id: tests
+    attributes:
+      label: Test approach
+    validations:
+      required: true
+  - type: input
+    id: estimate
+    attributes:
+      label: Estimate (hours)
+      placeholder: "3"
+    validations:
+      required: true

@@ -1,0 +1,54 @@
+name: Iteration review & retrospective (maintainers)
+description: Short written review and retrospective at the end of each iteration.
+title: "Iteration <N> review & retrospective"
+labels: ["retro"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        15-30 minutes, written at the end of the iteration. Format: [review and retrospective](https://github.com/fyernald/tessera/blob/main/docs/process/development-process.md#review-and-retrospective).
+  - type: input
+    id: epic
+    attributes:
+      label: Headline feature (epic)
+      placeholder: "#12"
+    validations:
+      required: true
+  - type: textarea
+    id: shipped
+    attributes:
+      label: What shipped
+      value: |
+        - Headline feature: done / partially (what remains):
+        - Other merged work:
+        - Build / tag:
+    validations:
+      required: true
+  - type: textarea
+    id: numbers
+    attributes:
+      label: Numbers
+      value: |
+        - Committed: __ h
+        - Completed: __ h
+        - Carry-over: __ h
+    validations:
+      required: true
+  - type: textarea
+    id: learned
+    attributes:
+      label: What we learned
+    validations:
+      required: true
+  - type: textarea
+    id: feedback
+    attributes:
+      label: Feedback received
+      description: Link the feedback request; top points.
+  - type: textarea
+    id: change
+    attributes:
+      label: What to change next iteration
+      description: 1-3 concrete process or technical changes.
+    validations:
+      required: true

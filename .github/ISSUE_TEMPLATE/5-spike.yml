@@ -1,0 +1,42 @@
+name: Research / spike
+description: A time-boxed investigation of a risky unknown. Spike code is thrown away.
+title: "Spike: <question>"
+labels: ["type:spike", "needs-triage"]
+body:
+  - type: textarea
+    id: question
+    attributes:
+      label: Question to answer
+      description: One sharp question. The spike ends when it is answered or the time box runs out.
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Why now
+      description: Which decision or issue is blocked by this unknown?
+    validations:
+      required: true
+  - type: textarea
+    id: approach
+    attributes:
+      label: Approach
+      description: Experiments, prototypes, measurements, reading.
+    validations:
+      required: true
+  - type: input
+    id: timebox
+    attributes:
+      label: Time box (hours)
+      placeholder: "3"
+    validations:
+      required: true
+  - type: textarea
+    id: output
+    attributes:
+      label: Expected output
+      value: |
+        - [ ] Findings written as a comment on this issue
+        - [ ] Recommendation (and ADR created/updated if a decision follows)
+        - [ ] Follow-up issues created
+        - [ ] Spike branch `spike/<topic>` not merged

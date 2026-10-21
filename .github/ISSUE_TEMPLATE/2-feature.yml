@@ -1,0 +1,52 @@
+name: Feature / epic
+description: A user-visible capability or an iteration headline feature, broken down into tasks.
+title: "<Feature name>"
+labels: ["type:feature", "needs-triage"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem / user story
+      description: "As a <game developer / player / contributor>, I want ... so that ..."
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: High-level approach. Link architecture docs and ADRs.
+    validations:
+      required: true
+  - type: textarea
+    id: exit
+    attributes:
+      label: Demo / exit criteria
+      description: What runnable thing proves this feature is done?
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope and non-goals
+    validations:
+      required: true
+  - type: textarea
+    id: breakdown
+    attributes:
+      label: Breakdown
+      description: Sub-issues or a task list (each 1-6 h).
+      value: |
+        - [ ]
+  - type: textarea
+    id: future
+    attributes:
+      label: Future-proofing (3D / Vulkan / Linux)
+  - type: textarea
+    id: risks
+    attributes:
+      label: Risks and open questions
+  - type: textarea
+    id: feedback
+    attributes:
+      label: Feedback to collect
+      description: If this produces a build for testers, what should we ask them?

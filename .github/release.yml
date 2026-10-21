@@ -1,0 +1,26 @@
+# Categories for GitHub's generated release notes. The curated CHANGELOG.md remains the source of truth.
+changelog:
+  exclude:
+    labels:
+      - retro
+      - feedback
+      - wontfix
+      - duplicate
+      - invalid
+  categories:
+    - title: Breaking changes
+      labels:
+        - breaking-change
+    - title: Features
+      labels:
+        - type:feature
+        - type:task
+    - title: Fixes
+      labels:
+        - type:bug
+    - title: Refactoring and tech debt
+      labels:
+        - type:refactor
+    - title: Other changes
+      labels:
+        - "*"
