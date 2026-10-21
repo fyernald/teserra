@@ -1,4 +1,4 @@
-# Label definitions for fyernald/tessera.
+# Label definitions for fyernald/teserra.
 # Applied with `gh label create <name> --color <color> --description <description> --force`
 # (see docs/process/development-process.md). Priority, iteration, estimate and target version
 # are GitHub Project fields, not labels.

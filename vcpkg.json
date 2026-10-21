@@ -3,7 +3,7 @@
   "name": "teserra",
   "version": "0.0.1",
   "description": "A modern C++20 game engine for indie developers",
-  "homepage": "https://github.com/fyernald/tessera",
+  "homepage": "https://github.com/fyernald/teserra",
   "license": "MIT",
   "dependencies": [
     "glm",

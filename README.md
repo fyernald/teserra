@@ -26,7 +26,7 @@ Teserra aims to be an engine you can **read, understand and ship games with**:
 | v2.0 | Vulkan backend, 3D renderer |
 | v3.0+ | Scripting |
 
-The detailed roadmap, iterations and backlog live **only** in the [GitHub Project](https://github.com/users/fyernald/projects/3) and [issues](https://github.com/fyernald/tessera/issues).
+The detailed roadmap, iterations and backlog live **only** in the [GitHub Project](https://github.com/users/fyernald/projects/3) and [issues](https://github.com/fyernald/teserra/issues).
 
 ## Quickstart
 
