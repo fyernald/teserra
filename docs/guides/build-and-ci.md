@@ -154,11 +154,21 @@ Workflows live in `.github/workflows/`.
 | `bench.yml` | manual, weekly | No | Benchmarks in Release, results as artifact |
 | `release.yml` | tag `v*` | - | Build release artifacts, attach to GitHub Release ([release process](../process/release-process.md)) |
 
-Caching: vcpkg binary cache (the provider is chosen in the CI setup issue; the GitHub Actions cache or GitHub Packages NuGet feed are both viable) keyed by triplet + baseline + `vcpkg.json` hash.
+The `windows-msvc` job runs on `windows-latest`: it sets up the MSVC developer environment, uses the runner's preinstalled vcpkg as `VCPKG_ROOT`, then configures, builds and tests with the `ci-windows` preset. CTest's JUnit report (`build/ci-windows/junit.xml`) is turned into a check run with annotations for failed tests and uploaded as an artifact. A newer push to the same branch or PR cancels the run in progress. Third-party actions are pinned to a commit SHA.
+
+**Caching.** vcpkg's `files` binary-cache provider writes compiled packages to a directory that `actions/cache` restores before configuring and saves right after (also when the build or tests fail). The key is triplet + runner image version (which fixes the compiler) + hash of `vcpkg.json` and `vcpkg-configuration.json`; a key miss falls back to the newest cache of the same triplet, so a manifest change only rebuilds the packages that changed. vcpkg's former GitHub Actions cache provider (`x-gha`) no longer exists, and a GitHub Packages NuGet feed would need package write permissions and NuGet setup for the same result.
 
 ### Branch protection (manual repository setting)
 
 `main` requires: PR before merge, status checks `windows-msvc` and `checks` passing, linear history (squash merge), no force pushes. The maintainer may self-merge after the checklist is satisfied.
+
+To set it up (Settings → Branches → Add branch ruleset, or a classic branch protection rule for `main`):
+
+1. Target branch `main`; enforcement **Active**.
+2. **Require a pull request before merging** (required approvals: 0, so the maintainer can self-merge).
+3. **Require status checks to pass**, with "require branches to be up to date"; add `windows-msvc` and `checks` (they appear in the list after the workflow has run once).
+4. **Require linear history**; under Settings → General → Pull Requests allow only **squash merging**.
+5. **Block force pushes** and **restrict deletions**.
 
 ## Profiling builds
 
