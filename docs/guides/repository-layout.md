@@ -10,7 +10,7 @@ teserra/
 ├── vcpkg-configuration.json    # Pinned baseline/registries
 ├── .clang-format, .clang-tidy  # Enforced style and static analysis
 ├── cmake/                      # CMake helpers: TeserraModule.cmake, TeserraWarnings.cmake,
-│                               #   TeserraShaders.cmake, TeserraLayering.cmake
+│                               #   TeserraTesting.cmake, TeserraShaders.cmake
 ├── engine/                     # The engine, one directory per module (= one CMake target)
 │   ├── core/                   # Layer 0: types, assert, log, Result, handles, math, memory, profile
 │   ├── platform/               # Layer 1: Platform, Window, Input, FileSystem, Clock, DynamicLibrary
