@@ -2,6 +2,7 @@ name: Feedback request (maintainers)
 description: Ask testers specific questions about a published iteration build.
 title: "Feedback request: <build name> (<tag>)"
 labels: ["feedback"]
+projects: ["fyernald/3"]
 body:
   - type: markdown
     attributes:

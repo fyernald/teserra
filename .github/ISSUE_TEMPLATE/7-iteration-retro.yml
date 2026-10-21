@@ -2,6 +2,7 @@ name: Iteration review & retrospective (maintainers)
 description: Short written review and retrospective at the end of each iteration.
 title: "Iteration <N> review & retrospective"
 labels: ["retro"]
+projects: ["fyernald/3"]
 body:
   - type: markdown
     attributes:

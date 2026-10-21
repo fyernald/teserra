@@ -3,7 +3,7 @@
 # (see docs/process/development-process.md). Priority, iteration, estimate and target version
 # are GitHub Project fields, not labels.
 
-# Type (mirrors the Project "Type" field; issue templates apply these)
+# Type (mirrors the Project "Work type" field; issue templates apply these)
 - name: "type:feature"
   color: "1d76db"
   description: "User-visible capability or headline feature"

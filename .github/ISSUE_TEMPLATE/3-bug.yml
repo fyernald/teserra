@@ -2,6 +2,7 @@ name: Bug report
 description: Something does not work as documented or crashes.
 title: "bug: <short description>"
 labels: ["type:bug", "needs-triage"]
+projects: ["fyernald/3"]
 body:
   - type: markdown
     attributes:

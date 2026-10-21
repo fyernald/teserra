@@ -2,6 +2,7 @@ name: Feature / epic
 description: A user-visible capability or an iteration headline feature, broken down into tasks.
 title: "<Feature name>"
 labels: ["type:feature", "needs-triage"]
+projects: ["fyernald/3"]
 body:
   - type: textarea
     id: problem

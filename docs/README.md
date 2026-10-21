@@ -1,6 +1,6 @@
 # Teserra documentation
 
-Start with the [architecture overview](architecture/overview.md). The backlog and roadmap live in the [GitHub Project](https://github.com/users/fyernald/projects), not in this folder.
+Start with the [architecture overview](architecture/overview.md). The backlog and roadmap live in the [GitHub Project](https://github.com/users/fyernald/projects/3), not in this folder.
 
 ## Architecture
 

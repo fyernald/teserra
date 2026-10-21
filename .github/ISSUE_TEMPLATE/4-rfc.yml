@@ -2,6 +2,7 @@ name: RFC (design proposal)
 description: Propose an architectural change, a new dependency, or a deviation from the pattern catalog. Accepted RFCs become ADRs.
 title: "RFC: <proposal>"
 labels: ["type:rfc", "needs-design", "needs-triage"]
+projects: ["fyernald/3"]
 body:
   - type: markdown
     attributes:

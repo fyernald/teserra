@@ -2,7 +2,7 @@
 
 Teserra is developed in **two-week iterations with one headline feature each** ([ADR-0022](../adr/0022-iteration-and-process-model.md)). The process is agile (ship small, get feedback, adjust) and disciplined (agile never relaxes the quality rules below).
 
-The backlog, roadmap and iterations live in the **[Teserra GitHub Project](https://github.com/users/fyernald/projects)** and in GitHub Issues. There are no backlog files in this repository.
+The backlog, roadmap and iterations live in the **[Teserra GitHub Project](https://github.com/users/fyernald/projects/3)** and in GitHub Issues. There are no backlog files in this repository.
 
 ## Roles
 
@@ -28,7 +28,7 @@ The backlog, roadmap and iterations live in the **[Teserra GitHub Project](https
 | Iteration | 2-week iterations starting Mondays | Which iteration an item is committed to; empty = not scheduled |
 | Estimate (h) | number | Planning and velocity |
 | Area | core, platform, rhi, renderer, ecs, assets, build, docs, editor | Ownership and filtering |
-| Type | feature, task, bug, refactor, research/spike, RFC | Kind of work (mirrors the `type:*` label) |
+| Work type | feature, task, bug, refactor, research/spike, RFC | Kind of work (mirrors the `type:*` label; GitHub reserves the field name "Type") |
 | Priority | P0, P1, P2, P3 | See below |
 | Target version | v0.1, v0.2, v0.3, v1.0, v2.0, v3.0 | Release the item belongs to |
 | Readiness | none, 3D, Vulkan, Linux | Which future-proofing concern the item carries |

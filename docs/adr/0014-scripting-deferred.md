@@ -2,7 +2,7 @@
 
 - **Status:** Accepted
 - **Date:** 2026-10-21
-- **Related:** [editor and scripting (future)](../architecture/editor-and-scripting-future.md), [ECS](../architecture/ecs.md#component-metadata)
+- **Related:** [editor and scripting (future)](../architecture/editor-and-scripting-future.md), [ECS](../architecture/ecs.md#component-types-and-metadata)
 
 ## Context
 
@@ -13,7 +13,7 @@ Scripting (Lua, C#, Wren, AngelScript, or hot-reloaded C++) is a large subsystem
 - No scripting language in v1 or v2. Target **v3-v4**.
 - Gameplay in v1/v2 is written in C++ against the public engine API.
 - The architecture must **not block** scripting. Concretely, v1 must provide:
-  1. **Component metadata** registered per type (name, size, alignment, lifecycle functions, optional field descriptors) without RTTI, so bindings and serialization can be generated later ([ecs.md](../architecture/ecs.md#component-metadata)).
+  1. **Component metadata** registered per type (name, size, alignment, lifecycle functions, optional field descriptors) without RTTI, so bindings and serialization can be generated later ([ecs.md](../architecture/ecs.md#component-types-and-metadata)).
   2. **Systems as plain callables** with declared data access, so a script-defined system can be registered the same way.
   3. **No hidden global state** that a scripting VM would need to reach into; engine services are reachable through explicit context objects.
   4. **Stable handles** (entities, assets) that can cross a language boundary as integers.

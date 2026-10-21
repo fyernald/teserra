@@ -2,6 +2,7 @@ name: Research / spike
 description: A time-boxed investigation of a risky unknown. Spike code is thrown away.
 title: "Spike: <question>"
 labels: ["type:spike", "needs-triage"]
+projects: ["fyernald/3"]
 body:
   - type: textarea
     id: question

@@ -8,8 +8,8 @@ Living document: assumptions made while setting up the project, known risks with
 |---|---|---|---|
 | Q1 | **Name and repository.** The project is "Teserra"; the GitHub repository is `fyernald/tessera`. Is "Teserra" intentional (unique spelling) or should it be "Tessera"? Rename the repo to `teserra`? | Name is **Teserra**; repo name unchanged until the name check (iteration 1) concludes. GitHub redirects old URLs after a rename. | Iteration 1 (before namespaces/macros spread) |
 | Q2 | **Legal name in copyright.** LICENSE says "fyernald and the Teserra contributors". Use a legal name? | GitHub handle | Before v0.1 |
-| Q3 | **Contact address** for Code of Conduct reports (must be private, not an issue). | Placeholder in CODE_OF_CONDUCT.md; security reports go through GitHub private vulnerability reporting | Before first external contributors |
-| Q4 | **GitHub Discussions** for Q&A and long-form feedback? | Enabled if approved during setup; feedback still collected via issues for triage | Iteration 5 (first feedback build) |
+| Q3 | **Contact address** for Code of Conduct reports (must be private, not an issue). | Reports go through GitHub private vulnerability reporting (enabled 2026-10-21) with a "Conduct:" title prefix until a dedicated address is published | Before first external contributors |
+| Q4 | ~~**GitHub Discussions** for Q&A and long-form feedback?~~ **Resolved 2026-10-21:** Discussions enabled for questions and ideas; feedback on builds is still collected in feedback-request issues so it can be triaged. | - | - |
 | Q5 | **Exam/holiday calendar.** Which weeks should be light iterations or breaks? | Continuous 2-week iterations from 2026-10-26; iteration 5 overlaps the year-end holidays | Next planning |
 | Q6 | **Reference machine** for the performance budget (CPU/GPU). | Author's development machine, documented when the first benchmark lands | Iteration 8 |
 | Q7 | **MIT vs zlib** final confirmation (relicensing is only cheap before external contributions). | MIT ([ADR-0018](adr/0018-license-mit.md)) | Before the first external PR is merged |

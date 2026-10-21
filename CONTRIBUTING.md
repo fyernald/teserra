@@ -7,12 +7,12 @@ Thanks for your interest! Teserra is a learning-driven but quality-first open-so
 - **Try iteration builds and answer feedback requests.** This is the most valuable help early on (see [below](#giving-feedback-on-iteration-builds)).
 - **Report bugs** with the *Bug report* template.
 - **Improve documentation**: typos, unclear sections, missing explanations.
-- **Write code** for `Ready` issues in the [GitHub Project](https://github.com/users/fyernald/projects).
+- **Write code** for `Ready` issues in the [GitHub Project](https://github.com/users/fyernald/projects/3).
 - **Propose changes** to design via an *RFC* issue.
 
 ## Finding work
 
-1. Open the [GitHub Project](https://github.com/users/fyernald/projects) and use the **Backlog** or **By area** view.
+1. Open the [GitHub Project](https://github.com/users/fyernald/projects/3) and use the **Backlog** or **By area** view.
 2. Pick an issue with Status **Ready** that is not assigned. Issues labeled **`good first issue`** are scoped for newcomers; **`help wanted`** marks issues the maintainer would especially like help with.
 3. Comment "I'd like to work on this" and wait for the maintainer to assign you (usually within a few days). This avoids duplicate work.
 4. Do not start on `Backlog` items or epics without discussing first: they may not be designed yet.

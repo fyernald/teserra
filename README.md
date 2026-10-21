@@ -5,7 +5,7 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 ![Status: pre-alpha](https://img.shields.io/badge/status-pre--alpha-orange.svg)
 
-> **Status: pre-alpha, planning and foundations.** There is no usable engine yet. The documentation, architecture decisions and backlog are in place; code arrives iteration by iteration. Follow progress on the **[GitHub Project](https://github.com/users/fyernald/projects)**.
+> **Status: pre-alpha, planning and foundations.** There is no usable engine yet. The documentation, architecture decisions and backlog are in place; code arrives iteration by iteration. Follow progress on the **[GitHub Project](https://github.com/users/fyernald/projects/3)**.
 
 ## Vision
 
@@ -25,7 +25,7 @@ Teserra aims to be an engine you can **read, understand and ship games with**:
 | v2.0 | Vulkan backend, 3D renderer |
 | v3.0+ | Scripting |
 
-The detailed roadmap, iterations and backlog live **only** in the [GitHub Project](https://github.com/users/fyernald/projects) and [issues](https://github.com/fyernald/tessera/issues).
+The detailed roadmap, iterations and backlog live **only** in the [GitHub Project](https://github.com/users/fyernald/projects/3) and [issues](https://github.com/fyernald/tessera/issues).
 
 ## Quickstart
 

@@ -2,6 +2,7 @@ name: Task
 description: A planned unit of engineering work (1-6 hours) that implements part of a feature or epic.
 title: "<area>: <imperative summary>"
 labels: ["type:task", "needs-triage"]
+projects: ["fyernald/3"]
 body:
   - type: markdown
     attributes:
