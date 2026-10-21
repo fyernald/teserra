@@ -82,5 +82,18 @@ Follow [ADR-0016](../adr/0016-error-handling-policy.md):
 
 ## Formatting
 
-- `clang-format` (config in repository root) is the authority: 4-space indentation, 110-column limit, braces on the same line (Attach), pointer/reference bound to the type (`T* p`, `T& r`).
-- Run `cmake --build --preset <preset> --target format` before pushing; CI runs `format-check`.
+- [`.clang-format`](../../.clang-format) in the repository root is the authority: 4-space indentation, 110-column limit, braces on the same line (Attach) and always present, pointer/reference bound to the type (`T* p`, `T& r`), includes grouped as described under [Files and headers](#files-and-headers).
+- The reference version is **clang-format 22.1.3** (pinned in CI; the Visual Studio "C++ Clang tools" component and `pip install clang-format==22.1.3` both provide it). Other major versions may format a few constructs differently.
+- Run `cmake --build --preset <preset> --target format` before pushing; `--target format-check` (also part of `--target check`) reports unformatted files without changing them. Without CMake: `python tools/scripts/check_format.py [--fix]`. CI runs the same script in the `checks` job.
+- Third-party and generated code (`third_party/` directories, build trees) is never formatted.
+
+## Static analysis
+
+- [`.clang-tidy`](../../.clang-tidy) enables `bugprone-*` (except `bugprone-easily-swappable-parameters`), `performance-*`, a selected list of `modernize-*` checks, and `readability-identifier-naming` configured with the rules of [ADR-0021](../adr/0021-naming-conventions.md) (the fixed-width integer aliases are the only exception).
+- Run it locally against a configured build, which exports `compile_commands.json`:
+
+  ```bash
+  clang-tidy -p build/windows-msvc-debug engine/core/src/*.cpp engine/core/tests/*.cpp
+  ```
+
+- Changed files must be clang-tidy clean. A justified suppression uses `// NOLINT(<check>): <reason>` on the line.

@@ -47,3 +47,7 @@ endif()
 if(TESERRA_BUILD_TESTS)
     add_subdirectory(tests)
 endif()
+
+if(PROJECT_IS_TOP_LEVEL)
+    include(TeserraChecks)
+endif()
