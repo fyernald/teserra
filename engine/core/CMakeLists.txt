@@ -14,3 +14,7 @@ target_sources(teserra_core
         BASE_DIRS "${generated_include_dir}"
         FILES "${generated_include_dir}/teserra/core/version.hpp"
 )
+
+if(TESERRA_BUILD_TESTS)
+    add_subdirectory(tests)
+endif()
