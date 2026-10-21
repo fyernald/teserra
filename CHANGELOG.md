@@ -9,3 +9,4 @@ All notable user-visible changes to Teserra are documented here. The format foll
 - Project documentation: architecture, ADRs, coding standards, pattern catalog, build/CI and testing strategy, development and release process.
 - Contributor guide, Code of Conduct, security policy, issue and pull request templates.
 - CMake build skeleton: `teserra_add_module()` with a configure-time layer check, per-compiler warning flags, `teserra_core` with `<teserra/core/config.hpp>`, `<teserra/core/types.hpp>` and a generated `<teserra/core/version.hpp>`, and the `teserra_hello` example.
+- One-command build: `CMakePresets.json` (Windows MSVC/clang-cl, CI, prepared Linux presets) and vcpkg manifest mode with a pinned baseline (`cmake --workflow --preset windows-msvc-debug`).

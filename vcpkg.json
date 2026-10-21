@@ -1,0 +1,21 @@
+{
+  "$schema": "https://raw.githubusercontent.com/microsoft/vcpkg-tool/main/docs/vcpkg.schema.json",
+  "name": "teserra",
+  "version": "0.0.1",
+  "description": "A modern C++20 game engine for indie developers",
+  "homepage": "https://github.com/fyernald/tessera",
+  "license": "MIT",
+  "dependencies": [
+    "glm",
+    "spdlog",
+    "tl-expected"
+  ],
+  "features": {
+    "tests": {
+      "description": "Unit, integration and GPU tests (TESERRA_BUILD_TESTS)",
+      "dependencies": [
+        "catch2"
+      ]
+    }
+  }
+}
