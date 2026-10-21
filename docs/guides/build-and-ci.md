@@ -6,18 +6,21 @@ How Teserra is built locally and in GitHub Actions. Decisions: [ADR-0003](../adr
 
 ## Prerequisites (Windows)
 
-- Visual Studio 2022 17.8+ with "Desktop development with C++" (includes MSVC, CMake, Ninja, and vcpkg), **or** standalone MSVC Build Tools + CMake ≥ 3.28 + Ninja.
-- vcpkg: either the copy bundled with Visual Studio or a standalone clone. Set `VCPKG_ROOT` to its directory.
-- Optional: LLVM 17+ for `clang-cl`, `clang-format`, `clang-tidy`.
+- Visual Studio 2022 17.8+ (or Visual Studio 2026) with "Desktop development with C++" (includes MSVC, CMake, Ninja, and vcpkg), **or** standalone MSVC Build Tools + CMake ≥ 3.28 + Ninja.
+- vcpkg: either the copy bundled with Visual Studio or a standalone clone. Set `VCPKG_ROOT` to its directory. The Visual Studio developer prompts set it to the bundled copy automatically.
+- git on `PATH` (vcpkg fetches the pinned port versions with it).
+- Optional: LLVM 17+ for `clang-cl`, `clang-format`, `clang-tidy` (the Visual Studio component "C++ Clang tools for Windows" provides all three).
 - A GPU and driver supporting OpenGL 4.5 core.
 
 ## One-command build
+
+Run from a **Developer PowerShell for VS** (`-Arch amd64`) or an **x64 Native Tools Command Prompt**, so that MSVC and Ninja are on `PATH`. Visual Studio, VS Code (CMake Tools) and CLion set this environment up themselves when they open the presets.
 
 ```bash
 cmake --workflow --preset windows-msvc-debug
 ```
 
-The workflow preset configures, builds and runs tests. Individual steps:
+The workflow preset configures, builds and runs tests. If `VCPKG_ROOT` is missing, configuration stops with a one-line message saying so. Individual steps:
 
 ```bash
 cmake --preset windows-msvc-debug
@@ -83,18 +86,44 @@ The rule is tested by configuring the fixture project in `tests/cmake/layer_rule
 |---|---|---|
 | `windows-msvc-debug` / `windows-msvc-release` | MSVC + Ninja | Default local development |
 | `windows-clang-debug` | clang-cl + Ninja | Second compiler, clang-tidy |
-| `profile` | MSVC, `RelWithDebInfo`, profiling on | Tracy sessions |
-| `asan` | MSVC or clang-cl, sanitizers on | Memory error hunting |
-| `ci-windows` | MSVC, warnings as errors, JUnit output | GitHub Actions |
+| `profile` | MSVC, `RelWithDebInfo`, profiling on | Tracy sessions (added with profiling) |
+| `asan` | MSVC or clang-cl, sanitizers on | Memory error hunting (added with sanitizers) |
+| `ci-windows` | MSVC Debug, warnings as errors, JUnit output | GitHub Actions |
 | `linux-gcc-debug`, `linux-clang-debug` | GCC 13 / Clang 17 + Ninja | Prepared for the Linux port; used by the non-blocking Linux job |
 
-Personal tweaks go in `CMakeUserPresets.json` (git-ignored).
+Every preset builds into `build/<preset>/` and exists as a configure, build, test and workflow preset with the same name. Windows presets use the `x64-windows` vcpkg triplet, Linux presets `x64-linux`; presets only show up on their host OS.
+
+Personal tweaks go in `CMakeUserPresets.json` next to `CMakePresets.json`. It is git-ignored and can inherit from the shared presets, for example:
+
+```json
+{
+  "version": 6,
+  "configurePresets": [
+    {
+      "name": "my-debug",
+      "inherits": "windows-msvc-debug",
+      "cacheVariables": { "TESERRA_BUILD_EXAMPLES": "OFF" }
+    }
+  ]
+}
+```
 
 ### vcpkg
 
-- `vcpkg.json` lists dependencies; optional ones are features (`tests` → catch2, `profiling` → tracy, `shaders` → glslang + spirv-cross).
-- `vcpkg-configuration.json` pins the `builtin-baseline`. Updating it is a separate PR titled `build: bump vcpkg baseline` with a full CI run.
+- `vcpkg.json` lists dependencies; optional ones are features mapped to CMake options before `project()` (`tests` → catch2 when `TESERRA_BUILD_TESTS` is on; later `profiling` → tracy, `shaders` → glslang + spirv-cross).
+- `vcpkg-configuration.json` pins the baseline: the default registry is the `microsoft/vcpkg` git repository at a fixed commit, so every machine resolves the same port versions whether it uses the Visual Studio copy of vcpkg or a standalone clone of any age. Updating it is a separate PR titled `build: bump vcpkg baseline` with a full CI run.
+- Presets reach vcpkg through `cmake/TeserraToolchain.cmake`, which checks `VCPKG_ROOT` and then includes `$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake`.
 - Never add a dependency without an ADR ([ADR index](../adr/README.md#when-an-adr-is-required)).
+
+Pinned baseline: [`9e593bb`](https://github.com/microsoft/vcpkg/commit/9e593bb18ea69cc5095e012465dcd675a822ed0d) (vcpkg release `2026.07.29`). Resolved versions:
+
+| Port | Version | Used by | Feature |
+|---|---|---|---|
+| `glm` | 1.0.3 | core (math, iteration 2) | - |
+| `spdlog` | 1.17.0#1 | core (logging, iteration 2) | - |
+| `fmt` | 12.2.0#1 | transitively through spdlog | - |
+| `tl-expected` | 1.3.1 | core (`Result`, iteration 2) | - |
+| `catch2` | 3.15.3 | tests | `tests` |
 
 ## Layer and leak checks
 
