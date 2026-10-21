@@ -38,6 +38,8 @@ cmake/TeserraModule.cmake      # teserra_add_module(), teserra_link_third_party(
 cmake/TeserraWarnings.cmake    # teserra_set_warnings(<target>) per compiler
 cmake/TeserraShaders.cmake     # teserra_add_shaders(<target> SOURCES ...)
 cmake/TeserraTesting.cmake     # teserra_add_test(<name> SOURCES ... DEPENDS ...) + catch_discover_tests
+cmake/TeserraChecks.cmake      # format, format-check and check targets (tools/scripts/*.py)
+cmake/TeserraToolchain.cmake   # toolchain used by the presets: checks VCPKG_ROOT, includes vcpkg
 engine/<module>/CMakeLists.txt # one module = one target
 ```
 
@@ -136,7 +138,7 @@ Run locally with `cmake --build --preset <preset> --target check` (and in CI):
 | Backend leak | `tools/scripts/check_gl_leaks.py` | GL identifiers/headers appear outside `engine/rhi/backends/opengl/`; GLFW/Win32 headers outside `engine/platform/src/` |
 | glm leak | same script | `glm::` appears outside `engine/core/` |
 | TODO hygiene | same script | `TODO` without `(#issue)` |
-| Format | `clang-format --dry-run --Werror` | Any file differs from the format |
+| Format | `tools/scripts/check_format.py` (`clang-format --dry-run --Werror` per file) | Any file differs from the format |
 | Static analysis | `clang-tidy` (config in repo) | New warnings in changed files |
 
 ## GitHub Actions
