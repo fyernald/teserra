@@ -2,6 +2,7 @@
 
 **A modern C++20 game engine for indie developers.** 2D first, built on an architecture that is ready for 3D, Vulkan and Linux from day one.
 
+[![CI](https://github.com/fyernald/teserra/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/fyernald/teserra/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 ![Status: pre-alpha](https://img.shields.io/badge/status-pre--alpha-orange.svg)
 
@@ -29,15 +30,16 @@ The detailed roadmap, iterations and backlog live **only** in the [GitHub Projec
 
 ## Quickstart
 
-> Not available yet. The first iteration delivers the one-command build:
->
-> ```bash
-> git clone https://github.com/fyernald/tessera.git
-> cd tessera
-> cmake --workflow --preset windows-msvc-debug
-> ```
->
-> Requirements: Windows 10/11 x64, Visual Studio 2022 17.8+ (or MSVC Build Tools + CMake 3.28 + Ninja), vcpkg (`VCPKG_ROOT` set), a GPU with OpenGL 4.5. See [build and CI](docs/guides/build-and-ci.md).
+Requirements: Windows 10/11 x64, Visual Studio 2022 17.8+ or 2026 with "Desktop development with C++" (or MSVC Build Tools + CMake 3.28 + Ninja + vcpkg), and git. From a **Developer PowerShell for VS**:
+
+```bash
+git clone https://github.com/fyernald/teserra.git
+cd teserra
+cmake --workflow --preset windows-msvc-debug
+build/windows-msvc-debug/examples/hello/teserra_hello
+```
+
+The workflow preset configures, builds and runs the tests; the first run also builds the dependencies through vcpkg, which takes a few minutes. `teserra_hello` prints the engine version. Details, other presets and IDE setup: [build and CI](docs/guides/build-and-ci.md).
 
 ## A taste of the intended API
 

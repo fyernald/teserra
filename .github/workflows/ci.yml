@@ -1,0 +1,113 @@
+# Continuous integration (docs/guides/build-and-ci.md#github-actions).
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# A newer push to the same branch or PR cancels the run in progress.
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  windows-msvc:
+    name: windows-msvc
+    runs-on: windows-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      checks: write # test result annotations
+    env:
+      VCPKG_TRIPLET: x64-windows
+    steps:
+      - uses: actions/checkout@v7
+
+      # Runs vcvars64.bat of the newest Visual Studio on the runner and exports every environment
+      # variable it adds or changes, so later steps see MSVC, the Windows SDK and Ninja.
+      - name: Set up MSVC developer environment
+        shell: pwsh
+        run: |
+          $vswhere = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer\vswhere.exe"
+          $vs = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          $vcvars = Join-Path $vs "VC\Auxiliary\Build\vcvars64.bat"
+          $before = @{}
+          Get-ChildItem env: | ForEach-Object { $before[$_.Name] = $_.Value }
+          cmd /c "`"$vcvars`" >nul && set" | ForEach-Object {
+            if ($_ -match '^([^=]+)=(.*)$' -and $before[$Matches[1]] -ne $Matches[2]) {
+              "$($Matches[1])=$($Matches[2])" >> $env:GITHUB_ENV
+            }
+          }
+          Write-Host "MSVC environment from $vcvars"
+
+      - name: Configure vcpkg
+        shell: pwsh
+        run: |
+          $cache = Join-Path $env:RUNNER_TEMP "vcpkg-binary-cache"
+          New-Item -ItemType Directory -Force -Path $cache | Out-Null
+          "VCPKG_ROOT=$env:VCPKG_INSTALLATION_ROOT" >> $env:GITHUB_ENV
+          "VCPKG_BINARY_CACHE=$cache" >> $env:GITHUB_ENV
+          "VCPKG_BINARY_SOURCES=clear;files,$cache,readwrite" >> $env:GITHUB_ENV
+          "RUNNER_IMAGE=${env:ImageOS}-${env:ImageVersion}" >> $env:GITHUB_ENV
+
+      # Binary cache: compiled vcpkg packages, keyed by runner image (compiler version) and manifest.
+      # Restore keys reuse an older cache, so a manifest change only rebuilds the packages that changed.
+      - name: Restore vcpkg binary cache
+        id: vcpkg-cache
+        uses: actions/cache/restore@v6
+        with:
+          path: ${{ env.VCPKG_BINARY_CACHE }}
+          key: vcpkg-${{ env.VCPKG_TRIPLET }}-${{ env.RUNNER_IMAGE }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
+          restore-keys: |
+            vcpkg-${{ env.VCPKG_TRIPLET }}-
+
+      - name: Configure
+        run: cmake --preset ci-windows
+
+      - name: Save vcpkg binary cache
+        if: always() && steps.vcpkg-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: ${{ env.VCPKG_BINARY_CACHE }}
+          key: ${{ steps.vcpkg-cache.outputs.cache-primary-key }}
+
+      - name: Build
+        run: cmake --build --preset ci-windows
+
+      # The matcher turns Catch2's "file(line): FAILED:" lines into annotations on the source line.
+      - name: Test
+        run: |
+          echo "::add-matcher::.github/problem-matchers/catch2.json"
+          ctest --preset ci-windows
+
+      - name: Annotate test results
+        if: always() && hashFiles('build/ci-windows/junit.xml') != ''
+        uses: mikepenz/action-junit-report@6ef3fdcfcd5f0b5d14df3e659ef19b8c6820f93d # v6.6.1
+        with:
+          report_paths: build/ci-windows/junit.xml
+          check_name: windows-msvc tests
+          annotate_only: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
+          include_passed: false
+          detailed_summary: true
+
+      - name: Upload test results
+        if: always() && hashFiles('build/ci-windows/junit.xml') != ''
+        uses: actions/upload-artifact@v7
+        with:
+          name: windows-msvc-junit
+          path: build/ci-windows/junit.xml
+
+      - name: Upload vcpkg logs
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: windows-msvc-vcpkg-logs
+          path: |
+            build/ci-windows/vcpkg-manifest-install.log
+            ${{ env.VCPKG_INSTALLATION_ROOT }}/buildtrees/**/*.log
+          if-no-files-found: ignore

@@ -1,0 +1,19 @@
+{
+  "problemMatcher": [
+    {
+      "owner": "catch2",
+      "severity": "error",
+      "pattern": [
+        {
+          "regexp": "^(.+?)[:(](\\d+)\\)?: FAILED:$",
+          "file": 1,
+          "line": 2
+        },
+        {
+          "regexp": "^\\s+(.+)$",
+          "message": 1
+        }
+      ]
+    }
+  ]
+}
