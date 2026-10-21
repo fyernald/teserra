@@ -55,6 +55,28 @@ engine/<module>/CMakeLists.txt # one module = one target
 
 When Teserra is consumed as a subproject or installed package, tests/examples default to `OFF`.
 
+Each option is added together with the feature it controls; until then, CMake reports a manually specified option as unused.
+
+### Modules and the layer check
+
+Every engine module is declared in its own `engine/<module>/CMakeLists.txt`:
+
+```cmake
+teserra_add_module(core LAYER 0
+    PUBLIC_HEADERS include/teserra/core/types.hpp
+    SOURCES src/version.cpp
+)
+teserra_link_third_party(core PRIVATE spdlog::spdlog)
+```
+
+`teserra_add_module()` creates the static library `teserra_<name>` and the alias `Teserra::<Name>`, applies `cxx_std_20` (no extensions, no module scanning) and the warning set from `teserra_set_warnings()`, makes `include/` the public include directory (a `HEADERS` file set) and `src/` the private one, and links every `DEPENDS` module `PUBLIC`. Modules are added in layer order from the root `CMakeLists.txt`. Configuration fails when a dependency is unknown or not in a strictly lower layer:
+
+```text
+Layer violation: module 'core' (layer 0) must not depend on module 'platform' (layer 1). ...
+```
+
+The rule is tested by configuring the fixture project in `tests/cmake/layer_rule/` (CTest label `cmake`).
+
 ### Presets
 
 | Preset | Toolchain | Use |
