@@ -6,7 +6,7 @@ Living document: assumptions made while setting up the project, known risks with
 
 | # | Question | Default assumed until answered | Needed by |
 |---|---|---|---|
-| Q1 | **Name and repository.** The project is "Teserra"; the GitHub repository is `fyernald/tessera`. Is "Teserra" intentional (unique spelling) or should it be "Tessera"? Rename the repo to `teserra`? | Name is **Teserra**; repo name unchanged until the name check (iteration 1) concludes. GitHub redirects old URLs after a rename. | Iteration 1 (before namespaces/macros spread) |
+| Q1 | ~~**Name and repository.** Is "Teserra" intentional or should it be "Tessera"? Rename the repo to `teserra`?~~ **Resolved 2026-10-21 ([#2](https://github.com/fyernald/teserra/issues/2)):** the name stays **Teserra**. The name check found no software, game-engine or package-registry use of this spelling; the only TESERRA trademarks cover landscaping. "Tessera" is crowded. The repository is `fyernald/teserra` (old `fyernald/tessera` URLs redirect); namespace `teserra`, macro prefix `TESERRA_`, targets `teserra_*` / `Teserra::*`. | - | - |
 | Q2 | **Legal name in copyright.** LICENSE says "fyernald and the Teserra contributors". Use a legal name? | GitHub handle | Before v0.1 |
 | Q3 | **Contact address** for Code of Conduct reports (must be private, not an issue). | Reports go through GitHub private vulnerability reporting (enabled 2026-10-21) with a "Conduct:" title prefix until a dedicated address is published | Before first external contributors |
 | Q4 | ~~**GitHub Discussions** for Q&A and long-form feedback?~~ **Resolved 2026-10-21:** Discussions enabled for questions and ideas; feedback on builds is still collected in feedback-request issues so it can be triaged. | - | - |
@@ -52,7 +52,7 @@ None of the fixed decisions is considered a serious mistake. The following deser
 | **Estimates too optimistic** (first-time implementation of RHI/ECS) | High | Medium | Split rule (>50% overrun → split), velocity-based planning after 3 iterations, buffer. |
 | **vcpkg baseline breakage / slow first build** | Medium | Low | Pinned baseline, separate bump PRs, binary cache. |
 | **Driver bugs on specific GPUs** | Medium | Medium | Early hardware feedback build (iteration 5), KHR_debug output in logs, testers report GPU/driver. |
-| **Name collision** (existing products named Tessera/Teserra) | Medium | Medium | Name check spike in iteration 1 and final trademark check in release prep. |
+| **Name collision** (existing products named Tessera/Teserra) | Low (checked in [#2](https://github.com/fyernald/teserra/issues/2)) | Medium | Name check done in iteration 1. Final trademark check in release prep ([#123](https://github.com/fyernald/teserra/issues/123)), including the EUIPO and WIPO Global Brand Database searches that #2 could not run (classes 9, 28, 41). |
 | **Bus factor of 1** | High | Medium | Docs-first project: ADRs, architecture docs, contributor guide; CI enforces rules so they don't depend on memory. |
 | **Dependency vulnerabilities** (stb_image with untrusted input) | Low (v1 trusted assets) | Medium | Documented in SECURITY.md; hardened decoders before loading untrusted content. |
 

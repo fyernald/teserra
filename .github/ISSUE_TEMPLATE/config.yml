@@ -1,11 +1,11 @@
 blank_issues_enabled: false
 contact_links:
   - name: Security vulnerability
-    url: https://github.com/fyernald/tessera/security/advisories/new
+    url: https://github.com/fyernald/teserra/security/advisories/new
     about: Report security issues privately. Do not open a public issue.
   - name: Questions and ideas
-    url: https://github.com/fyernald/tessera/discussions
+    url: https://github.com/fyernald/teserra/discussions
     about: Ask questions or discuss ideas before opening an issue.
   - name: Development process and how issues are organized
-    url: https://github.com/fyernald/tessera/blob/main/docs/process/development-process.md
+    url: https://github.com/fyernald/teserra/blob/main/docs/process/development-process.md
     about: Iterations, Definition of Ready/Done, feedback loop.

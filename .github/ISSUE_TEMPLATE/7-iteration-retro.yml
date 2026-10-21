@@ -7,7 +7,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        15-30 minutes, written at the end of the iteration. Format: [review and retrospective](https://github.com/fyernald/tessera/blob/main/docs/process/development-process.md#review-and-retrospective).
+        15-30 minutes, written at the end of the iteration. Format: [review and retrospective](https://github.com/fyernald/teserra/blob/main/docs/process/development-process.md#review-and-retrospective).
   - type: input
     id: epic
     attributes:

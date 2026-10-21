@@ -7,7 +7,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Thanks for reporting! Security issues: please use the [private form](https://github.com/fyernald/tessera/security/advisories/new) instead.
+        Thanks for reporting! Security issues: please use the [private form](https://github.com/fyernald/teserra/security/advisories/new) instead.
   - type: textarea
     id: description
     attributes:

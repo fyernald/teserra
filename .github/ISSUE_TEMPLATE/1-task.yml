@@ -7,7 +7,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Tasks must meet the [Definition of Ready](https://github.com/fyernald/tessera/blob/main/docs/process/development-process.md#definition-of-ready) before they are scheduled. Anything over 6 h should be split.
+        Tasks must meet the [Definition of Ready](https://github.com/fyernald/teserra/blob/main/docs/process/development-process.md#definition-of-ready) before they are scheduled. Anything over 6 h should be split.
   - type: textarea
     id: context
     attributes:

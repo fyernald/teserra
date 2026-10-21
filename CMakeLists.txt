@@ -10,7 +10,7 @@ endif()
 project(Teserra
     VERSION 0.0.1
     DESCRIPTION "A modern C++20 game engine for indie developers"
-    HOMEPAGE_URL "https://github.com/fyernald/tessera"
+    HOMEPAGE_URL "https://github.com/fyernald/teserra"
     LANGUAGES CXX
 )
 

@@ -15,7 +15,7 @@ Teserra is pre-1.0. Only the **latest release** and the current `main` branch re
 **Do not open a public issue for security problems.**
 
 Report privately through GitHub's private vulnerability reporting:
-**[Report a vulnerability](https://github.com/fyernald/tessera/security/advisories/new)**.
+**[Report a vulnerability](https://github.com/fyernald/teserra/security/advisories/new)**.
 
 Please include the affected version or commit, a description of the issue, steps or a file to reproduce, and the impact you expect.
 

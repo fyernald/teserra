@@ -62,7 +62,7 @@ Instances of abusive, harassing, or otherwise unacceptable behavior may be
 reported privately to the community leaders responsible for enforcement.
 Until a dedicated contact address is published here, please use the private
 reporting form at
-<https://github.com/fyernald/tessera/security/advisories/new> and start the
+<https://github.com/fyernald/teserra/security/advisories/new> and start the
 title with "Conduct:". Reports are visible only to the maintainers.
 All complaints will be reviewed and investigated promptly and fairly.
 

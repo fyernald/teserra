@@ -31,8 +31,8 @@ An issue gets `good first issue` only if it:
 Follow [build and CI](docs/guides/build-and-ci.md). Short version (Windows):
 
 ```bash
-git clone https://github.com/fyernald/tessera.git
-cd tessera
+git clone https://github.com/fyernald/teserra.git
+cd teserra
 cmake --workflow --preset windows-msvc-debug
 ```
 
