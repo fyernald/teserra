@@ -141,7 +141,15 @@
     { "name": "windows-msvc-debug", "inherits": "test-base", "configurePreset": "windows-msvc-debug" },
     { "name": "windows-msvc-release", "inherits": "test-base", "configurePreset": "windows-msvc-release" },
     { "name": "windows-clang-debug", "inherits": "test-base", "configurePreset": "windows-clang-debug" },
-    { "name": "ci-windows", "inherits": "test-base", "configurePreset": "ci-windows" },
+    {
+      "name": "ci-windows",
+      "inherits": "test-base",
+      "configurePreset": "ci-windows",
+      "output": {
+        "outputOnFailure": true,
+        "outputJUnitFile": "junit.xml"
+      }
+    },
     { "name": "linux-gcc-debug", "inherits": "test-base", "configurePreset": "linux-gcc-debug" },
     { "name": "linux-clang-debug", "inherits": "test-base", "configurePreset": "linux-clang-debug" }
   ],

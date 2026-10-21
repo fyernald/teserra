@@ -24,6 +24,27 @@ Most tests are at the bottom: fast, deterministic, no GPU, run on every build. T
 - Assertions: engine assertions are routed to the test framework via `setAssertHandler`, so a triggered `TESERRA_ASSERT` fails the test with the message (and "expect assert" tests are possible: `REQUIRE_ASSERTS(expr)` helper).
 - **Randomized model tests** for data structures: the ECS and `HandlePool` are tested by applying random operation sequences to both the real implementation and a naive reference (e.g. `std::map`) and comparing state after every step. Seeds are printed on failure.
 
+### Adding a test executable
+
+`cmake/TeserraTesting.cmake` provides one helper, used from `engine/<module>/tests/CMakeLists.txt`:
+
+```cmake
+teserra_add_test(core
+    SOURCES config_test.cpp version_test.cpp
+    DEPENDS core
+)
+```
+
+It creates `teserra_core_tests` linked to `Catch2::Catch2WithMain`, applies the warning set, and registers every `TEST_CASE` as its own CTest test labeled with the module name (discovery runs when CTest starts, not at build time). Useful commands:
+
+```bash
+ctest --preset windows-msvc-debug -N          # list test cases
+ctest --preset windows-msvc-debug -L core     # one module
+ctest --preset windows-msvc-debug -R "version:"  # by name
+```
+
+The `ci-windows` test preset also writes a JUnit report to `build/ci-windows/junit.xml`, which CI turns into annotations. Build-system tests (CTest label `cmake`) live in `tests/cmake/` and configure small fixture projects, for example to check the layer rule.
+
 ## RHI and renderer tests
 
 - **Null backend** (`teserra_rhi_null`): renderer tests build a `FramePacket` by hand, render one frame, and assert on the recorded stream ("2 batches, 1 pipeline switch, bind group 2 changes once"). RHI validation tests assert that invalid usage is detected (draw outside a render pass, mismatched pipeline/target formats, stale handles).

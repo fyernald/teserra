@@ -10,3 +10,4 @@ All notable user-visible changes to Teserra are documented here. The format foll
 - Contributor guide, Code of Conduct, security policy, issue and pull request templates.
 - CMake build skeleton: `teserra_add_module()` with a configure-time layer check, per-compiler warning flags, `teserra_core` with `<teserra/core/config.hpp>`, `<teserra/core/types.hpp>` and a generated `<teserra/core/version.hpp>`, and the `teserra_hello` example.
 - One-command build: `CMakePresets.json` (Windows MSVC/clang-cl, CI, prepared Linux presets) and vcpkg manifest mode with a pinned baseline (`cmake --workflow --preset windows-msvc-debug`).
+- Catch2 v3 test integration: `teserra_add_test()` registers each test case with CTest; `teserra_core_tests`; JUnit report from the `ci-windows` test preset.
