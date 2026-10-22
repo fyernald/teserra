@@ -1,5 +1,7 @@
 set(platform_test_sources
     event_queue_test.cpp
+    input_test.cpp
+    key_test.cpp
     window_test.cpp
 )
 # OS-specific tests are selected here, like OS-specific sources (no #ifdef in shared code).

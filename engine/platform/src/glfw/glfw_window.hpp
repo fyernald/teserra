@@ -43,6 +43,11 @@ private:
     static void onFramebufferSize(GLFWwindow* window, int width, int height);
     static void onClose(GLFWwindow* window);
     static void onFocus(GLFWwindow* window, int focused);
+    static void onKey(GLFWwindow* window, int key, int scancode, int action, int mods);
+    static void onChar(GLFWwindow* window, unsigned int codepoint);
+    static void onMouseButton(GLFWwindow* window, int button, int action, int mods);
+    static void onCursorPos(GLFWwindow* window, double x, double y);
+    static void onScroll(GLFWwindow* window, double x, double y);
 
     void assertMainThread() const;
 

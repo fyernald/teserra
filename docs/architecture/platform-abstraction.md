@@ -45,12 +45,16 @@ classDiagram
         +getProcAddress(const char*) GlProc
     }
     class Input {
-        +processEvent(const Event&)
         +beginFrame()
-        +isDown(Key) bool
-        +wasPressed(Key) bool
-        +wasReleased(Key) bool
+        +processEvent(const Event&)
+        +isDown(Key / MouseButton) bool
+        +wasPressed(Key / MouseButton) bool
+        +wasReleased(Key / MouseButton) bool
         +mousePosition() Vec2
+        +mouseDelta() Vec2
+        +scrollDelta() Vec2
+        +text() string_view
+        +axis2D(Key, Key, Key, Key) Vec2
     }
     class FileSystem {
         <<interface>>
@@ -69,8 +73,8 @@ classDiagram
 - **`Window`** exposes sizes in two units: window size (screen coordinates) and framebuffer size (pixels). The renderer only uses framebuffer size. `nativeHandle()` returns a tagged `NativeWindowHandle` (`{ kind; void* window; void* display; }`) so future backends (Vulkan surface creation) do not need GLFW.
 - **`OpenGlContext`** is the only GL-aware interface outside the RHI backend. It contains no GL types (function pointers only) and is `nullptr` when the window was created without an OpenGL context (`WindowDesc::graphicsApi = GraphicsApi::None` for Vulkan/headless later).
 - **Events.** `pollEvents()` translates OS/GLFW callbacks into engine `Event`s (`WindowResized`, `WindowCloseRequested`, `FocusChanged`, `KeyChanged`, `TextEntered`, `MouseButtonChanged`, `MouseMoved`, `MouseScrolled`) and appends them to an `EventQueue` (a reused vector of `std::variant`s). Nothing is delivered through user callbacks from inside GLFW.
-- **`Input`** is backend-independent: it consumes `Event`s and keeps current/previous key and button state, so `wasPressed()` means "went down since last `beginFrame()`". Tests drive it with synthetic events.
-- **Keys** are an engine enum `teserra::Key` based on *physical* key positions (US layout names, like `Key::W`), plus `TextEntered` events for text. The GLFW backend translates codes in one table.
+- **`Input`** is backend-independent: it consumes `Event`s and records key and button edges per event, so `wasPressed()` means "went down since the last `beginFrame()`", and a tap shorter than a frame still reports both `wasPressed()` and `wasReleased()`. Key repeat creates no edges; `FocusChanged{false}` releases everything held. It also tracks the mouse position and per-frame movement, scrolling and typed text (UTF-8), and offers `axis2D()` for WASD-style movement. It is a copyable value, and tests drive it with synthetic events.
+- **Keys** are an engine enum `platform::Key` based on *physical* key positions (US layout names, like `Key::W`), plus `TextEntered` events for text; mouse buttons are `platform::MouseButton`. The GLFW backend translates codes in one table, `src/glfw/glfw_key_table.cpp`, whose `static_assert` fails the build if a `Key` has no mapping.
 - **`Clock`** wraps `std::chrono::steady_clock` (high resolution and monotonic on all supported platforms). It is an interface for testability (a `ManualClock` drives fixed-step tests), not for portability.
 - **`FileSystem`** uses UTF-8 paths at the API (`std::filesystem::path` constructed from `std::u8string_view` where needed). Platform-specific parts are only `executableDirectory()` and `userDataDirectory()`.
 - **Threading:** use `std::thread`/`std::jthread`, `std::mutex`, `std::atomic`, `std::condition_variable` directly. The platform layer adds only `setCurrentThreadName()`. All window and event functions must be called on the main thread (asserted in debug builds).
