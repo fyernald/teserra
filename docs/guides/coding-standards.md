@@ -10,7 +10,7 @@ These rules apply to all engine, tool, example and test code. Formatting and man
 
 ## Files and headers
 
-- `#pragma once` in every header. Headers are self-contained (compile on their own; checked by a header-compile test target).
+- `#pragma once` in every header. Headers are self-contained (compile on their own; checked by the `teserra_<module>_header_check` target from `teserra_add_header_check()`).
 - Include order: the file's own header, then `<teserra/...>` headers, then third-party, then standard library. clang-format groups them.
 - Full-path includes only: `#include <teserra/core/handle.hpp>`.
 - Forward-declare instead of including where a pointer/reference suffices. Public headers include the minimum.
@@ -47,7 +47,9 @@ Follow [ADR-0016](../adr/0016-error-handling-policy.md):
 
 ## Logging
 
-- Use `TESERRA_LOG_<LEVEL>(category, fmt, args...)` ([ADR-0011](../adr/0011-logging-spdlog-facade.md)); never `printf`, `std::cout` or spdlog directly.
+- Use `TESERRA_LOG_<LEVEL>(category, fmt, args...)` from `<teserra/core/log.hpp>` ([ADR-0011](../adr/0011-logging-spdlog-facade.md)); never `printf`, `std::cout` or spdlog directly. Format strings are `std::format` strings, checked at compile time; types with a `std::formatter` can be logged.
+- Engine code uses the `LogCategory` of its module. Games add categories with `teserra::log::registerCategory("AI")` once (keep the returned `LogCategory`, e.g. in a `const` global) instead of logging everything as `Game`.
+- `TESERRA_LOG_LEVEL_MIN` (default: Trace in Debug, Info otherwise) removes lower calls at compile time, arguments included; `teserra::log::setLevel(category, level)` filters the rest at runtime before formatting. Arguments of a filtered call are not evaluated, so they must not have side effects the program relies on.
 - `Info` for lifecycle events (device created, scene loaded), `Debug` for diagnostics useful during development, `Trace` for per-frame detail (compiled out in Release), `Warn` for recoverable surprises, `Error` for handled failures, `Critical` just before `TESERRA_FATAL`.
 - No logging inside per-entity/per-sprite loops above `Trace`.
 

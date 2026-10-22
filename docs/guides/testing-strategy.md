@@ -43,6 +43,25 @@ ctest --preset windows-msvc-debug -L core     # one module
 ctest --preset windows-msvc-debug -R "version:"  # by name
 ```
 
+Two more helpers cover guarantees that are about compilation rather than behavior:
+
+```cmake
+# Builds every public header of the module in a translation unit of its own (target
+# teserra_core_header_check, part of the normal build). Fails if a header is not self-contained or
+# exposes spdlog or fmt (ADR-0011).
+teserra_add_header_check(core)
+
+# CTest test that builds the file (excluded from the normal build) and passes only if the compiler
+# output matches the regex, e.g. a mismatched log format string. Labeled compile_fail and <module>.
+teserra_add_compile_fail_test(core.log.format_string_is_checked
+    SOURCE compile_fail/log_format_mismatch.cpp
+    EXPECT "basic_format_string"
+    DEPENDS core
+)
+```
+
+Logging is observed through `teserra::log::CallbackSink` (see `engine/core/tests/log_capture.hpp`), never by parsing console output.
+
 The `ci-windows` test preset also writes a JUnit report to `build/ci-windows/junit.xml`, which CI turns into annotations. Build-system tests (CTest label `cmake`) live in `tests/cmake/` and configure small fixture projects, for example to check the layer rule.
 
 ## RHI and renderer tests
