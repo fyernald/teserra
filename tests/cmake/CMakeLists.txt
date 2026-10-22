@@ -1,10 +1,13 @@
 # Tests of the build system itself. Each case configures a fixture project in its own build directory
-# with the same generator and compiler as this build and checks the outcome.
-
+# with the same generator and compiler as this build and checks the outcome. The fixtures find
+# dependencies where this build found them (the vcpkg installed tree); the list separators are escaped
+# so the path list stays one argument.
+string(REPLACE ";" "$<SEMICOLON>" _teserra_fixture_prefix_path "${CMAKE_PREFIX_PATH}")
 set(_teserra_fixture_args
     -G "${CMAKE_GENERATOR}"
     "-DCMAKE_MAKE_PROGRAM=${CMAKE_MAKE_PROGRAM}"
     "-DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}"
+    "-DCMAKE_PREFIX_PATH=${_teserra_fixture_prefix_path}"
 )
 
 function(_teserra_add_layer_rule_test case)

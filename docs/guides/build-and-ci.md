@@ -37,7 +37,7 @@ CMakeLists.txt                 # project(), options, add_subdirectory(engine/...
 cmake/TeserraModule.cmake      # teserra_add_module(), teserra_link_third_party(), layer check
 cmake/TeserraWarnings.cmake    # teserra_set_warnings(<target>) per compiler
 cmake/TeserraShaders.cmake     # teserra_add_shaders(<target> SOURCES ...)
-cmake/TeserraTesting.cmake     # teserra_add_test(<name> SOURCES ... DEPENDS ...) + catch_discover_tests
+cmake/TeserraTesting.cmake     # teserra_add_test(), teserra_add_header_check(), teserra_add_compile_fail_test()
 cmake/TeserraChecks.cmake      # format, format-check and check targets (tools/scripts/*.py)
 cmake/TeserraToolchain.cmake   # toolchain used by the presets: checks VCPKG_ROOT, includes vcpkg
 engine/<module>/CMakeLists.txt # one module = one target
