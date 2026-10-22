@@ -59,7 +59,8 @@ void GlSwapchain::createImage() {
     if (m_size.x == 0 || m_size.y == 0) {
         return; // minimized: no image until the next resize
     }
-    m_image = m_device.createTexture2D(m_format, m_size, "Swapchain image");
+    m_image = m_device.createTexture2D(m_format, m_size, TextureUsage::RenderTarget | TextureUsage::CopySrc,
+                                       "Swapchain image");
 }
 
 void GlSwapchain::releaseImage() {

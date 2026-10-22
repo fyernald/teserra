@@ -190,12 +190,64 @@ TEST_CASE("OpenGL backend: buffer misuse asserts", "[rhi_opengl][validation]") {
           std::format("map() of buffer {}, which is not alive", stale));
     CHECK(failureOf([&] { device->destroy(stale); }) ==
           std::format("Destroying buffer {}, which is not alive", stale));
+}
 
-    device->beginFrame();
-    CommandList& cmd = device->acquireCommandList();
-    cmd.copyBuffer({.source = stale, .destination = vertices, .size = 4});
-    CHECK(failureOf([&] { device->submit(cmd); }) ==
+TEST_CASE("OpenGL backend: submitted streams are validated before any GL call", "[rhi_opengl][validation]") {
+    test::FakeGlWindow window;
+    const auto device = requireOpenGl(window);
+    test::FakeGlState& gl = window.context.state;
+    const BufferHandle indices =
+        *device->createBuffer({.sizeInBytes = 64, .usage = BufferUsage::Index, .debugName = "Indices"});
+    const BufferHandle source =
+        *device->createBuffer({.sizeInBytes = 16, .usage = BufferUsage::CopySrc, .debugName = "Source"});
+    const BufferHandle destination =
+        *device->createBuffer({.sizeInBytes = 64, .usage = BufferUsage::CopyDst, .debugName = "Destination"});
+    // Through the shared validateCommands(): the null backend's tests cover every rule.
+    const auto failureOf = [&](auto&& record) {
+        device->beginFrame();
+        CommandList& cmd = device->acquireCommandList();
+        record(cmd);
+        gl.calls.clear();
+        std::string message = test::requireAssert([&] { device->submit(cmd); }).message();
+        CHECK(gl.calls.empty());
+        device->endFrame();
+        return message;
+    };
+
+    CHECK(failureOf([&](CommandList& cmd) {
+              cmd.beginRenderPass(
+                  {.colorAttachments = {{.texture = device->swapchain()->acquireNextImage()}}});
+              cmd.bindVertexBuffer(0, indices);
+              cmd.endRenderPass();
+          }) == "bindVertexBuffers uses buffer 'Indices', created without BufferUsage::Vertex");
+    CHECK(failureOf([&](CommandList& cmd) {
+              cmd.copyBuffer({.source = source, .sourceOffset = 8, .destination = destination, .size = 16});
+          }) == "copyBuffer reads 16 bytes from offset 8 of buffer 'Source', which has 16");
+
+    const TextureHandle stale = device->swapchain()->acquireNextImage();
+    device->swapchain()->resize({64, 64});
+    CHECK(failureOf([&](CommandList& cmd) {
+              cmd.beginRenderPass({.colorAttachments = {{.texture = stale}}});
+              cmd.endRenderPass();
+          }) == std::format("A color attachment uses texture {}, which is not alive", stale));
+}
+
+TEST_CASE("OpenGL backend: without validation, replay still catches stale buffers", "[rhi_opengl]") {
+    test::FakeGlWindow window;
+    Result<std::unique_ptr<Device>> created =
+        createDevice({.backend = Backend::OpenGL, .enableValidation = false, .enableBackendDebug = false},
+                     &window, std::array{opengl::backendFactory()});
+    REQUIRE(created.has_value());
+    Device& device = **created;
+    const BufferHandle destination = *device.createBuffer({.sizeInBytes = 8, .usage = BufferUsage::CopyDst});
+    const BufferHandle stale = *device.createBuffer({.sizeInBytes = 8, .usage = BufferUsage::CopySrc});
+    device.destroy(stale);
+
+    device.beginFrame();
+    CommandList& cmd = device.acquireCommandList();
+    cmd.copyBuffer({.source = stale, .destination = destination, .size = 4});
+    CHECK(test::requireAssert([&] { device.submit(cmd); }).message() ==
           std::format("copyBuffer reads buffer {}, which is not alive", stale));
-    device->endFrame();
+    device.endFrame();
 }
 #endif

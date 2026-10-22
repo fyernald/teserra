@@ -11,6 +11,8 @@
 #include "gl_swapchain.hpp"
 
 #include <algorithm>
+#include <optional>
+#include <string>
 #include <string_view>
 
 namespace teserra::rhi::opengl {
@@ -20,6 +22,30 @@ namespace {
 GLADapiproc loadFunction(void* context, const char* name) {
     return static_cast<platform::OpenGlContext*>(context)->getProcAddress(name);
 }
+
+// The device's objects for validateCommands().
+class GlLookup final : public ResourceLookup {
+public:
+    explicit GlLookup(const GlDevice& device)
+        : m_device(device) {}
+
+    [[nodiscard]] std::optional<BufferDesc> buffer(BufferHandle handle) const override {
+        const GlBuffer* buffer = m_device.buffer(handle);
+        return buffer != nullptr ? std::optional(buffer->desc()) : std::nullopt;
+    }
+    [[nodiscard]] std::optional<TextureDesc> texture(TextureHandle handle) const override {
+        const GlTexture* texture = m_device.texture(handle);
+        return texture != nullptr ? std::optional(texture->desc()) : std::nullopt;
+    }
+    // TODO(#34): pipelines
+    [[nodiscard]] std::optional<GraphicsPipelineDesc>
+    graphicsPipeline(GraphicsPipelineHandle /*handle*/) const override {
+        return std::nullopt;
+    }
+
+private:
+    const GlDevice& m_device;
+};
 
 std::string_view glString(const GladGLContext& gl, GLenum name) {
     const GLubyte* value = gl.GetString(name);
@@ -336,6 +362,9 @@ CommandList& GlDevice::acquireCommandList() {
 void GlDevice::submit(CommandList& commands) {
     requireContextThread();
     commands.finish();
+    if (m_validate) {
+        validateCommands(commands, GlLookup(*this));
+    }
     replay(commands);
 }
 
@@ -475,13 +504,20 @@ void GlDevice::endRenderPass() {
 // ---------------------------------------------------------------------------------------------------------
 // Textures and framebuffers
 
-TextureHandle GlDevice::createTexture2D(Format format, UVec2 size, std::string_view label) {
+TextureHandle GlDevice::createTexture2D(Format format, UVec2 size, TextureUsage usage,
+                                        std::string_view debugName) {
     GLuint name = 0;
     m_gl.CreateTextures(GL_TEXTURE_2D, 1, &name);
     m_gl.TextureStorage2D(name, 1, glInternalFormat(format), static_cast<GLsizei>(size.x),
                           static_cast<GLsizei>(size.y));
-    m_gl.ObjectLabel(GL_TEXTURE, name, static_cast<GLsizei>(label.size()), label.data());
-    return m_textures.create(GlTexture{.name = name, .format = format, .size = size});
+    m_gl.ObjectLabel(GL_TEXTURE, name, static_cast<GLsizei>(debugName.size()), debugName.data());
+    return m_textures.create(GlTexture{
+        .name = name,
+        .format = format,
+        .size = size,
+        .usage = usage,
+        .debugName = std::string(debugName),
+    });
 }
 
 void GlDevice::releaseTexture(TextureHandle handle) {

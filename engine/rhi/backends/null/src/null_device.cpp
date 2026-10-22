@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <optional>
 #include <string_view>
 #include <type_traits>
 
@@ -25,44 +26,31 @@ auto* find(const Pool& pool, Handle handle) noexcept {
     return object != nullptr ? &(*object)->desc : nullptr;
 }
 
-// Names of the usages the validation requires, one flag at a time, for its messages.
-[[maybe_unused]] std::string_view usageName(BufferUsage usage) noexcept {
-    switch (usage) {
-        case BufferUsage::Vertex:
-            return "BufferUsage::Vertex";
-        case BufferUsage::Index:
-            return "BufferUsage::Index";
-        case BufferUsage::CopySrc:
-            return "BufferUsage::CopySrc";
-        case BufferUsage::CopyDst:
-            return "BufferUsage::CopyDst";
-        default:
-            return "the required usage";
-    }
-}
+// The device's objects for validateCommands().
+class NullLookup final : public ResourceLookup {
+public:
+    explicit NullLookup(const NullDevice& device)
+        : m_device(device) {}
 
-[[maybe_unused]] std::string_view usageName(TextureUsage usage) noexcept {
-    switch (usage) {
-        case TextureUsage::RenderTarget:
-            return "TextureUsage::RenderTarget";
-        case TextureUsage::DepthStencil:
-            return "TextureUsage::DepthStencil";
-        case TextureUsage::CopySrc:
-            return "TextureUsage::CopySrc";
-        case TextureUsage::CopyDst:
-            return "TextureUsage::CopyDst";
-        default:
-            return "the required usage";
+    [[nodiscard]] std::optional<BufferDesc> buffer(BufferHandle handle) const override {
+        return copy(m_device.buffer(handle));
     }
-}
+    [[nodiscard]] std::optional<TextureDesc> texture(TextureHandle handle) const override {
+        return copy(m_device.texture(handle));
+    }
+    [[nodiscard]] std::optional<GraphicsPipelineDesc>
+    graphicsPipeline(GraphicsPipelineHandle handle) const override {
+        return copy(m_device.graphicsPipeline(handle));
+    }
 
-// Bytes a copy between `copy`'s buffer and a texture of `format` reads or writes in the buffer. Only the
-// checks use it, which builds without assertions compile out.
-[[maybe_unused]] u64 bufferBytes(const BufferTextureCopy& copy, Format format) {
-    const u64 rowBytes = u64{copy.width} * formatInfo(format).bytesPerTexel;
-    const u64 pitch = copy.bytesPerRow != 0 ? copy.bytesPerRow : rowBytes;
-    return (pitch * ((u64{copy.height} * copy.layerCount) - 1)) + rowBytes;
-}
+private:
+    template <typename Desc>
+    static std::optional<Desc> copy(const Desc* desc) {
+        return desc != nullptr ? std::optional<Desc>(*desc) : std::nullopt;
+    }
+
+    const NullDevice& m_device;
+};
 
 } // namespace
 
@@ -287,7 +275,7 @@ CommandList& NullDevice::acquireCommandList() {
 void NullDevice::submit(CommandList& commands) {
     commands.finish();
     if (m_validate) {
-        validate(commands);
+        validateCommands(commands, NullLookup(*this));
     }
     m_submitted.push_back(&commands);
 }
@@ -326,143 +314,6 @@ const GraphicsPipelineDesc* NullDevice::graphicsPipeline(GraphicsPipelineHandle 
 std::span<const std::byte> NullDevice::bufferData(BufferHandle handle) const noexcept {
     const Object<BufferDesc>* object = m_buffers.tryGet(handle);
     return object != nullptr ? std::span<const std::byte>((*object)->data) : std::span<const std::byte>();
-}
-
-// ---------------------------------------------------------------------------------------------------------
-// Submit-time validation (docs/architecture/rhi.md#validation-layer)
-
-void NullDevice::validate(const CommandList& commands) const {
-    // Formats of the open render pass's attachments, which a bound pipeline must declare.
-    std::array<Format, kMaxColorAttachments> passColorFormats{};
-    Format passDepthFormat = Format::Undefined;
-
-    const auto liveBuffer = [&](BufferHandle handle, [[maybe_unused]] std::string_view use,
-                                BufferUsage usage) {
-        const BufferDesc* desc = buffer(handle);
-        TESERRA_ASSERT(desc != nullptr, "{} uses buffer {}, which is not alive", use, handle);
-        TESERRA_ASSERT(desc == nullptr || hasAll(desc->usage, usage),
-                       "{} uses buffer '{}', created without {}", use, desc->debugName, usageName(usage));
-        return desc;
-    };
-    const auto liveTexture = [&](TextureHandle handle, [[maybe_unused]] std::string_view use,
-                                 TextureUsage usage) {
-        const TextureDesc* desc = texture(handle);
-        TESERRA_ASSERT(desc != nullptr, "{} uses texture {}, which is not alive", use, handle);
-        TESERRA_ASSERT(desc == nullptr || hasAll(desc->usage, usage),
-                       "{} uses texture '{}', created without {}", use, desc->debugName, usageName(usage));
-        return desc;
-    };
-    const auto checkTextureCopy = [&](const BufferTextureCopy& copy, [[maybe_unused]] std::string_view use,
-                                      bool toTexture) {
-        const BufferDesc* bufferDesc =
-            liveBuffer(copy.buffer, use, toTexture ? BufferUsage::CopySrc : BufferUsage::CopyDst);
-        const TextureDesc* textureDesc =
-            liveTexture(copy.texture, use, toTexture ? TextureUsage::CopyDst : TextureUsage::CopySrc);
-        if (bufferDesc == nullptr || textureDesc == nullptr) {
-            return;
-        }
-        const u32 width = std::max(textureDesc->width >> copy.mipLevel, 1U);
-        const u32 height = std::max(textureDesc->height >> copy.mipLevel, 1U);
-        TESERRA_ASSERT(
-            copy.x + copy.width <= width && copy.y + copy.height <= height &&
-                copy.arrayLayer + copy.layerCount <= textureDesc->depthOrLayers,
-            "{} region ({}, {}) {}x{}, layers {}+{} is outside texture '{}' ({}x{} at mip {}, {} layers)",
-            use, copy.x, copy.y, copy.width, copy.height, copy.arrayLayer, copy.layerCount,
-            textureDesc->debugName, width, height, copy.mipLevel, textureDesc->depthOrLayers);
-        TESERRA_ASSERT(copy.bufferOffset + bufferBytes(copy, textureDesc->format) <= bufferDesc->sizeInBytes,
-                       "{} needs {} bytes from offset {} of buffer '{}', which has {}", use,
-                       bufferBytes(copy, textureDesc->format), copy.bufferOffset, bufferDesc->debugName,
-                       bufferDesc->sizeInBytes);
-    };
-
-    for (const Command command : commands.commands()) {
-        switch (command.type()) {
-            case CommandType::BeginRenderPass: {
-                const RenderPassDesc& pass = command.as<BeginRenderPassCommand>().pass;
-                passColorFormats.fill(Format::Undefined);
-                passDepthFormat = Format::Undefined;
-                for (u32 i = 0; i < kMaxColorAttachments && !pass.colorAttachments[i].texture.isNull(); ++i) {
-                    if (const TextureDesc* desc =
-                            liveTexture(pass.colorAttachments[i].texture, "A color attachment",
-                                        TextureUsage::RenderTarget)) {
-                        passColorFormats[i] = desc->format;
-                    }
-                }
-                if (!pass.depthStencil.texture.isNull()) {
-                    if (const TextureDesc* desc =
-                            liveTexture(pass.depthStencil.texture, "The depth-stencil attachment",
-                                        TextureUsage::DepthStencil)) {
-                        passDepthFormat = desc->format;
-                    }
-                }
-                break;
-            }
-            case CommandType::BindPipeline: {
-                const GraphicsPipelineHandle handle = command.as<BindPipelineCommand>().pipeline;
-                const GraphicsPipelineDesc* desc = graphicsPipeline(handle);
-                TESERRA_ASSERT(desc != nullptr, "bindPipeline uses pipeline {}, which is not alive", handle);
-                if (desc == nullptr) {
-                    break;
-                }
-                for (u32 i = 0; i < kMaxColorAttachments; ++i) {
-                    TESERRA_ASSERT(
-                        desc->targets.colorFormats[i] == passColorFormats[i],
-                        "Pipeline '{}' declares {} for color target {}, but the render pass has {}",
-                        desc->debugName, formatInfo(desc->targets.colorFormats[i]).name, i,
-                        formatInfo(passColorFormats[i]).name);
-                }
-                TESERRA_ASSERT(
-                    desc->targets.depthStencilFormat == passDepthFormat,
-                    "Pipeline '{}' declares the depth-stencil format {}, but the render pass has {}",
-                    desc->debugName, formatInfo(desc->targets.depthStencilFormat).name,
-                    formatInfo(passDepthFormat).name);
-                break;
-            }
-            case CommandType::BindVertexBuffers:
-                for (const VertexBufferBinding& binding : command.vertexBuffers()) {
-                    if (const BufferDesc* desc =
-                            liveBuffer(binding.buffer, "bindVertexBuffers", BufferUsage::Vertex)) {
-                        TESERRA_ASSERT(
-                            binding.offset < desc->sizeInBytes,
-                            "bindVertexBuffers offset {} is past the end of buffer '{}' ({} bytes)",
-                            binding.offset, desc->debugName, desc->sizeInBytes);
-                    }
-                }
-                break;
-            case CommandType::BindIndexBuffer: {
-                const auto& bind = command.as<BindIndexBufferCommand>();
-                if (const BufferDesc* desc = liveBuffer(bind.buffer, "bindIndexBuffer", BufferUsage::Index)) {
-                    TESERRA_ASSERT(bind.offset < desc->sizeInBytes,
-                                   "bindIndexBuffer offset {} is past the end of buffer '{}' ({} bytes)",
-                                   bind.offset, desc->debugName, desc->sizeInBytes);
-                }
-                break;
-            }
-            case CommandType::CopyBuffer: {
-                const BufferCopy& copy = command.as<CopyBufferCommand>().copy;
-                const BufferDesc* source = liveBuffer(copy.source, "copyBuffer", BufferUsage::CopySrc);
-                const BufferDesc* destination =
-                    liveBuffer(copy.destination, "copyBuffer", BufferUsage::CopyDst);
-                TESERRA_ASSERT(source == nullptr || copy.sourceOffset + copy.size <= source->sizeInBytes,
-                               "copyBuffer reads {} bytes from offset {} of buffer '{}', which has {}",
-                               copy.size, copy.sourceOffset, source->debugName, source->sizeInBytes);
-                TESERRA_ASSERT(
-                    destination == nullptr || copy.destinationOffset + copy.size <= destination->sizeInBytes,
-                    "copyBuffer writes {} bytes at offset {} of buffer '{}', which has {}", copy.size,
-                    copy.destinationOffset, destination->debugName, destination->sizeInBytes);
-                break;
-            }
-            case CommandType::CopyBufferToTexture:
-                checkTextureCopy(command.as<CopyBufferToTextureCommand>().copy, "copyBufferToTexture", true);
-                break;
-            case CommandType::CopyTextureToBuffer:
-                checkTextureCopy(command.as<CopyTextureToBufferCommand>().copy, "copyTextureToBuffer", false);
-                break;
-            default:
-                // TODO(#42): bind group liveness and compatibility with the pipeline layout
-                break;
-        }
-    }
 }
 
 } // namespace teserra::rhi::null

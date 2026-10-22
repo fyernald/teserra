@@ -54,6 +54,14 @@ struct GlTexture {
     GLuint name = 0;
     Format format = Format::Undefined;
     UVec2 size{};
+    TextureUsage usage = TextureUsage::None;
+    std::string debugName;
+
+    /// The descriptor the texture was created with, for validation; its name is valid while the texture
+    /// lives.
+    [[nodiscard]] TextureDesc desc() const noexcept {
+        return {.format = format, .width = size.x, .height = size.y, .usage = usage, .debugName = debugName};
+    }
 };
 
 /// The attachments a framebuffer object is made of; framebuffers are cached by it.
@@ -118,13 +126,18 @@ public:
     // For the swapchain and tests within the backend.
 
     [[nodiscard]] const GladGLContext& gl() const noexcept { return m_gl; }
-    /// Creates a 2D texture with one mip level, labeled `label` for graphics debuggers.
-    [[nodiscard]] TextureHandle createTexture2D(Format format, UVec2 size, std::string_view label);
+    /// Creates a 2D texture with one mip level, named `debugName` for graphics debuggers and validation.
+    [[nodiscard]] TextureHandle createTexture2D(Format format, UVec2 size, TextureUsage usage,
+                                                std::string_view debugName);
     /// Deletes a texture and the framebuffers that use it.
     void releaseTexture(TextureHandle handle);
     /// The texture behind `handle`, or nullptr if the handle is not live.
     [[nodiscard]] const GlTexture* texture(TextureHandle handle) const noexcept {
         return m_textures.tryGet(handle);
+    }
+    /// The buffer behind `handle`, or nullptr if the handle is not live.
+    [[nodiscard]] const GlBuffer* buffer(BufferHandle handle) const noexcept {
+        return m_buffers.tryGet(handle);
     }
     /// The framebuffer object with `texture` as its only color attachment.
     [[nodiscard]] GLuint colorFramebuffer(TextureHandle texture);

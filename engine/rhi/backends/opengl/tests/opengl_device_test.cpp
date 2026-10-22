@@ -21,8 +21,12 @@ namespace {
 
 const std::array kBackends{opengl::backendFactory()};
 
+// Without RHI validation, so that the tests see the backend's own checks in every build type
+// (opengl_buffer_test.cpp tests the backend with validation).
 Result<std::unique_ptr<Device>> createOpenGl(test::FakeGlWindow& window, bool backendDebug = true) {
-    return createDevice({.backend = Backend::OpenGL, .enableBackendDebug = backendDebug}, &window, kBackends);
+    return createDevice(
+        {.backend = Backend::OpenGL, .enableValidation = false, .enableBackendDebug = backendDebug}, &window,
+        kBackends);
 }
 
 std::unique_ptr<Device> requireOpenGl(test::FakeGlWindow& window, bool backendDebug = true) {

@@ -109,8 +109,8 @@ public:
     void endFrame() override;
 
     [[nodiscard]] CommandList& acquireCommandList() override;
-    /// Finishes the list, validates it against the device's objects when DeviceDesc::enableValidation is
-    /// set (handle liveness, usages, pipeline and render pass formats, copy ranges) and keeps it.
+    /// Finishes the list, validates it against the device's objects with validateCommands() when
+    /// DeviceDesc::enableValidation is set, and keeps it.
     void submit(CommandList& commands) override;
 
     [[nodiscard]] Swapchain* swapchain() noexcept override { return m_swapchain.get(); }
@@ -160,7 +160,6 @@ private:
     [[nodiscard]] static Object<Desc> store(const Desc& desc);
 
     [[nodiscard]] TextureHandle createSwapchainImage(Format format, UVec2 size);
-    void validate(const CommandList& commands) const;
 
     DeviceLimits m_limits{};
     bool m_validate;
