@@ -48,7 +48,7 @@ More helpers cover guarantees that are about compilation or about ending the pro
 ```cmake
 # Builds every public header of the module in a translation unit of its own (target
 # teserra_core_header_check, part of the normal build). Fails if a header is not self-contained or
-# exposes spdlog or fmt (ADR-0011).
+# exposes a private dependency: spdlog/fmt (ADR-0011), GLFW (ADR-0006) or <windows.h> (ADR-0015).
 teserra_add_header_check(core)
 
 # CTest test that builds the file (excluded from the normal build) and passes only if the compiler

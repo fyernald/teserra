@@ -13,8 +13,9 @@
 #
 # Compiles every public header of <module> in a translation unit of its own, the way a user of the
 # module sees it: with the module's public include directories and dependencies and the Teserra warning
-# set. The build fails if a header is not self-contained or exposes spdlog or fmt, which are private to
-# teserra_core (ADR-0011).
+# set. The build fails if a header is not self-contained or exposes a private dependency: spdlog or fmt
+# (private to teserra_core, ADR-0011), GLFW (private to teserra_platform, ADR-0006) or <windows.h>
+# (ADR-0015).
 #
 #   teserra_add_compile_fail_test(<name> SOURCE <file> EXPECT <regex> [WARNINGS_AS_ERRORS]
 #       [DEPENDS <module>...])
@@ -114,6 +115,12 @@ function(teserra_add_header_check module)
 
 #if defined(SPDLOG_VERSION) || defined(FMT_VERSION)
 #error "<@include_path@> exposes spdlog or fmt, which are private to teserra_core (ADR-0011)"
+#endif
+#if defined(GLFW_VERSION_MAJOR)
+#error "<@include_path@> exposes GLFW, which is private to teserra_platform (ADR-0006)"
+#endif
+#if defined(_WINDOWS_) || defined(_INC_WINDOWS)
+#error "<@include_path@> includes <windows.h>, which belongs in engine/platform/src/ only (ADR-0015)"
 #endif
 ]])
         list(APPEND sources "${source}")

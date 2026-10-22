@@ -114,6 +114,7 @@ engine/platform/
 ```
 
 - `<windows.h>` is included with `WIN32_LEAN_AND_MEAN` and `NOMINMAX`, only in `src/windows/*.cpp`, never in a header.
+- The one place a GLFW header and an OS header meet is `src/glfw/glfw_native_<os>.cpp`, which reads the native window handles through `<GLFW/glfw3native.h>` (it needs `<windows.h>` on Windows). CMake compiles it for the GLFW backend on that OS only.
 - Shared code never contains `#ifdef _WIN32`. Use the platform macros from `<teserra/core/config.hpp>` only inside `engine/platform/` (and, rarely, core).
 
 ## v1 Linux readiness

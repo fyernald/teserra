@@ -51,6 +51,7 @@ engine/<module>/CMakeLists.txt # one module = one target
 | `TESERRA_BUILD_EXAMPLES` | `ON` (top-level project) | `examples/*` |
 | `TESERRA_BUILD_BENCHMARKS` | `OFF` | `benchmarks/*` |
 | `TESERRA_WARNINGS_AS_ERRORS` | `OFF` locally, `ON` in CI presets | `/WX` / `-Werror` |
+| `TESERRA_WINDOW_BACKEND` | `GLFW` | Window backend of `teserra_platform` (GLFW is the only one in v1) |
 | `TESERRA_ENABLE_ASSERTS` | `DEFAULT` (on for Debug/RelWithDebInfo) | `TESERRA_ASSERT` active; `ON` / `OFF` force it for every configuration |
 | `TESERRA_ENABLE_PROFILING` | `OFF` | Tracy instrumentation |
 | `TESERRA_RHI_OPENGL` | `ON` | OpenGL backend |
@@ -125,6 +126,7 @@ Pinned baseline: [`9e593bb`](https://github.com/microsoft/vcpkg/commit/9e593bb18
 | `spdlog` | 1.17.0#1 | core (logging, iteration 2) | - |
 | `fmt` | 12.2.0#1 | transitively through spdlog | - |
 | `tl-expected` | 1.3.1 | core (`Result`, iteration 2) | - |
+| `glfw3` | 3.4#1 | platform (windows, OpenGL context, iteration 3) | - |
 | `catch2` | 3.15.3 | tests | `tests` |
 
 ## Layer and leak checks

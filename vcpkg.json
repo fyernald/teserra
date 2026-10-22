@@ -6,6 +6,7 @@
   "homepage": "https://github.com/fyernald/teserra",
   "license": "MIT",
   "dependencies": [
+    "glfw3",
     "glm",
     "spdlog",
     "tl-expected"
