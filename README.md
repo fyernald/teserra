@@ -39,7 +39,7 @@ cmake --workflow --preset windows-msvc-debug
 build/windows-msvc-debug/examples/hello/teserra_hello
 ```
 
-The workflow preset configures, builds and runs the tests; the first run also builds the dependencies through vcpkg, which takes a few minutes. `teserra_hello` prints the engine version; `teserra_core_sandbox` (same folder layout, `examples/core_sandbox/`) shows logging, error handling, handles and assertions. Details, other presets and IDE setup: [build and CI](docs/guides/build-and-ci.md).
+The workflow preset configures, builds and runs the tests; the first run also builds the dependencies through vcpkg, which takes a few minutes. `teserra_hello` prints the engine version; `teserra_core_sandbox` (same folder layout, `examples/core_sandbox/`) shows logging, error handling, handles and assertions; `teserra_window_input` (`examples/window_input/`) opens a window, logs keyboard and mouse input, shows FPS in the title and quits on Escape. Details, other presets and IDE setup: [build and CI](docs/guides/build-and-ci.md).
 
 ## A taste of the intended API
 
