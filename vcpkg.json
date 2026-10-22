@@ -9,7 +9,10 @@
     "glfw3",
     "glm",
     "spdlog",
-    "tl-expected"
+    "tl-expected",
+    "glslang",
+    "spirv-cross",
+    "spirv-tools"
   ],
   "features": {
     "tests": {

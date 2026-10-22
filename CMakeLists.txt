@@ -47,6 +47,7 @@ add_subdirectory(engine/core)
 add_subdirectory(engine/platform)
 add_subdirectory(engine/rhi)
 add_subdirectory(engine/engine)
+add_subdirectory(tools/spike_shaderc) # SPIKE #36, never merged
 
 if(TESERRA_BUILD_EXAMPLES)
     add_subdirectory(examples)
