@@ -11,7 +11,8 @@ project(Teserra
     VERSION 0.0.1
     DESCRIPTION "A modern C++20 game engine for indie developers"
     HOMEPAGE_URL "https://github.com/fyernald/teserra"
-    LANGUAGES CXX
+    # C only for the vendored glad loader of the OpenGL backend (ADR-0009); engine code is C++.
+    LANGUAGES C CXX
 )
 
 # ISO C++20 without compiler extensions and without C++20 modules (ADR-0002). These initialize the
@@ -33,6 +34,7 @@ option(TESERRA_WARNINGS_AS_ERRORS "Treat compiler warnings as errors (/WX, -Werr
 set(TESERRA_ENABLE_ASSERTS "DEFAULT" CACHE STRING
     "Check TESERRA_ASSERT: DEFAULT (Debug and RelWithDebInfo builds), ON or OFF")
 set_property(CACHE TESERRA_ENABLE_ASSERTS PROPERTY STRINGS DEFAULT ON OFF)
+option(TESERRA_RHI_OPENGL "Build the OpenGL 4.5 RHI backend (teserra_rhi_opengl)" ON)
 
 if(TESERRA_BUILD_TESTS)
     enable_testing()

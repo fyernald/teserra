@@ -12,7 +12,7 @@ OpenGL functions beyond 1.1 must be loaded at runtime. The loader must expose ex
 
 - We use **glad 2** to generate a loader for **OpenGL 4.5 core** plus extensions `GL_KHR_debug`, `GL_ARB_gl_spirv`, `GL_EXT_texture_filter_anisotropic`.
 - The generated sources are **vendored** in `engine/rhi/backends/opengl/third_party/glad/` together with a `README.md` containing the exact generator command and version, so the loader can be regenerated reproducibly.
-- The loader is compiled into `teserra_rhi_opengl` as a `PRIVATE` source. Its headers are never visible outside the OpenGL backend.
+- The loader is compiled into `teserra_rhi_opengl` as a `PRIVATE` dependency (the C library `teserra_glad`, which only the backend and its tests link). Its headers are never visible outside the OpenGL backend. It is generated in MX mode: the device owns its table of GL function pointers, so there is no global loader state.
 - Function pointers are loaded through `platform::OpenGlContext::getProcAddress`, so the backend does not depend on GLFW directly.
 
 ## Alternatives considered

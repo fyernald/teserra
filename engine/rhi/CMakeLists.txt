@@ -20,9 +20,12 @@ teserra_add_module(rhi LAYER 2
         src/format.cpp
 )
 
-# Backends (backends/opengl, backends/null) are layer-3 modules that implement Device; they are added
-# with the issues that build them (#27, #29).
-
 if(TESERRA_BUILD_TESTS)
     add_subdirectory(tests)
+endif()
+
+# Backends are layer-3 modules that implement Device, each behind its option. The null backend follows
+# with #29.
+if(TESERRA_RHI_OPENGL)
+    add_subdirectory(backends/opengl)
 endif()
