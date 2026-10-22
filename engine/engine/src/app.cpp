@@ -3,7 +3,7 @@
 #include <teserra/core/assert.hpp>
 #include <teserra/core/log.hpp>
 #include <teserra/core/profile.hpp>
-
+#include <teserra/rhi_null/null_device.hpp>
 #if TESERRA_HAS_RHI_OPENGL
 #include <teserra/rhi_opengl/opengl_backend.hpp>
 #endif
@@ -45,7 +45,7 @@ Result<void> applyCommandLine(AppConfig& config) {
 
 // The RHI backends this build includes (CMake options TESERRA_RHI_*), for rhi::createDevice().
 std::vector<rhi::BackendFactory> compiledBackends() {
-    std::vector<rhi::BackendFactory> backends;
+    std::vector<rhi::BackendFactory> backends{rhi::null::backendFactory()};
 #if TESERRA_HAS_RHI_OPENGL
     backends.push_back(rhi::opengl::backendFactory());
 #endif

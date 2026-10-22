@@ -326,6 +326,12 @@ With `enableValidation`, the RHI's common code checks before anything reaches a 
 
 Violations log an error with the object's `debugName` and trigger `TESERRA_ASSERT`. Validation costs nothing in Release builds.
 
+Where it is implemented:
+
+- **Recording rules** (render pass nesting, draws need a pipeline, copies outside passes, limits): `CommandList`, at the call that breaks them.
+- **Descriptor sanity**: `<teserra/rhi/validation.hpp>` (`validateBufferDesc`, `validateTextureDesc`, `validateSamplerDesc`, `validateShaderModuleDesc`, `validateGraphicsPipelineDesc`), which every backend calls at the start of `create*`. Checks that need the device's objects, such as whether a pipeline's shaders are alive, are the device's.
+- **Streams against objects** (handle liveness; `RenderTarget`/`Vertex`/`Index`/`CopySrc`/`CopyDst` usage; pipeline target formats against the render pass; copy ranges inside buffers and textures): at `submit()` in the null device today. It moves into common code with a resource-lookup interface when the OpenGL backend validates streams too (#32 to #35). Bind group checks follow with bind groups (#42).
+
 ## What must not leak out of the RHI
 
 This list is checked in review and partly by CI ([build-and-ci](../guides/build-and-ci.md#layer-and-leak-checks)):
@@ -342,7 +348,20 @@ This list is checked in review and partly by CI ([build-and-ci](../guides/build-
 
 ## Null backend
 
-`teserra_rhi_null` implements `Device` without a GPU: resources are allocated in handle pools, uploads are copied into CPU memory, submitted command lists are validated and **kept for inspection**. Renderer unit tests use it to assert "this frame recorded N draws with pipeline P and bind group G" without a window or GPU ([testing strategy](../guides/testing-strategy.md#rhi-and-renderer-tests)).
+`teserra_rhi_null` implements `Device` without a GPU: resources are allocated in handle pools, uploads are copied into CPU memory (with `writeBuffer`/`writeTexture`, #32 and #49), submitted command lists are validated and **kept for inspection**. Renderer unit tests use it to assert "this frame recorded N draws with pipeline P and bind group G" without a window or GPU ([testing strategy](../guides/testing-strategy.md#rhi-and-renderer-tests)).
+
+```cpp
+auto device = rhi::null::createHeadlessDevice({.enableValidation = true});   // <teserra/rhi_null/null_device.hpp>
+// ... create resources, beginFrame, record, submit, endFrame ...
+CHECK(device->submitted().size() == 1);
+CHECK(rhi::describeCommands(*device->submitted()[0]) == "BeginRenderPass color0=0:1 ...\n...");
+CHECK(device->graphicsPipeline(pipeline)->targets.colorFormats[0] == rhi::Format::Rgba8Srgb);
+```
+
+- It is always built (no option) and is offered by `rhi::null::backendFactory()`. Without a window it has no swapchain. With a window (`createDevice(desc, window, ...)`), it has a `NullSwapchain` of the window's framebuffer size, so an `engine::App` with `AppConfig::backend = Backend::Null` runs, records and "presents" on the headless platform.
+- `submitted()` lists the command lists of the frame since the last `beginFrame()`; they stay valid until their frame slot is reused. `buffer(handle)`, `texture(handle)`, ... return the stored descriptor (with copies of names, shader code and vertex layouts), or `nullptr` for a dead handle; `liveObjectCount()` checks for leaks.
+- `destroy()` frees at once: there is no GPU work to wait for.
+- With `enableValidation` it checks descriptors with `<teserra/rhi/validation.hpp>` and every submitted stream against its objects (see [Validation layer](#validation-layer)).
 
 ## Future: Vulkan backend mapping
 

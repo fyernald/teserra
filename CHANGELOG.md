@@ -37,6 +37,8 @@ All notable user-visible changes to Teserra are documented here. The format foll
 - `engine::App` owns an `rhi::Device` (`AppConfig::backend`, default OpenGL) and presents through its swapchain: `AppCallbacks::render(App&, rhi::CommandList&)` records into `App::backbuffer()`, the App clears to black without it, skips minimized frames and resizes the swapchain on `WindowResized`. `App::device()` gives access to the device.
 - `teserra_add_module(... OPTIONAL_DEPENDS <module>...)`: modules an option may leave out are linked and layer-checked when they exist, with `TESERRA_HAS_<MODULE>` telling the sources; `check_layers.py` reads them as dependencies.
 - `teserra_rhi_clear` example: clears the window to a color cycling over time using only RHI calls; smoke run `--frames 60 --hidden-window`.
+- Null backend `teserra_rhi_null` (always built): `rhi::null::createHeadlessDevice()` and `rhi::null::backendFactory()` give a `Device` without a GPU. Resources live in handle pools with copies of their descriptors (`buffer(handle)`, `texture(handle)`, ...), a window gives it a swapchain of the window's size, and the command lists submitted in the last frame stay inspectable (`submitted()`). With `enableValidation`, submitted streams are checked against its objects: handle liveness, usages, pipeline formats against the render pass, copy ranges. `engine::App` offers it as `rhi::Backend::Null`, which renders headlessly.
+- Descriptor validation for every backend, `<teserra/rhi/validation.hpp>`: buffer, texture, sampler, shader module and graphics pipeline descriptors are checked at creation (sizes, usages, formats, mip levels, vertex layouts, render targets).
 
 ### Changed
 

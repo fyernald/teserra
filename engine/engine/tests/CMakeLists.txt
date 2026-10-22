@@ -1,5 +1,6 @@
 teserra_add_test(engine
     SOURCES
+        app_render_test.cpp
         app_test.cpp
         app_window_test.cpp
     DEPENDS engine
