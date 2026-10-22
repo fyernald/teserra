@@ -15,6 +15,7 @@
 #include <algorithm>
 #include <array>
 #include <cstddef>
+#include <cstdint>
 #include <cstring>
 #include <format>
 #include <map>
@@ -87,6 +88,9 @@ inline std::string name(GLenum value) {
         {GL_UNSIGNED_SHORT, "GL_UNSIGNED_SHORT"},
         {GL_UNSIGNED_INT, "GL_UNSIGNED_INT"},
         {GL_CULL_FACE, "GL_CULL_FACE"},
+        {GL_TRIANGLES, "GL_TRIANGLES"},
+        {GL_TRIANGLE_STRIP, "GL_TRIANGLE_STRIP"},
+        {GL_LINE_STRIP, "GL_LINE_STRIP"},
         {GL_FRONT, "GL_FRONT"},
         {GL_BACK, "GL_BACK"},
         {GL_FRONT_AND_BACK, "GL_FRONT_AND_BACK"},
@@ -467,6 +471,16 @@ inline void GLAD_API_PTR vertexArrayBindingDivisor(GLuint vertexArray, GLuint bi
     log(std::format("VertexArrayBindingDivisor({}, {}, {})", vertexArray, binding, divisor));
 }
 
+inline void GLAD_API_PTR vertexArrayVertexBuffer(GLuint vertexArray, GLuint binding, GLuint buffer,
+                                                 GLintptr offset, GLsizei stride) {
+    log(std::format("VertexArrayVertexBuffer({}, {}, {}, offset {}, stride {})", vertexArray, binding, buffer,
+                    offset, stride));
+}
+
+inline void GLAD_API_PTR vertexArrayElementBuffer(GLuint vertexArray, GLuint buffer) {
+    log(std::format("VertexArrayElementBuffer({}, {})", vertexArray, buffer));
+}
+
 inline void GLAD_API_PTR bindVertexArray(GLuint vertexArray) {
     log(std::format("BindVertexArray({})", vertexArray));
 }
@@ -476,6 +490,22 @@ inline void GLAD_API_PTR deleteVertexArrays(GLsizei count, const GLuint* arrays)
         current->liveVertexArrays.erase(arrays[i]);
         log(std::format("DeleteVertexArrays({})", arrays[i]));
     }
+}
+
+// Draws
+
+inline void GLAD_API_PTR drawArraysInstancedBaseInstance(GLenum mode, GLint first, GLsizei count,
+                                                         GLsizei instances, GLuint baseInstance) {
+    log(std::format("DrawArrays({}, first {}, count {}, instances {} from {})", name(mode), first, count,
+                    instances, baseInstance));
+}
+
+inline void GLAD_API_PTR drawElementsInstancedBaseVertexBaseInstance(GLenum mode, GLsizei count, GLenum type,
+                                                                     const void* indices, GLsizei instances,
+                                                                     GLint baseVertex, GLuint baseInstance) {
+    log(std::format("DrawElements({}, count {}, {}, offset {}, instances {} from {}, base vertex {})",
+                    name(mode), count, name(type), reinterpret_cast<std::uintptr_t>(indices), instances,
+                    baseInstance, baseVertex));
 }
 
 // Fixed-function state
@@ -652,6 +682,14 @@ public:
             {"glVertexArrayBindingDivisor",
              reinterpret_cast<platform::GlProc>(&fake_gl::vertexArrayBindingDivisor)},
             {"glBindVertexArray", reinterpret_cast<platform::GlProc>(&fake_gl::bindVertexArray)},
+            {"glVertexArrayVertexBuffer",
+             reinterpret_cast<platform::GlProc>(&fake_gl::vertexArrayVertexBuffer)},
+            {"glVertexArrayElementBuffer",
+             reinterpret_cast<platform::GlProc>(&fake_gl::vertexArrayElementBuffer)},
+            {"glDrawArraysInstancedBaseInstance",
+             reinterpret_cast<platform::GlProc>(&fake_gl::drawArraysInstancedBaseInstance)},
+            {"glDrawElementsInstancedBaseVertexBaseInstance",
+             reinterpret_cast<platform::GlProc>(&fake_gl::drawElementsInstancedBaseVertexBaseInstance)},
             {"glDeleteVertexArrays", reinterpret_cast<platform::GlProc>(&fake_gl::deleteVertexArrays)},
             {"glCullFace", reinterpret_cast<platform::GlProc>(&fake_gl::cullFace)},
             {"glFrontFace", reinterpret_cast<platform::GlProc>(&fake_gl::frontFace)},

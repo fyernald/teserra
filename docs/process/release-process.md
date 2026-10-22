@@ -24,7 +24,7 @@ How Teserra versions, tags, packages and announces builds. Related: [development
 
 1. CI green on `main`; the iteration's demo runs from a clean build (`cmake --workflow --preset windows-msvc-release`).
 2. `CHANGELOG.md`: the `Unreleased` section lists the iteration's user-visible changes.
-3. Tag `v0.1.0-alpha.N` and push the tag. The `release.yml` workflow builds the Windows x64 Release artifacts and drafts a GitHub pre-release.
+3. Tag `v0.1.0-alpha.N` and push the tag. The `release.yml` workflow builds the Windows x64 Release artifacts and drafts a GitHub pre-release. Until it exists (#122), build the Release preset, make the zip with `python tools/scripts/package_example.py --build-dir build/windows-msvc-release --example <name> --version 0.1.0-alpha.N --feedback-url <feedback issue>` (from a Visual Studio developer prompt, which locates the Visual C++ runtime), and draft the pre-release by hand.
 4. Edit the draft: short summary, link to the iteration epic, known issues, how to give feedback. Publish.
 5. For feedback iterations, open the *Feedback request* issue linking the release.
 

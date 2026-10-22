@@ -432,6 +432,27 @@ TEST_CASE("Null backend: submitted streams are validated against the device's ob
           }) == std::format("A color attachment uses texture {}, which is not alive", stale));
 }
 
+TEST_CASE("Null backend: draws need the pipeline's vertex buffers bound in the pass",
+          "[rhi_null][validation]") {
+    const auto device = null::createHeadlessDevice({.enableValidation = true});
+    const Scene scene(*device);
+    const auto record = [&](bool bindVertices) {
+        return [&scene, bindVertices](CommandList& cmd) {
+            cmd.beginRenderPass({.colorAttachments = {{.texture = scene.target}}});
+            cmd.bindPipeline(scene.pipeline);
+            if (bindVertices) {
+                cmd.bindVertexBuffer(0, scene.vertices);
+            }
+            cmd.draw({.vertexCount = 3});
+            cmd.endRenderPass();
+        };
+    };
+
+    submitFrame(*device, record(true));
+    CHECK(test::requireAssert([&] { submitFrame(*device, record(false)); }).message() ==
+          "draw needs vertex buffer 0 of pipeline 'Sprites', which is not bound");
+}
+
 TEST_CASE("Null backend: descriptors are validated at creation", "[rhi_null][validation]") {
     const auto device = null::createHeadlessDevice({.enableValidation = true});
 

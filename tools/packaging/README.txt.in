@@ -1,0 +1,31 @@
+$title
+$underline
+
+Teserra is a C++20 game engine in development: https://github.com/fyernald/teserra
+
+$description
+
+Running it
+----------
+1. Unzip this folder anywhere (for example, your Desktop).
+2. Double-click $executable.
+3. Press Escape or close the window to quit.
+
+Windows may show a "Windows protected your PC" (SmartScreen) message, because the program is new and not
+code-signed. Choose "More info", then "Run anyway". The program does not install anything and only writes
+teserra.log into this folder.
+
+Requirements: 64-bit Windows 10 or 11 and a graphics driver with OpenGL 4.5 (most GPUs since 2014 with
+current drivers). The Visual C++ runtime it needs is included.
+
+Feedback
+--------
+Please tell us whether it worked, even if it did:
+$feedback_url
+
+Useful to include: what you saw, your Windows version, your GPU and driver version, and the teserra.log file
+from this folder (it lists the GPU and OpenGL version and any error).
+
+Licenses
+--------
+Teserra is MIT-licensed (LICENSE). Third-party software in this package is listed in THIRD_PARTY_NOTICES.md.

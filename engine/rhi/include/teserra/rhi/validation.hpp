@@ -32,8 +32,8 @@ void validateMapBuffer(const BufferDesc& desc);
 
 /// The objects of a device, as validateCommands() looks them up. A device implements it over its own storage.
 /// Each function returns the descriptor of a live object, or std::nullopt for a stale handle or one the
-/// device did not create; the views of a returned descriptor (debug name, vertex layouts) stay valid while
-/// the object lives.
+/// device did not create; the views of a returned descriptor (debug name, vertex layouts) stay valid until
+/// the device creates or destroys objects, which validation never does.
 class ResourceLookup {
 public:
     [[nodiscard]] virtual std::optional<BufferDesc> buffer(BufferHandle handle) const = 0;
@@ -52,7 +52,8 @@ protected:
 
 /// Checks a submitted command list against a device's objects: handles are alive; attachments, vertex and
 /// index buffers and copies have the usage they need; a bound pipeline declares the formats of the open
-/// render pass; copies stay inside their buffers and textures.
+/// render pass; draws have every vertex buffer slot of the pipeline bound; copies stay inside their buffers
+/// and textures.
 void validateCommands(const CommandList& commands, const ResourceLookup& objects);
 
 /// A defined format, a size from 1 to the device's limits, mip levels that fit the size, DepthStencil usage

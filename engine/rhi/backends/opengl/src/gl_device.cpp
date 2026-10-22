@@ -11,6 +11,7 @@
 #include "gl_swapchain.hpp"
 
 #include <algorithm>
+#include <cstdint>
 #include <format>
 #include <optional>
 #include <string>
@@ -427,7 +428,8 @@ Result<GraphicsPipelineHandle> GlDevice::createGraphicsPipeline(const GraphicsPi
         const VertexBufferLayout& layout = desc.vertexBuffers[i];
         m_gl.VertexArrayBindingDivisor(vertexArray, i,
                                        layout.stepRate == VertexStepRate::PerInstance ? 1U : 0U);
-        pipeline.strides[i] = layout.stride;
+        pipeline.vertexBuffers[i] = layout;
+        pipeline.vertexBufferCount = i + 1;
     }
     if (!desc.debugName.empty()) {
         m_gl.ObjectLabel(GL_VERTEX_ARRAY, vertexArray, static_cast<GLsizei>(desc.debugName.size()),
@@ -621,12 +623,23 @@ void GlDevice::replay(const CommandList& commands) {
             case CommandType::BindPipeline:
                 bindPipeline(command.as<BindPipelineCommand>().pipeline);
                 break;
+            case CommandType::BindVertexBuffers:
+                bindVertexBuffers(command.as<BindVertexBuffersCommand>().firstSlot, command.vertexBuffers());
+                break;
+            case CommandType::BindIndexBuffer:
+                bindIndexBuffer(command.as<BindIndexBufferCommand>());
+                break;
+            case CommandType::Draw:
+                draw(command.as<DrawCommand>().args);
+                break;
+            case CommandType::DrawIndexed:
+                drawIndexed(command.as<DrawIndexedCommand>().args);
+                break;
             case CommandType::CopyBuffer:
                 copyBuffer(command.as<CopyBufferCommand>().copy);
                 break;
             default:
-                // Draws and vertex and index buffers follow with #35, bind groups with #42 and texture
-                // copies with textures (#49).
+                // Bind groups follow with #42 and texture copies with textures (#49).
                 TESERRA_ASSERT(false, "The OpenGL backend cannot replay {} commands yet",
                                commandTypeName(command.type()));
                 break;
@@ -641,6 +654,75 @@ void GlDevice::bindPipeline(GraphicsPipelineHandle handle) {
         return;
     }
     m_stateCache.bind(pipeline->program, pipeline->vertexArray, pipeline->state);
+    m_passPipeline = pipeline;
+}
+
+void GlDevice::bindVertexBuffers(u32 firstSlot, std::span<const VertexBufferBinding> bindings) {
+    for (usize i = 0; i < bindings.size(); ++i) {
+        const GlBuffer* buffer = m_buffers.tryGet(bindings[i].buffer);
+        TESERRA_ASSERT(buffer != nullptr, "bindVertexBuffers uses buffer {}, which is not alive",
+                       bindings[i].buffer);
+        m_passVertexBuffers[firstSlot + i] = {.name = buffer != nullptr ? buffer->name : 0,
+                                              .offset = bindings[i].offset};
+    }
+    m_vertexInputDirty = true;
+}
+
+void GlDevice::bindIndexBuffer(const BindIndexBufferCommand& bind) {
+    const GlBuffer* buffer = m_buffers.tryGet(bind.buffer);
+    TESERRA_ASSERT(buffer != nullptr, "bindIndexBuffer uses buffer {}, which is not alive", bind.buffer);
+    m_passIndexBuffer = {.name = buffer != nullptr ? buffer->name : 0, .offset = bind.offset};
+    m_passIndexType = bind.indexType;
+    m_vertexInputDirty = true;
+}
+
+bool GlDevice::flushVertexInput() {
+    const GlPipeline* pipeline = m_passPipeline;
+    if (pipeline == nullptr) {
+        return false; // recording asserts that draws have a pipeline
+    }
+    if (!m_vertexInputDirty && m_flushedVertexArray == pipeline->vertexArray) {
+        return true;
+    }
+    for (u32 slot = 0; slot < pipeline->vertexBufferCount; ++slot) {
+        const BoundBuffer& bound = m_passVertexBuffers[slot];
+        TESERRA_ASSERT(bound.name != 0, "draw needs vertex buffer {} of pipeline '{}', which is not bound",
+                       slot, pipeline->debugName);
+        m_gl.VertexArrayVertexBuffer(pipeline->vertexArray, slot, bound.name,
+                                     static_cast<GLintptr>(bound.offset),
+                                     static_cast<GLsizei>(pipeline->vertexBuffers[slot].stride));
+    }
+    if (m_passIndexBuffer.name != 0) {
+        m_gl.VertexArrayElementBuffer(pipeline->vertexArray, m_passIndexBuffer.name);
+    }
+    m_flushedVertexArray = pipeline->vertexArray;
+    m_vertexInputDirty = false;
+    return true;
+}
+
+void GlDevice::draw(const DrawArgs& args) {
+    if (!flushVertexInput()) {
+        return;
+    }
+    m_gl.DrawArraysInstancedBaseInstance(m_passPipeline->primitiveMode, static_cast<GLint>(args.firstVertex),
+                                         static_cast<GLsizei>(args.vertexCount),
+                                         static_cast<GLsizei>(args.instanceCount), args.firstInstance);
+}
+
+void GlDevice::drawIndexed(const DrawIndexedArgs& args) {
+    if (!flushVertexInput()) {
+        return;
+    }
+    const bool wide = m_passIndexType == IndexType::Uint32;
+    const u64 indexSize = wide ? 4 : 2;
+    // GL takes the byte offset into the bound element buffer as a pointer.
+    const auto offset =
+        static_cast<std::uintptr_t>(m_passIndexBuffer.offset + (u64{args.firstIndex} * indexSize));
+    m_gl.DrawElementsInstancedBaseVertexBaseInstance(
+        m_passPipeline->primitiveMode, static_cast<GLsizei>(args.indexCount),
+        wide ? GL_UNSIGNED_INT : GL_UNSIGNED_SHORT,
+        reinterpret_cast<const void*>(offset), // NOLINT(performance-no-int-to-ptr): GL's offset convention
+        static_cast<GLsizei>(args.instanceCount), args.vertexOffset, args.firstInstance);
 }
 
 void GlDevice::copyBuffer(const BufferCopy& copy) {
@@ -683,6 +765,12 @@ void GlDevice::beginRenderPass(const RenderPassDesc& pass) {
                           std::max(texture->size.y >> attachment.mipLevel, 1U)};
         }
     }
+
+    // Each pass starts with nothing bound (docs/architecture/rhi.md#command-recording-and-submission).
+    m_passPipeline = nullptr;
+    m_passVertexBuffers.fill({});
+    m_passIndexBuffer = {};
+    m_vertexInputDirty = true;
 
     m_passFramebuffer = framebuffer(key);
     m_gl.BindFramebuffer(GL_DRAW_FRAMEBUFFER, m_passFramebuffer);

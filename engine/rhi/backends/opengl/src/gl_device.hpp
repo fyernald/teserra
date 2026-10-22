@@ -44,7 +44,8 @@ struct GlBuffer {
     std::byte* mapped = nullptr;
     std::string debugName;
 
-    /// The descriptor the buffer was created with, for validation; its name is valid while the buffer lives.
+    /// The descriptor the buffer was created with, for validation; its name is valid until the device creates
+    /// or destroys objects.
     [[nodiscard]] BufferDesc desc() const noexcept {
         return {.sizeInBytes = size, .usage = usage, .memory = memory, .debugName = debugName};
     }
@@ -64,16 +65,18 @@ struct GlPipeline {
     GLuint vertexArray = 0;
     GlPipelineState state{};
     GLenum primitiveMode = GL_TRIANGLES;
-    /// Bytes between elements of each vertex buffer slot, which binding a buffer needs (#35).
-    std::array<u32, kMaxVertexBuffers> strides{};
-    /// The descriptor without its vertex layouts and name, for validation; see desc().
+    /// The vertex buffer slots; draws bind buffers with their strides.
+    std::array<VertexBufferLayout, kMaxVertexBuffers> vertexBuffers{};
+    u32 vertexBufferCount = 0;
+    /// The descriptor without its views (vertex layouts, attributes, name), for validation; see desc().
     GraphicsPipelineDesc stored{};
     std::string debugName;
 
-    /// The descriptor the pipeline was created with, without vertex layouts; its name is valid while the
-    /// pipeline lives.
+    /// The descriptor the pipeline was created with, with its vertex buffer layouts but not its attributes.
+    /// Its views are valid until the device creates or destroys objects.
     [[nodiscard]] GraphicsPipelineDesc desc() const noexcept {
         GraphicsPipelineDesc result = stored;
+        result.vertexBuffers = std::span(vertexBuffers.data(), vertexBufferCount);
         result.debugName = debugName;
         return result;
     }
@@ -87,8 +90,8 @@ struct GlTexture {
     TextureUsage usage = TextureUsage::None;
     std::string debugName;
 
-    /// The descriptor the texture was created with, for validation; its name is valid while the texture
-    /// lives.
+    /// The descriptor the texture was created with, for validation; its name is valid until the device
+    /// creates or destroys objects.
     [[nodiscard]] TextureDesc desc() const noexcept {
         return {.format = format, .width = size.x, .height = size.y, .usage = usage, .debugName = debugName};
     }
@@ -208,6 +211,13 @@ private:
     void replay(const CommandList& commands);
     void copyBuffer(const BufferCopy& copy);
     void bindPipeline(GraphicsPipelineHandle handle);
+    void bindVertexBuffers(u32 firstSlot, std::span<const VertexBufferBinding> bindings);
+    void bindIndexBuffer(const BindIndexBufferCommand& bind);
+    // Applies the pass's buffer bindings to the bound pipeline's vertex array if they or the vertex array
+    // changed since the last draw. False if there is no pipeline to draw with.
+    [[nodiscard]] bool flushVertexInput();
+    void draw(const DrawArgs& args);
+    void drawIndexed(const DrawIndexedArgs& args);
     void beginRenderPass(const RenderPassDesc& pass);
     void endRenderPass();
 
@@ -230,6 +240,18 @@ private:
     GLuint m_passFramebuffer = 0;
     std::array<GLenum, kMaxColorAttachments> m_passDiscards{};
     u32 m_passDiscardCount = 0;
+    // The pass's bindings. Vertex and index buffers are vertex array state in GL, and each pipeline has its
+    // own vertex array, so they are applied to the bound pipeline's vertex array at the next draw.
+    struct BoundBuffer {
+        GLuint name = 0;
+        u64 offset = 0;
+    };
+    const GlPipeline* m_passPipeline = nullptr;
+    std::array<BoundBuffer, kMaxVertexBuffers> m_passVertexBuffers{};
+    BoundBuffer m_passIndexBuffer{};
+    IndexType m_passIndexType = IndexType::Uint16;
+    bool m_vertexInputDirty = true;
+    GLuint m_flushedVertexArray = 0;
 
     u64 m_frame = 0;
     bool m_inFrame = false;

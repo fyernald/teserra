@@ -162,7 +162,7 @@ Builds for outside testers are published at designated iterations (see the epic 
 
 Procedure:
 
-1. **Publish** the build as a GitHub pre-release (zip with executable, assets, `THIRD_PARTY_NOTICES.md`, a `README.txt` with run instructions and the feedback link).
+1. **Publish** the build as a GitHub pre-release (zip with executable, assets, `THIRD_PARTY_NOTICES.md`, a `README.txt` with run instructions and the feedback link). Until `release.yml` exists (#122), `tools/scripts/package_example.py` makes the zip of an example from a Release build, with its DLLs and the Visual C++ runtime, from the `README.txt` template in `tools/packaging/`.
 2. **Ask** with a *Feedback request* issue (template) listing 3-6 specific questions, the build link, and a deadline (default: 10 days, i.e. before the next planning). Share the link in relevant communities.
 3. **Collect** answers as comments on the feedback request (or a linked Discussion if enabled). Testers can also open bugs with the Bug template.
 4. **Triage** at the next planning: each actionable point becomes an issue labeled `feedback` (bug, task or feature) or is answered and closed with a reason. Summarize the outcome in a final comment and close the feedback request.

@@ -30,3 +30,6 @@ tests/golden/**/_diff/
 
 # Local planning fallback (never committed; the backlog lives in GitHub Projects)
 .local-backlog/
+
+# Packages made by tools/scripts/package_example.py
+dist/
