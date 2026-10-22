@@ -2,9 +2,19 @@ teserra_add_module(platform LAYER 1
     DEPENDS core
     PUBLIC_HEADERS
         include/teserra/platform/event.hpp
+        include/teserra/platform/input.hpp
+        include/teserra/platform/key.hpp
+        include/teserra/platform/mouse_button.hpp
         include/teserra/platform/opengl_context.hpp
         include/teserra/platform/platform.hpp
         include/teserra/platform/window.hpp
+)
+
+# Portable implementation, shared by every backend.
+target_sources(teserra_platform PRIVATE
+    src/common/input.cpp
+    src/common/key.cpp
+    src/common/mouse_button.cpp
 )
 
 # Window backend, chosen at configure time; shared code never uses #ifdef to pick it
@@ -14,6 +24,7 @@ set_property(CACHE TESERRA_WINDOW_BACKEND PROPERTY STRINGS GLFW)
 
 if(TESERRA_WINDOW_BACKEND STREQUAL "GLFW")
     target_sources(teserra_platform PRIVATE
+        src/glfw/glfw_key_table.cpp
         src/glfw/glfw_platform.cpp
         src/glfw/glfw_window.cpp
     )
