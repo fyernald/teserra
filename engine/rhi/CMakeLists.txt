@@ -17,6 +17,7 @@ teserra_add_module(rhi LAYER 2
         include/teserra/rhi/validation.hpp
     SOURCES
         src/command_list.cpp
+        src/command_validation.cpp
         src/device.cpp
         src/format.cpp
         src/validation.cpp

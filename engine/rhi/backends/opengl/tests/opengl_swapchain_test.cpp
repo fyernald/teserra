@@ -23,10 +23,14 @@ namespace {
 
 using Calls = std::vector<std::string>;
 
+// Without RHI validation, so that the tests see the backend's own checks in every build type
+// (opengl_buffer_test.cpp tests the backend with validation).
 std::unique_ptr<Device> requireOpenGl(test::FakeGlWindow& window, const SwapchainDesc& swapchain = {}) {
-    Result<std::unique_ptr<Device>> device =
-        createDevice({.backend = Backend::OpenGL, .enableBackendDebug = false, .swapchain = swapchain},
-                     &window, std::array{opengl::backendFactory()});
+    Result<std::unique_ptr<Device>> device = createDevice({.backend = Backend::OpenGL,
+                                                           .enableValidation = false,
+                                                           .enableBackendDebug = false,
+                                                           .swapchain = swapchain},
+                                                          &window, std::array{opengl::backendFactory()});
     if (!device) {
         FAIL(std::format("{}", device.error()));
     }
