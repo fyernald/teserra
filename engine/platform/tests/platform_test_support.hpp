@@ -23,12 +23,7 @@ inline std::unique_ptr<platform::Platform> createPlatformOrSkip() {
 
 /// A small hidden window without a graphics context.
 inline platform::WindowDesc hiddenWindow(platform::GraphicsApi api = platform::GraphicsApi::None) {
-    platform::WindowDesc desc;
-    desc.title = "Teserra test window";
-    desc.size = {320, 200};
-    desc.visible = false;
-    desc.graphicsApi = api;
-    return desc;
+    return {.title = "Teserra test window", .size = {320, 200}, .visible = false, .graphicsApi = api};
 }
 
 } // namespace teserra::test

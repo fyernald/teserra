@@ -11,7 +11,6 @@
 #include <algorithm>
 #include <array>
 #include <chrono>
-#include <functional>
 #include <memory>
 #include <utility>
 #include <variant>
@@ -24,10 +23,7 @@ using namespace std::chrono_literals;
 namespace {
 
 AppConfig headlessConfig() {
-    AppConfig config;
-    config.title = "Headless test";
-    config.graphicsApi = platform::GraphicsApi::None;
-    return config;
+    return {.title = "Headless test", .graphicsApi = platform::GraphicsApi::None};
 }
 
 // An App on a headless platform; `headless` stays valid while the App lives.
@@ -42,31 +38,20 @@ struct HeadlessApp {
     App app;
 };
 
-// Callbacks are assigned, not designated-initialized: Clang warns about omitted designated fields.
-AppCallbacks onUpdate(std::function<void(App&, f32)> update) {
-    AppCallbacks callbacks;
-    callbacks.update = std::move(update);
-    return callbacks;
-}
-
-AppCallbacks onEvent(std::function<void(App&, const platform::Event&)> onEvent) {
-    AppCallbacks callbacks;
-    callbacks.onEvent = std::move(onEvent);
-    return callbacks;
-}
-
 // Fixed steps run in each frame, recorded by update().
 struct StepCounter {
     std::vector<u32> stepsPerFrame;
     u32 steps = 0;
 
     AppCallbacks callbacks() {
-        AppCallbacks callbacks = onUpdate([this](App&, f32) {
-            stepsPerFrame.push_back(steps);
-            steps = 0;
-        });
-        callbacks.fixedUpdate = [this](App&, f32) { ++steps; };
-        return callbacks;
+        return {
+            .fixedUpdate = [this](App&, f32) { ++steps; },
+            .update =
+                [this](App&, f32) {
+                    stepsPerFrame.push_back(steps);
+                    steps = 0;
+                },
+        };
     }
 };
 
@@ -81,10 +66,10 @@ TEST_CASE("App: runs fixed and variable updates for scripted frame times", "[eng
     std::vector<f32> deltas;
     std::vector<f32> stepLengths;
 
-    AppCallbacks callbacks = onUpdate([&](App&, f32 deltaSeconds) { deltas.push_back(deltaSeconds); });
-    callbacks.fixedUpdate = [&](App&, f32 stepSeconds) { stepLengths.push_back(stepSeconds); };
-
-    const int exitCode = fixture.app.run(callbacks);
+    const int exitCode = fixture.app.run({
+        .fixedUpdate = [&](App&, f32 stepSeconds) { stepLengths.push_back(stepSeconds); },
+        .update = [&](App&, f32 deltaSeconds) { deltas.push_back(deltaSeconds); },
+    });
 
     CHECK(exitCode == 0);
     CHECK(fixture.app.frameCount() == 4);
@@ -139,7 +124,7 @@ TEST_CASE("App: --frames N stops after N frames, other arguments are left alone"
     HeadlessApp fixture{config};
     int updates = 0;
 
-    const int exitCode = fixture.app.run(onUpdate([&](App&, f32) { ++updates; }));
+    const int exitCode = fixture.app.run({.update = [&](App&, f32) { ++updates; }});
 
     CHECK(exitCode == 0);
     CHECK(updates == 3);
@@ -178,7 +163,7 @@ TEST_CASE("App: a malformed --frames fails initialization and run() returns 1", 
     CHECK_FALSE(fixture.app.isInitialized());
     REQUIRE(fixture.app.initError() != nullptr);
     CHECK(fixture.app.initError()->code == ErrorCode::InvalidArgument);
-    CHECK(fixture.app.run(onUpdate([&](App&, f32) { updated = true; })) == 1);
+    CHECK(fixture.app.run({.update = [&](App&, f32) { updated = true; }}) == 1);
     CHECK_FALSE(updated);
     CHECK(fixture.headless.polls() == 0);
     CHECK(std::ranges::any_of(logs.records(), [](const test::CapturedLog& record) {
@@ -212,7 +197,7 @@ TEST_CASE("App: a close request ends the loop after that frame", "[engine][app]"
     fixture.headless.queueEvent(2, platform::WindowCloseRequested{});
     int updates = 0;
 
-    const int exitCode = fixture.app.run(onUpdate([&](App&, f32) { ++updates; }));
+    const int exitCode = fixture.app.run({.update = [&](App&, f32) { ++updates; }});
 
     CHECK(exitCode == 0);
     CHECK(updates == 2); // the frame that saw the request still runs
@@ -222,11 +207,11 @@ TEST_CASE("App: a close request ends the loop after that frame", "[engine][app]"
 TEST_CASE("App: quit(exitCode) ends the loop and sets the exit code", "[engine][app]") {
     HeadlessApp fixture;
 
-    const int exitCode = fixture.app.run(onUpdate([](App& app, f32) {
+    const int exitCode = fixture.app.run({.update = [](App& app, f32) {
         if (app.frameCount() == 2) { // third frame
             app.quit(3);
         }
-    }));
+    }});
 
     CHECK(exitCode == 3);
     CHECK(fixture.app.frameCount() == 3);
@@ -238,12 +223,12 @@ TEST_CASE("App: a close request does not override the game's exit code", "[engin
         1, platform::KeyChanged{.key = platform::Key::Escape, .down = true, .repeat = false});
     fixture.headless.queueEvent(1, platform::WindowCloseRequested{});
 
-    const int exitCode = fixture.app.run(onEvent([](App& app, const platform::Event& event) {
+    const int exitCode = fixture.app.run({.onEvent = [](App& app, const platform::Event& event) {
         const auto* key = std::get_if<platform::KeyChanged>(&event);
         if (key != nullptr && key->key == platform::Key::Escape) {
             app.quit(7);
         }
-    }));
+    }});
 
     CHECK(exitCode == 7);
 }
@@ -257,13 +242,11 @@ TEST_CASE("App: onEvent sees events after Input processed them", "[engine][app]"
     bool downInOnEvent = false;
     std::vector<bool> pressedInUpdate;
 
-    AppCallbacks callbacks =
-        onUpdate([&](App& app, f32) { pressedInUpdate.push_back(app.input().wasPressed(platform::Key::W)); });
-    callbacks.onEvent = [&](App& app, const platform::Event&) {
-        downInOnEvent = app.input().isDown(platform::Key::W);
-    };
-
-    static_cast<void>(fixture.app.run(callbacks));
+    static_cast<void>(fixture.app.run({
+        .onEvent = [&](App& app,
+                       const platform::Event&) { downInOnEvent = app.input().isDown(platform::Key::W); },
+        .update = [&](App& app, f32) { pressedInUpdate.push_back(app.input().wasPressed(platform::Key::W)); },
+    }));
 
     CHECK(downInOnEvent);
     CHECK(pressedInUpdate == std::vector<bool>{true, false}); // edges last one frame

@@ -67,6 +67,7 @@ Follow [ADR-0016](../adr/0016-error-handling-policy.md):
 
 - Rule of zero by default; rule of five when managing a resource. Move-only types delete copy operations explicitly.
 - Data members are private unless the type is a plain aggregate (descriptors, components, POD records).
+- Descriptor and config structs (`*Desc`, `*Config`, `AppCallbacks`) give **every** field a default member initializer, `{}` at least, and are created with designated initializers that name only the fields that differ: `createWindow({.title = "Game", .visible = false})`. Clang reports an omitted field that has no default (`missing-designated-field-initializers`), so a missing default fails the build instead of silently relying on value-initialization. Records whose fields are all meaningful (events, `Error`, log records) have no defaults, so every field must be named.
 - Interfaces: pure virtual functions, virtual destructor, no data members; implementations are `final` unless designed for further derivation.
 - Inheritance depth: interface + implementation. Anything deeper needs an ADR.
 

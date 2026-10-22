@@ -44,7 +44,7 @@ This catalog lists the design patterns Teserra uses, **where** it uses them, and
 
 ## Conventions that are not patterns but are enforced the same way
 
-- **Descriptor structs** are aggregates with sensible defaults, passed by `const&`, never stored by reference.
+- **Descriptor structs** are aggregates with sensible defaults (every field, [coding standards](coding-standards.md#classes)), created with designated initializers, passed by `const&`, never stored by reference.
 - **Ownership in signatures:** `std::unique_ptr<T>` = transfer ownership; `T&` = required, non-owning, outlives the call; `T*` = optional, non-owning; `std::span`/`std::string_view` = borrowed ranges for the duration of the call.
 - **Thread affinity** is documented on every class that is not freely usable from any thread (`/// Main thread only.`).
 - **Spikes** produce knowledge, not production code: spike code lives on a `spike/<topic>` branch and is thrown away or rewritten under the normal rules ([development process](../process/development-process.md#spikes)).

@@ -59,41 +59,43 @@ void logEvent(const Event& event) {
 
 // Only std::bad_alloc can escape (from std::function and std::string); terminating is the right answer.
 int main(int argc, char** argv) { // NOLINT(bugprone-exception-escape)
-    engine::AppConfig config;
-    config.title = "Teserra: window and input";
-    config.args = {argc, argv};
-    engine::App app{config};
+    engine::App app{{.title = "Teserra: window and input", .args = {argc, argv}}};
 
     Vec2 position{0.0F};           // moved with WASD in fixed steps
     constexpr f32 kSpeed = 100.0F; // units per second
     std::chrono::nanoseconds sinceTitle{0};
 
-    engine::AppCallbacks callbacks;
-    callbacks.onEvent = [](engine::App& app, const Event& event) {
-        logEvent(event);
-        if (const auto* key = std::get_if<KeyChanged>(&event); key != nullptr && key->key == Key::Escape) {
-            app.quit();
-        }
-    };
-    callbacks.fixedUpdate = [&](engine::App& app, f32 stepSeconds) {
-        position += app.input().axis2D(Key::A, Key::D, Key::S, Key::W) * kSpeed * stepSeconds;
-    };
-    callbacks.update = [&](engine::App& app, f32 /*deltaSeconds*/) {
-        const Input& input = app.input();
-        if (!input.text().empty()) {
-            TESERRA_LOG_INFO(exampleCategory(), "Typed \"{}\"", input.text());
-        }
+    const engine::AppCallbacks callbacks{
+        .onEvent =
+            [](engine::App& app, const Event& event) {
+                logEvent(event);
+                const auto* key = std::get_if<KeyChanged>(&event);
+                if (key != nullptr && key->key == Key::Escape) {
+                    app.quit();
+                }
+            },
+        .fixedUpdate =
+            [&](engine::App& app, f32 stepSeconds) {
+                position += app.input().axis2D(Key::A, Key::D, Key::S, Key::W) * kSpeed * stepSeconds;
+            },
+        .update =
+            [&](engine::App& app, f32 /*deltaSeconds*/) {
+                const Input& input = app.input();
+                if (!input.text().empty()) {
+                    TESERRA_LOG_INFO(exampleCategory(), "Typed \"{}\"", input.text());
+                }
 
-        // A title change is a window-system call; four times a second is enough to read.
-        sinceTitle += app.frameTimer().delta();
-        if (sinceTitle >= std::chrono::milliseconds{250}) {
-            sinceTitle = std::chrono::nanoseconds{0};
-            app.window().setTitle(
-                std::format("Teserra: window and input | {:.0f} FPS | cursor ({:.0f}, {:.0f}) | "
-                            "WASD position ({:.0f}, {:.0f})",
-                            app.frameTimer().fps(), input.mousePosition().x, input.mousePosition().y,
-                            position.x, position.y));
-        }
+                // A title change is a window-system call; four times a second is enough to read.
+                sinceTitle += app.frameTimer().delta();
+                if (sinceTitle >= std::chrono::milliseconds{250}) {
+                    sinceTitle = std::chrono::nanoseconds{0};
+                    app.window().setTitle(
+                        std::format("Teserra: window and input | {:.0f} FPS | cursor ({:.0f}, {:.0f}) | "
+                                    "WASD position ({:.0f}, {:.0f})",
+                                    app.frameTimer().fps(), input.mousePosition().x, input.mousePosition().y,
+                                    position.x, position.y));
+                }
+            },
     };
 
     return app.run(callbacks);

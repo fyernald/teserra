@@ -69,13 +69,13 @@ Result<void> App::initialize(Result<std::unique_ptr<platform::Platform>> platfor
     TESERRA_TRY_ASSIGN(m_platform, std::move(platform));
     TESERRA_TRY(applyCommandLine(m_config));
 
-    platform::WindowDesc windowDesc;
-    windowDesc.title = m_config.title;
-    windowDesc.size = m_config.windowSize;
-    windowDesc.resizable = m_config.resizable;
-    windowDesc.visible = m_config.windowVisible;
-    windowDesc.graphicsApi = m_config.graphicsApi;
-    TESERRA_TRY_ASSIGN(m_window, m_platform->createWindow(windowDesc));
+    TESERRA_TRY_ASSIGN(m_window, m_platform->createWindow({
+                                     .title = m_config.title,
+                                     .size = m_config.windowSize,
+                                     .resizable = m_config.resizable,
+                                     .visible = m_config.windowVisible,
+                                     .graphicsApi = m_config.graphicsApi,
+                                 }));
 
     if (platform::OpenGlContext* context = m_window->openGlContext()) {
         context->setSwapInterval(m_config.vsync ? 1 : 0);
