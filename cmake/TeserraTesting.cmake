@@ -5,7 +5,9 @@
 # Creates the Catch2 test executable teserra_<name>_tests. Module unit tests use the module name
 # (teserra_add_test(core ...) -> teserra_core_tests). DEPENDS links Teserra modules, LIBRARIES any
 # other target. Every TEST_CASE is registered as its own CTest test, labeled <name>, so `ctest -N`,
-# IDE test explorers and the JUnit report list individual test cases.
+# IDE test explorers and the JUnit report list individual test cases. Every test executable also links
+# teserra_test_support (tests/support/): the <teserra/test/...> helpers and a listener that turns off
+# console logging and makes failed engine assertions fail the current test instead of aborting.
 #
 #   teserra_add_header_check(<module>)
 #
@@ -19,6 +21,12 @@
 # Registers the CTest test <name>, which builds <file> (excluded from the normal build) and passes only
 # if the compiler output matches <regex>. For guarantees that are compile errors, such as checked format
 # strings. Make <regex> specific to the expected error, so that an unrelated failure does not pass.
+#
+#   teserra_add_abort_test(<name> SOURCE <file> EXPECT <regex> [DEPENDS <module>...])
+#
+# Registers the CTest test <name>, which runs a program built from <file> and passes only if it ends
+# abnormally (non-zero exit) and its output matches <regex>. For behavior such as TESERRA_FATAL that
+# ends the process and so cannot be tested inside Catch2.
 
 include_guard(GLOBAL)
 
@@ -46,7 +54,7 @@ function(teserra_add_test name)
         endif()
         target_link_libraries(${target} PRIVATE teserra_${module})
     endforeach()
-    target_link_libraries(${target} PRIVATE Catch2::Catch2WithMain ${arg_LIBRARIES})
+    target_link_libraries(${target} PRIVATE teserra_test_support Catch2::Catch2WithMain ${arg_LIBRARIES})
 
     # PRE_TEST discovers test cases when CTest runs instead of after the build, so the build does not
     # execute test binaries and runtime DLLs deployed after linking are in place.
@@ -141,3 +149,40 @@ function(teserra_add_compile_fail_test name)
         LABELS "compile_fail;${arg_DEPENDS}"
     )
 endfunction()
+
+function(teserra_add_abort_test name)
+    cmake_parse_arguments(PARSE_ARGV 1 arg "" "SOURCE;EXPECT" "DEPENDS")
+    if(arg_UNPARSED_ARGUMENTS)
+        message(FATAL_ERROR "teserra_add_abort_test(${name}): unknown arguments: ${arg_UNPARSED_ARGUMENTS}")
+    endif()
+    if(NOT arg_SOURCE OR NOT arg_EXPECT)
+        message(FATAL_ERROR "teserra_add_abort_test(${name}): SOURCE and EXPECT are required")
+    endif()
+
+    string(MAKE_C_IDENTIFIER "teserra_abort_${name}" target)
+    add_executable(${target} ${arg_SOURCE})
+    _teserra_configure_test_target(${target})
+    foreach(module IN LISTS arg_DEPENDS)
+        if(NOT TARGET teserra_${module})
+            message(FATAL_ERROR "teserra_add_abort_test(${name}): unknown module '${module}' in DEPENDS")
+        endif()
+        target_link_libraries(${target} PRIVATE teserra_${module})
+    endforeach()
+
+    add_test(NAME ${name}
+        COMMAND "${CMAKE_COMMAND}"
+            "-DTESERRA_PROGRAM=$<TARGET_FILE:${target}>"
+            "-DTESERRA_EXPECT=${arg_EXPECT}"
+            -P "${_teserra_testing_dir}/scripts/ExpectAbort.cmake"
+    )
+    set_tests_properties(${name} PROPERTIES LABELS "abort;${arg_DEPENDS}")
+endfunction()
+
+# Shared test support, linked into every teserra_add_test() executable. An OBJECT library, so that the
+# Catch2 listener in it is always linked, although no test refers to it.
+set(_teserra_testing_dir "${CMAKE_CURRENT_LIST_DIR}")
+add_library(teserra_test_support OBJECT "${CMAKE_CURRENT_LIST_DIR}/../tests/support/src/test_support.cpp")
+_teserra_configure_test_target(teserra_test_support)
+target_include_directories(teserra_test_support PUBLIC "${CMAKE_CURRENT_LIST_DIR}/../tests/support/include")
+# teserra_core is defined later (engine/core); target names are resolved when the build is generated.
+target_link_libraries(teserra_test_support PUBLIC teserra_core Catch2::Catch2)

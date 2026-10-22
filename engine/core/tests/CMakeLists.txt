@@ -1,5 +1,7 @@
 teserra_add_test(core
     SOURCES
+        assert_disabled_test.cpp
+        assert_test.cpp
         config_test.cpp
         log_level_min_test.cpp
         log_test.cpp
@@ -27,6 +29,9 @@ target_compile_definitions(teserra_core_tests PRIVATE
     TESERRA_TEST_EXPECTED_PLATFORM="${CMAKE_SYSTEM_NAME}"
     TESERRA_TEST_EXPECTED_COMPILER="${expected_compiler}"
     TESERRA_TEST_PROJECT_VERSION="${PROJECT_VERSION}"
+    # The documented default of the TESERRA_ENABLE_ASSERTS option, written out independently of
+    # engine/core/CMakeLists.txt.
+    "TESERRA_TEST_EXPECTED_ASSERTS=$<IF:$<STREQUAL:${TESERRA_ENABLE_ASSERTS},DEFAULT>,$<IF:$<OR:$<CONFIG:Debug>,$<CONFIG:RelWithDebInfo>>,1,0>,$<BOOL:${TESERRA_ENABLE_ASSERTS}>>"
 )
 
 # Every public header compiles on its own and keeps spdlog and fmt private.
@@ -42,5 +47,12 @@ teserra_add_compile_fail_test(core.log.format_string_is_checked
 teserra_add_compile_fail_test(core.log.removed_call_format_string_is_checked
     SOURCE compile_fail/log_removed_call_format_mismatch.cpp
     EXPECT "basic_format_string"
+    DEPENDS core
+)
+
+# With the default handler, TESERRA_FATAL logs, flushes and aborts (ADR-0016).
+teserra_add_abort_test(core.assert.fatal_aborts
+    SOURCE fatal_abort.cpp
+    EXPECT "Fatal error [(][^)]*fatal_abort[.]cpp:[0-9]+[)]: GPU device lost: driver reset"
     DEPENDS core
 )

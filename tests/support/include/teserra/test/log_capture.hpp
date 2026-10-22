@@ -1,6 +1,7 @@
 #pragma once
 
-// Test helper: records every log message delivered while it is alive.
+// Test helper: records every log message delivered while it is alive. Used through
+// #include <teserra/test/log_capture.hpp> in any test linked by teserra_add_test().
 
 #include <teserra/core/log.hpp>
 #include <teserra/core/types.hpp>

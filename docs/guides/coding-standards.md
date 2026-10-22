@@ -29,7 +29,7 @@ These rules apply to all engine, tool, example and test code. Formatting and man
 ## Functions
 
 - `[[nodiscard]]` on every function returning `Result`, a handle, or a value whose discard is a bug.
-- `noexcept` on move operations, destructors (implicit), and functions that cannot fail.
+- `noexcept` on move operations, destructors (implicit), and functions that cannot fail. Functions whose preconditions are checked with `TESERRA_ASSERT` have narrow contracts and are **not** `noexcept`: tests report a failed assertion by throwing through them.
 - `constexpr` where it is free.
 - Prefer free functions in a namespace over static member functions for stateless helpers.
 - Out parameters are avoided; return structs or `Result<T>`.
@@ -39,7 +39,8 @@ These rules apply to all engine, tool, example and test code. Formatting and man
 
 Follow [ADR-0016](../adr/0016-error-handling-policy.md):
 
-- Bugs → `TESERRA_ASSERT` / `TESERRA_VERIFY` with a message that names the object (`"Buffer '{}' is not mapped"`).
+- Bugs → `TESERRA_ASSERT` / `TESERRA_VERIFY` from `<teserra/core/assert.hpp>` with a message that names the object (`"Buffer '{}' is not mapped"`). The message is an optional `std::format` string literal. `TESERRA_ASSERT` is compiled out (condition not evaluated) when the `TESERRA_ENABLE_ASSERTS` option is off; use `TESERRA_VERIFY` when the condition has an effect that must happen in every build. Wrap conditions with top-level commas in parentheses.
+- Impossible branches (e.g. a `switch` default over an enum) → `TESERRA_UNREACHABLE()`, always active.
 - Recoverable failures → return `Result<T>`; propagate with `TESERRA_TRY`.
 - Unrecoverable → `TESERRA_FATAL`.
 - Engine code does not `throw` and does not `catch` except at third-party boundaries.

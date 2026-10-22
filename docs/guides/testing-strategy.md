@@ -21,7 +21,7 @@ Most tests are at the bottom: fast, deterministic, no GPU, run on every build. T
 - Location: `engine/<module>/tests/`, one executable per module (`teserra_<module>_tests`), registered with `catch_discover_tests`.
 - Naming: `TEST_CASE("HandlePool: stale handle is rejected", "[core][handle]")`.
 - Must run in milliseconds, without files outside the test's own data, without a window or GPU, and without sleeping. Time is injected via a manual `Clock`.
-- Assertions: engine assertions are routed to the test framework via `setAssertHandler`, so a triggered `TESERRA_ASSERT` fails the test with the message (and "expect assert" tests are possible: `REQUIRE_ASSERTS(expr)` helper).
+- Assertions: every test executable installs a throwing handler with `setAssertHandler`, so a triggered `TESERRA_ASSERT` fails the current test with its message instead of aborting the run. Expected failures are tested with `REQUIRE_ASSERTS(expr)`, or `teserra::test::requireAssert([&] { ... })` to inspect the failure (kind, expression, message, location); see `<teserra/test/assert.hpp>`. Tests that need a failing assertion are wrapped in `#if TESERRA_ENABLE_ASSERTS`.
 - **Randomized model tests** for data structures: the ECS and `HandlePool` are tested by applying random operation sequences to both the real implementation and a naive reference (e.g. `std::map`) and comparing state after every step. Seeds are printed on failure.
 
 ### Adding a test executable
@@ -35,7 +35,7 @@ teserra_add_test(core
 )
 ```
 
-It creates `teserra_core_tests` linked to `Catch2::Catch2WithMain`, applies the warning set, and registers every `TEST_CASE` as its own CTest test labeled with the module name (discovery runs when CTest starts, not at build time). Useful commands:
+It creates `teserra_core_tests` linked to `Catch2::Catch2WithMain` and to `teserra_test_support` (`tests/support/`: the `<teserra/test/...>` helpers and a listener that turns off console logging and installs the throwing assert handler), applies the warning set, and registers every `TEST_CASE` as its own CTest test labeled with the module name (discovery runs when CTest starts, not at build time). Useful commands:
 
 ```bash
 ctest --preset windows-msvc-debug -N          # list test cases
@@ -43,7 +43,7 @@ ctest --preset windows-msvc-debug -L core     # one module
 ctest --preset windows-msvc-debug -R "version:"  # by name
 ```
 
-Two more helpers cover guarantees that are about compilation rather than behavior:
+More helpers cover guarantees that are about compilation or about ending the process:
 
 ```cmake
 # Builds every public header of the module in a translation unit of its own (target
@@ -58,9 +58,17 @@ teserra_add_compile_fail_test(core.log.format_string_is_checked
     EXPECT "basic_format_string"
     DEPENDS core
 )
+
+# CTest test that runs a small program (no Catch2) and passes only if it ends abnormally with output
+# matching the regex, e.g. TESERRA_FATAL with the default handler. Labeled abort and <module>.
+teserra_add_abort_test(core.assert.fatal_aborts
+    SOURCE fatal_abort.cpp
+    EXPECT "Fatal error [(][^)]*fatal_abort[.]cpp:[0-9]+[)]: GPU device lost: driver reset"
+    DEPENDS core
+)
 ```
 
-Logging is observed through `teserra::log::CallbackSink` (see `engine/core/tests/log_capture.hpp`), never by parsing console output.
+Logging is observed through `teserra::log::CallbackSink` (`teserra::test::LogCapture` in `<teserra/test/log_capture.hpp>`), never by parsing console output.
 
 The `ci-windows` test preset also writes a JUnit report to `build/ci-windows/junit.xml`, which CI turns into annotations. Build-system tests (CTest label `cmake`) live in `tests/cmake/` and configure small fixture projects, for example to check the layer rule.
 

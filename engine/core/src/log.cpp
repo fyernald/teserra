@@ -1,5 +1,7 @@
 #include <teserra/core/log.hpp>
 
+#include <teserra/core/assert.hpp>
+
 #include <spdlog/common.h>
 #include <spdlog/details/log_msg.h>
 #include <spdlog/sinks/rotating_file_sink.h>
@@ -327,8 +329,9 @@ void flush() {
     outputs().flush();
 }
 
-CallbackSink::CallbackSink(Callback callback)
-    : m_id(outputs().subscribe(std::move(callback))) {
+CallbackSink::CallbackSink(Callback callback) {
+    TESERRA_ASSERT(callback != nullptr, "CallbackSink needs a callback");
+    m_id = outputs().subscribe(std::move(callback));
 }
 
 CallbackSink::~CallbackSink() {

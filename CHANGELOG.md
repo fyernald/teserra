@@ -16,6 +16,8 @@ All notable user-visible changes to Teserra are documented here. The format foll
 - Logging facade `<teserra/core/log.hpp>`: `TESERRA_LOG_{TRACE,DEBUG,INFO,WARN,ERROR,CRITICAL}(category, format, args...)` with compile-time checked `std::format` strings and source locations, engine categories plus `log::registerCategory()` for games, a compile-time floor `TESERRA_LOG_LEVEL_MIN`, runtime levels per category, colored console and rotating file output (`log::configure()`), and `log::CallbackSink` to capture messages. spdlog is a private dependency of `teserra_core`.
 - Profiling macros `<teserra/core/profile.hpp>` (`TESERRA_PROFILE_SCOPE`, `_FUNCTION`, `_FRAME_MARK`, `_ALLOC`, `_FREE`, `_THREAD_NAME`); no-ops until the Tracy integration.
 - Test helpers `teserra_add_header_check()` (every public header compiles on its own and keeps spdlog/fmt private) and `teserra_add_compile_fail_test()`.
+- Assertions `<teserra/core/assert.hpp>`: `TESERRA_ASSERT`, `TESERRA_VERIFY`, `TESERRA_UNREACHABLE` and `TESERRA_FATAL` with optional `std::format` messages. Failures are logged at Critical with the caller's location and flushed; the default handler breaks into an attached debugger and aborts, and `setAssertHandler()` replaces it. CMake option `TESERRA_ENABLE_ASSERTS` (`DEFAULT`: Debug and RelWithDebInfo, `ON`, `OFF`).
+- Shared test support for all test executables (`tests/support/`): failed assertions fail the current test instead of aborting, `REQUIRE_ASSERTS(expr)` / `teserra::test::requireAssert()`, `teserra::test::LogCapture`; `teserra_add_abort_test()` for behavior that ends the process.
 
 ### Changed
 

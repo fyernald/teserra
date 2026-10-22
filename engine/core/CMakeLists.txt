@@ -1,10 +1,12 @@
 teserra_add_module(core LAYER 0
     PUBLIC_HEADERS
+        include/teserra/core/assert.hpp
         include/teserra/core/config.hpp
         include/teserra/core/log.hpp
         include/teserra/core/profile.hpp
         include/teserra/core/types.hpp
     SOURCES
+        src/assert.cpp
         src/log.cpp
         src/version.cpp
 )
@@ -13,6 +15,17 @@ teserra_add_module(core LAYER 0
 # users of teserra_core. The header check in tests/ verifies it.
 find_package(spdlog CONFIG REQUIRED)
 teserra_link_third_party(core PRIVATE spdlog::spdlog)
+
+# TESERRA_ENABLE_ASSERTS is PUBLIC: TESERRA_ASSERT expands in the code of every module and game that uses
+# it, so they all check (or skip) assertions the same way (ADR-0016).
+if(TESERRA_ENABLE_ASSERTS STREQUAL "DEFAULT")
+    set(asserts_enabled "$<IF:$<CONFIG:Debug,RelWithDebInfo>,1,0>")
+elseif(TESERRA_ENABLE_ASSERTS)
+    set(asserts_enabled 1)
+else()
+    set(asserts_enabled 0)
+endif()
+target_compile_definitions(teserra_core PUBLIC "TESERRA_ENABLE_ASSERTS=${asserts_enabled}")
 
 # <teserra/core/version.hpp> is generated from the project version so it has a single source of truth.
 set(generated_include_dir "${CMAKE_CURRENT_BINARY_DIR}/generated/include")
