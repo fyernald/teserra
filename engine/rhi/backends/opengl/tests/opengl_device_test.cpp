@@ -207,19 +207,18 @@ TEST_CASE("OpenGL backend: frames hand out command lists per frame slot", "[rhi_
     CHECK(window.context.state.finishCalls == 1);
 }
 
-TEST_CASE("OpenGL backend: resources are not implemented yet", "[rhi_opengl]") {
+TEST_CASE("OpenGL backend: other resources are not implemented yet", "[rhi_opengl]") {
     test::FakeGlWindow window;
     const auto device = requireOpenGl(window);
 
-    const auto buffer = device->createBuffer({.sizeInBytes = 64, .debugName = "Vertices"});
-    REQUIRE_FALSE(buffer.has_value());
-    CHECK(buffer.error().code == ErrorCode::Unsupported);
-    CHECK(buffer.error().message == "The OpenGL backend cannot create buffers yet ('Vertices')");
-    CHECK_FALSE(device->createTexture({}).has_value());
+    const auto texture = device->createTexture({.debugName = "Sprites"});
+    REQUIRE_FALSE(texture.has_value());
+    CHECK(texture.error().code == ErrorCode::Unsupported);
+    CHECK(texture.error().message == "The OpenGL backend cannot create textures yet ('Sprites')");
     CHECK_FALSE(device->createSampler({}).has_value());
     CHECK_FALSE(device->createShaderModule({}).has_value());
     CHECK_FALSE(device->createGraphicsPipeline({}).has_value());
-    device->destroy(BufferHandle{}); // null handles are ignored
+    device->destroy(TextureHandle{}); // null handles are ignored
 }
 
 #if TESERRA_ENABLE_ASSERTS

@@ -4,6 +4,7 @@
 #include <teserra/core/log.hpp>
 #include <teserra/platform/opengl_context.hpp>
 #include <teserra/platform/window.hpp>
+#include <teserra/rhi/validation.hpp>
 
 #include "gl_debug.hpp"
 #include "gl_format.hpp"
@@ -59,6 +60,8 @@ GlDevice::~GlDevice() {
     }
     m_textures.forEach(
         [&](TextureHandle /*handle*/, const GlTexture& texture) { m_gl.DeleteTextures(1, &texture.name); });
+    m_buffers.forEach(
+        [&](BufferHandle /*handle*/, const GlBuffer& buffer) { m_gl.DeleteBuffers(1, &buffer.name); });
 }
 
 Result<void> GlDevice::initialize(const DeviceDesc& desc, platform::Window& window) {
@@ -75,6 +78,7 @@ Result<void> GlDevice::initialize(const DeviceDesc& desc, platform::Window& wind
                     glString(m_gl, GL_RENDERER));
     }
     TESERRA_TRY(queryLimits());
+    m_validate = desc.enableValidation;
 
     if (desc.enableBackendDebug) {
         // Synchronous output logs a message while the call that caused it is still on the stack.
@@ -152,13 +156,110 @@ i32 GlDevice::getInteger(GLenum name) const {
 }
 
 // ---------------------------------------------------------------------------------------------------------
-// Resources: created by the OpenGL backend from iteration 5 on.
+// Buffers: immutable storage, persistently mapped when the CPU accesses them.
 
 Result<BufferHandle> GlDevice::createBuffer(const BufferDesc& desc) {
-    // TODO(#32): buffers
-    return fail(ErrorCode::Unsupported, Module::Rhi, "The OpenGL backend cannot create buffers yet ('{}')",
-                desc.debugName);
+    requireContextThread();
+    if (m_validate) {
+        validateBufferDesc(desc);
+    }
+    // Coherent mappings make CPU writes visible to later GPU commands, and GPU writes visible to the CPU
+    // once the commands have completed, without barriers.
+    GLbitfield access = 0;
+    GLbitfield storage = 0;
+    switch (desc.memory) {
+        case MemoryLocation::GpuOnly:
+            storage = GL_DYNAMIC_STORAGE_BIT; // for writeBuffer()
+            break;
+        case MemoryLocation::Upload:
+            access = GL_MAP_WRITE_BIT | GL_MAP_PERSISTENT_BIT | GL_MAP_COHERENT_BIT;
+            storage = access;
+            break;
+        case MemoryLocation::Readback:
+            access = GL_MAP_READ_BIT | GL_MAP_PERSISTENT_BIT | GL_MAP_COHERENT_BIT;
+            storage = access | GL_CLIENT_STORAGE_BIT; // cached memory for the CPU to read
+            break;
+    }
+
+    GLuint name = 0;
+    m_gl.CreateBuffers(1, &name);
+    m_gl.NamedBufferStorage(name, static_cast<GLsizeiptr>(desc.sizeInBytes), nullptr, storage);
+    if (m_gl.GetError() == GL_OUT_OF_MEMORY) {
+        m_gl.DeleteBuffers(1, &name);
+        return fail(ErrorCode::OutOfMemory, Module::Rhi, "Out of GPU memory for buffer '{}' ({} bytes)",
+                    desc.debugName, desc.sizeInBytes);
+    }
+    void* mapped = nullptr;
+    if (access != 0) {
+        mapped = m_gl.MapNamedBufferRange(name, 0, static_cast<GLsizeiptr>(desc.sizeInBytes), access);
+        if (mapped == nullptr) {
+            m_gl.DeleteBuffers(1, &name);
+            return fail(ErrorCode::DeviceFailure, Module::Rhi, "Could not map buffer '{}' ({} bytes)",
+                        desc.debugName, desc.sizeInBytes);
+        }
+    }
+    if (!desc.debugName.empty()) {
+        m_gl.ObjectLabel(GL_BUFFER, name, static_cast<GLsizei>(desc.debugName.size()), desc.debugName.data());
+    }
+    return m_buffers.create(GlBuffer{
+        .name = name,
+        .size = desc.sizeInBytes,
+        .usage = desc.usage,
+        .memory = desc.memory,
+        .mapped = static_cast<std::byte*>(mapped),
+        .debugName = std::string(desc.debugName),
+    });
 }
+
+void GlDevice::destroy(BufferHandle handle) {
+    if (handle.isNull()) {
+        return;
+    }
+    requireContextThread();
+    const GlBuffer* buffer = m_buffers.tryGet(handle);
+    TESERRA_ASSERT(buffer != nullptr, "Destroying buffer {}, which is not alive", handle);
+    if (buffer == nullptr) {
+        return;
+    }
+    // Deleting also unmaps; GL keeps the storage until the submitted commands that use it have completed.
+    m_gl.DeleteBuffers(1, &buffer->name);
+    m_buffers.destroy(handle);
+}
+
+void GlDevice::writeBuffer(BufferHandle handle, u64 offset, std::span<const std::byte> data) {
+    requireContextThread();
+    const GlBuffer* buffer = m_buffers.tryGet(handle);
+    TESERRA_ASSERT(buffer != nullptr, "writeBuffer to buffer {}, which is not alive", handle);
+    if (buffer == nullptr) {
+        return;
+    }
+    if (m_validate) {
+        validateWriteBuffer(buffer->desc(), offset, data.size());
+    }
+    if (!data.empty()) {
+        // GL orders it after the commands already replayed and before later ones.
+        m_gl.NamedBufferSubData(buffer->name, static_cast<GLintptr>(offset),
+                                static_cast<GLsizeiptr>(data.size()), data.data());
+    }
+}
+
+std::span<std::byte> GlDevice::map(BufferHandle handle) {
+    const GlBuffer* buffer = m_buffers.tryGet(handle);
+    TESERRA_ASSERT(buffer != nullptr, "map() of buffer {}, which is not alive", handle);
+    if (buffer == nullptr) {
+        return {};
+    }
+    if (m_validate) {
+        validateMapBuffer(buffer->desc());
+    }
+    if (buffer->mapped == nullptr) {
+        return {};
+    }
+    return {buffer->mapped, static_cast<usize>(buffer->size)};
+}
+
+// ---------------------------------------------------------------------------------------------------------
+// Other resources: created by the OpenGL backend from iteration 5 on.
 
 Result<TextureHandle> GlDevice::createTexture(const TextureDesc& desc) {
     // TODO(#49): textures
@@ -184,11 +285,7 @@ Result<GraphicsPipelineHandle> GlDevice::createGraphicsPipeline(const GraphicsPi
                 "The OpenGL backend cannot create graphics pipelines yet ('{}')", desc.debugName);
 }
 
-// Nothing can be created yet, so only null handles can be destroyed.
-void GlDevice::destroy(BufferHandle handle) {
-    TESERRA_ASSERT(handle.isNull(), "Destroying buffer {}, which this device did not create", handle);
-}
-
+// Nothing else can be created yet, so only null handles can be destroyed.
 void GlDevice::destroy(TextureHandle handle) {
     TESERRA_ASSERT(handle.isNull(), "Destroying texture {}, which this device did not create", handle);
 }
@@ -281,14 +378,31 @@ void GlDevice::replay(const CommandList& commands) {
             case CommandType::PopDebugGroup:
                 m_gl.PopDebugGroup();
                 break;
+            case CommandType::CopyBuffer:
+                copyBuffer(command.as<CopyBufferCommand>().copy);
+                break;
             default:
-                // Pipelines, buffers and bind groups cannot be created yet (#32 to #35, #42), so these
-                // commands can only carry handles this device never gave out.
+                // Draws and their bindings follow with pipelines (#34, #35), bind groups with #42 and
+                // texture copies with textures (#49).
                 TESERRA_ASSERT(false, "The OpenGL backend cannot replay {} commands yet",
                                commandTypeName(command.type()));
                 break;
         }
     }
+}
+
+void GlDevice::copyBuffer(const BufferCopy& copy) {
+    const GlBuffer* source = m_buffers.tryGet(copy.source);
+    const GlBuffer* destination = m_buffers.tryGet(copy.destination);
+    TESERRA_ASSERT(source != nullptr, "copyBuffer reads buffer {}, which is not alive", copy.source);
+    TESERRA_ASSERT(destination != nullptr, "copyBuffer writes buffer {}, which is not alive",
+                   copy.destination);
+    if (source == nullptr || destination == nullptr) {
+        return;
+    }
+    m_gl.CopyNamedBufferSubData(source->name, destination->name, static_cast<GLintptr>(copy.sourceOffset),
+                                static_cast<GLintptr>(copy.destinationOffset),
+                                static_cast<GLsizeiptr>(copy.size));
 }
 
 void GlDevice::beginRenderPass(const RenderPassDesc& pass) {

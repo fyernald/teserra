@@ -67,6 +67,8 @@ public:
     void destroy(SamplerHandle /*handle*/) override {}
     void destroy(ShaderModuleHandle /*handle*/) override {}
     void destroy(GraphicsPipelineHandle /*handle*/) override {}
+    void writeBuffer(BufferHandle /*buffer*/, u64 /*offset*/, std::span<const std::byte> /*data*/) override {}
+    [[nodiscard]] std::span<std::byte> map(BufferHandle /*buffer*/) override { return {}; }
 
     void beginFrame() override {}
     void endFrame() override {}

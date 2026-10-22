@@ -2,8 +2,9 @@
 
 // A fake OpenGL driver for tests without a GPU. FakeGlContext::getProcAddress() returns the fake functions
 // below, which, like a real driver, act on the context made current last on the calling thread: they report
-// its version, strings, extensions and limits, hand out object names, and record what the device does as a
-// log of calls ("ClearNamedFramebufferfv(1, GL_COLOR, 0, 0.1 0.2 0.3 1)") that tests compare.
+// its version, strings, extensions and limits, hand out object names, keep buffer contents, and record what
+// the device does as a log of calls ("ClearNamedFramebufferfv(1, GL_COLOR, 0, 0.1 0.2 0.3 1)") that tests
+// compare.
 
 #include <teserra/core/math.hpp>
 #include <teserra/platform/opengl_context.hpp>
@@ -11,6 +12,9 @@
 
 #include <glad/gl.h>
 
+#include <array>
+#include <cstddef>
+#include <cstring>
 #include <format>
 #include <map>
 #include <set>
@@ -46,7 +50,13 @@ struct FakeGlState {
     int finishCalls = 0;
     std::set<GLuint> liveTextures{};
     std::set<GLuint> liveFramebuffers{};
+    /// The storage of each live buffer.
+    std::map<GLuint, std::vector<std::byte>> buffers{};
     GLuint lastName = 0;
+    /// What the next glGetError() returns, e.g. GL_OUT_OF_MEMORY.
+    GLenum nextError = GL_NO_ERROR;
+    /// glMapNamedBufferRange() returns null.
+    bool failMapping = false;
 };
 
 namespace fake_gl {
@@ -59,6 +69,7 @@ inline std::string name(GLenum value) {
     static const std::map<GLenum, std::string_view> kNames{
         {GL_TEXTURE_2D, "GL_TEXTURE_2D"},
         {GL_TEXTURE, "GL_TEXTURE"},
+        {GL_BUFFER, "GL_BUFFER"},
         {GL_SRGB8_ALPHA8, "GL_SRGB8_ALPHA8"},
         {GL_RGBA8, "GL_RGBA8"},
         {GL_RGBA16F, "GL_RGBA16F"},
@@ -79,6 +90,26 @@ inline std::string name(GLenum value) {
     };
     const auto found = kNames.find(value);
     return found != kNames.end() ? std::string(found->second) : std::format("0x{:X}", value);
+}
+
+// GL_*_BIT flags of buffer storage and mapping, e.g. "GL_MAP_READ_BIT|GL_MAP_PERSISTENT_BIT".
+inline std::string bufferFlags(GLbitfield flags) {
+    static const std::array<std::pair<GLbitfield, std::string_view>, 6> kBits{{
+        {GL_DYNAMIC_STORAGE_BIT, "GL_DYNAMIC_STORAGE_BIT"},
+        {GL_MAP_READ_BIT, "GL_MAP_READ_BIT"},
+        {GL_MAP_WRITE_BIT, "GL_MAP_WRITE_BIT"},
+        {GL_MAP_PERSISTENT_BIT, "GL_MAP_PERSISTENT_BIT"},
+        {GL_MAP_COHERENT_BIT, "GL_MAP_COHERENT_BIT"},
+        {GL_CLIENT_STORAGE_BIT, "GL_CLIENT_STORAGE_BIT"},
+    }};
+    std::string text;
+    for (const auto& [bit, bitName] : kBits) {
+        if ((flags & bit) != 0U) {
+            text += text.empty() ? "" : "|";
+            text += bitName;
+        }
+    }
+    return text.empty() ? "0" : text;
 }
 
 inline void log(std::string call) {
@@ -168,6 +199,10 @@ inline void GLAD_API_PTR debugMessageControl(GLenum source, GLenum type, GLenum 
                     enabled != 0U ? "on" : "off"));
 }
 
+inline GLenum GLAD_API_PTR getError() {
+    return std::exchange(current->nextError, static_cast<GLenum>(GL_NO_ERROR));
+}
+
 inline void GLAD_API_PTR finish() {
     ++current->finishCalls;
 }
@@ -217,6 +252,49 @@ inline void GLAD_API_PTR deleteTextures(GLsizei count, const GLuint* textures) {
     for (GLsizei i = 0; i < count; ++i) {
         current->liveTextures.erase(textures[i]);
         log(std::format("DeleteTextures({})", textures[i]));
+    }
+}
+
+// Buffers
+
+inline void GLAD_API_PTR createBuffers(GLsizei count, GLuint* buffers) {
+    for (GLsizei i = 0; i < count; ++i) {
+        buffers[i] = ++current->lastName;
+        current->buffers[buffers[i]];
+        log(std::format("CreateBuffers() = {}", buffers[i]));
+    }
+}
+
+inline void GLAD_API_PTR namedBufferStorage(GLuint buffer, GLsizeiptr size, const void* /*data*/,
+                                            GLbitfield flags) {
+    current->buffers.at(buffer).assign(static_cast<std::size_t>(size), std::byte{0});
+    log(std::format("NamedBufferStorage({}, {}, {})", buffer, size, bufferFlags(flags)));
+}
+
+inline void* GLAD_API_PTR mapNamedBufferRange(GLuint buffer, GLintptr offset, GLsizeiptr length,
+                                              GLbitfield access) {
+    log(std::format("MapNamedBufferRange({}, {}, {}, {})", buffer, offset, length, bufferFlags(access)));
+    return current->failMapping ? nullptr : current->buffers.at(buffer).data() + offset;
+}
+
+inline void GLAD_API_PTR namedBufferSubData(GLuint buffer, GLintptr offset, GLsizeiptr size,
+                                            const void* data) {
+    std::memcpy(current->buffers.at(buffer).data() + offset, data, static_cast<std::size_t>(size));
+    log(std::format("NamedBufferSubData({}, {}, {})", buffer, offset, size));
+}
+
+inline void GLAD_API_PTR copyNamedBufferSubData(GLuint source, GLuint destination, GLintptr sourceOffset,
+                                                GLintptr destinationOffset, GLsizeiptr size) {
+    std::memcpy(current->buffers.at(destination).data() + destinationOffset,
+                current->buffers.at(source).data() + sourceOffset, static_cast<std::size_t>(size));
+    log(std::format("CopyNamedBufferSubData({} -> {}, {} -> {}, {})", source, destination, sourceOffset,
+                    destinationOffset, size));
+}
+
+inline void GLAD_API_PTR deleteBuffers(GLsizei count, const GLuint* buffers) {
+    for (GLsizei i = 0; i < count; ++i) {
+        current->buffers.erase(buffers[i]);
+        log(std::format("DeleteBuffers({})", buffers[i]));
     }
 }
 
@@ -300,6 +378,7 @@ public:
             {"glClipControl", reinterpret_cast<platform::GlProc>(&fake_gl::clipControl)},
             {"glDebugMessageCallback", reinterpret_cast<platform::GlProc>(&fake_gl::debugMessageCallback)},
             {"glDebugMessageControl", reinterpret_cast<platform::GlProc>(&fake_gl::debugMessageControl)},
+            {"glGetError", reinterpret_cast<platform::GlProc>(&fake_gl::getError)},
             {"glFinish", reinterpret_cast<platform::GlProc>(&fake_gl::finish)},
             {"glViewportIndexedf", reinterpret_cast<platform::GlProc>(&fake_gl::viewportIndexedf)},
             {"glDepthRangef", reinterpret_cast<platform::GlProc>(&fake_gl::depthRangef)},
@@ -310,6 +389,13 @@ public:
             {"glTextureStorage2D", reinterpret_cast<platform::GlProc>(&fake_gl::textureStorage2D)},
             {"glObjectLabel", reinterpret_cast<platform::GlProc>(&fake_gl::objectLabel)},
             {"glDeleteTextures", reinterpret_cast<platform::GlProc>(&fake_gl::deleteTextures)},
+            {"glCreateBuffers", reinterpret_cast<platform::GlProc>(&fake_gl::createBuffers)},
+            {"glNamedBufferStorage", reinterpret_cast<platform::GlProc>(&fake_gl::namedBufferStorage)},
+            {"glMapNamedBufferRange", reinterpret_cast<platform::GlProc>(&fake_gl::mapNamedBufferRange)},
+            {"glNamedBufferSubData", reinterpret_cast<platform::GlProc>(&fake_gl::namedBufferSubData)},
+            {"glCopyNamedBufferSubData",
+             reinterpret_cast<platform::GlProc>(&fake_gl::copyNamedBufferSubData)},
+            {"glDeleteBuffers", reinterpret_cast<platform::GlProc>(&fake_gl::deleteBuffers)},
             {"glCreateFramebuffers", reinterpret_cast<platform::GlProc>(&fake_gl::createFramebuffers)},
             {"glNamedFramebufferTexture",
              reinterpret_cast<platform::GlProc>(&fake_gl::namedFramebufferTexture)},

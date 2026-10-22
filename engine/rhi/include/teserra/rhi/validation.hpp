@@ -18,6 +18,13 @@ namespace teserra::rhi {
 /// A size above 0, a usage, and Readback memory only for copy destinations.
 void validateBufferDesc(const BufferDesc& desc);
 
+/// For Device::writeBuffer(): BufferUsage::CopyDst, GpuOnly memory, and `size` bytes from `offset` inside the
+/// buffer.
+void validateWriteBuffer(const BufferDesc& desc, u64 offset, u64 size);
+
+/// For Device::map(): Upload or Readback memory.
+void validateMapBuffer(const BufferDesc& desc);
+
 /// A defined format, a size from 1 to the device's limits, mip levels that fit the size, DepthStencil usage
 /// exactly for depth formats, and 6 layers for a cube.
 void validateTextureDesc(const TextureDesc& desc, const DeviceLimits& limits);

@@ -26,6 +26,23 @@ void validateBufferDesc(const BufferDesc& desc) {
                    desc.debugName);
 }
 
+void validateWriteBuffer(const BufferDesc& desc, u64 offset, u64 size) {
+    TESERRA_ASSERT(hasAll(desc.usage, BufferUsage::CopyDst),
+                   "writeBuffer to buffer '{}', created without BufferUsage::CopyDst", desc.debugName);
+    TESERRA_ASSERT(desc.memory == MemoryLocation::GpuOnly,
+                   "writeBuffer to buffer '{}', which is not GpuOnly; write Upload buffers through map()",
+                   desc.debugName);
+    TESERRA_ASSERT(offset <= desc.sizeInBytes && size <= desc.sizeInBytes - offset,
+                   "writeBuffer of {} bytes at offset {} is outside buffer '{}' ({} bytes)", size, offset,
+                   desc.debugName, desc.sizeInBytes);
+}
+
+void validateMapBuffer(const BufferDesc& desc) {
+    TESERRA_ASSERT(desc.memory != MemoryLocation::GpuOnly,
+                   "map() of buffer '{}', which is GpuOnly; only Upload and Readback buffers are mapped",
+                   desc.debugName);
+}
+
 void validateTextureDesc(const TextureDesc& desc, const DeviceLimits& limits) {
     TESERRA_ASSERT(desc.format != Format::Undefined, "Texture '{}' has no format", desc.debugName);
     TESERRA_ASSERT(desc.width > 0 && desc.height > 0 && desc.depthOrLayers > 0,

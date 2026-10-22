@@ -99,6 +99,11 @@ public:
     void destroy(ShaderModuleHandle handle) override;
     void destroy(GraphicsPipelineHandle handle) override;
 
+    /// Copies into the buffer's CPU memory (bufferData()).
+    void writeBuffer(BufferHandle buffer, u64 offset, std::span<const std::byte> data) override;
+    /// The buffer's CPU memory. Copy commands are validated but not executed, so the GPU never writes it.
+    [[nodiscard]] std::span<std::byte> map(BufferHandle buffer) override;
+
     /// Starts a frame and forgets the lists submitted in the previous one (submitted()).
     void beginFrame() override;
     void endFrame() override;
@@ -129,6 +134,9 @@ public:
     [[nodiscard]] const SamplerDesc* sampler(SamplerHandle handle) const noexcept;
     [[nodiscard]] const ShaderModuleDesc* shaderModule(ShaderModuleHandle handle) const noexcept;
     [[nodiscard]] const GraphicsPipelineDesc* graphicsPipeline(GraphicsPipelineHandle handle) const noexcept;
+    /// The memory of a buffer, zero-initialized at creation and written by writeBuffer() and through map();
+    /// empty if the handle is not alive.
+    [[nodiscard]] std::span<const std::byte> bufferData(BufferHandle handle) const noexcept;
 
 private:
     friend class NullSwapchain;
@@ -141,6 +149,7 @@ private:
         std::string debugName;
         std::string entryPoint;
         std::vector<std::byte> blob;
+        std::vector<std::byte> data; // a buffer's memory
         std::vector<VertexBufferLayout> vertexBuffers;
         std::vector<VertexAttribute> vertexAttributes;
     };
