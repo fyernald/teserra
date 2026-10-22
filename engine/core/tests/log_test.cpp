@@ -1,9 +1,9 @@
 #include <teserra/core/log.hpp>
 
-#include "log_capture.hpp"
+#include <teserra/test/assert.hpp>
+#include <teserra/test/log_capture.hpp>
+
 #include <catch2/catch_test_macros.hpp>
-#include <catch2/reporters/catch_reporter_event_listener.hpp>
-#include <catch2/reporters/catch_reporter_registrars.hpp>
 
 #include <chrono>
 #include <filesystem>
@@ -17,18 +17,6 @@
 using namespace teserra;
 
 namespace {
-
-// Tests observe logging through callback sinks; console output would only add noise to test reports.
-class QuietLogListener final : public Catch::EventListenerBase {
-public:
-    using Catch::EventListenerBase::EventListenerBase;
-
-    void testRunStarting(const Catch::TestRunInfo& /*testRunInfo*/) override {
-        log::LogConfig config;
-        config.console = false;
-        static_cast<void>(log::configure(config));
-    }
-};
 
 // Sets the runtime level of every category for one test and restores the build's default afterwards.
 class ScopedLevel {
@@ -46,8 +34,6 @@ struct Extent {
 };
 
 } // namespace
-
-CATCH_REGISTER_LISTENER(QuietLogListener)
 
 template <>
 struct std::formatter<Extent> : std::formatter<std::string_view> {
@@ -286,3 +272,9 @@ TEST_CASE("log: configure reports a log file that cannot be opened", "[core][log
     CHECK(capture.records()[0].level == LogLevel::Error);
     CHECK(capture.records()[0].message.starts_with("Cannot open log file"));
 }
+
+#if TESERRA_ENABLE_ASSERTS
+TEST_CASE("log: a CallbackSink without a callback is an assertion failure", "[core][log]") {
+    REQUIRE_ASSERTS(log::CallbackSink(log::CallbackSink::Callback{}));
+}
+#endif

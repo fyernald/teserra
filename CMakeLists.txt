@@ -30,6 +30,9 @@ include(TeserraModule)
 option(TESERRA_BUILD_TESTS "Build unit, integration and GPU test executables" ${PROJECT_IS_TOP_LEVEL})
 option(TESERRA_BUILD_EXAMPLES "Build the examples in examples/" ${PROJECT_IS_TOP_LEVEL})
 option(TESERRA_WARNINGS_AS_ERRORS "Treat compiler warnings as errors (/WX, -Werror)" OFF)
+set(TESERRA_ENABLE_ASSERTS "DEFAULT" CACHE STRING
+    "Check TESERRA_ASSERT: DEFAULT (Debug and RelWithDebInfo builds), ON or OFF")
+set_property(CACHE TESERRA_ENABLE_ASSERTS PROPERTY STRINGS DEFAULT ON OFF)
 
 if(TESERRA_BUILD_TESTS)
     enable_testing()

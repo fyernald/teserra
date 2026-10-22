@@ -37,7 +37,7 @@ CMakeLists.txt                 # project(), options, add_subdirectory(engine/...
 cmake/TeserraModule.cmake      # teserra_add_module(), teserra_link_third_party(), layer check
 cmake/TeserraWarnings.cmake    # teserra_set_warnings(<target>) per compiler
 cmake/TeserraShaders.cmake     # teserra_add_shaders(<target> SOURCES ...)
-cmake/TeserraTesting.cmake     # teserra_add_test(), teserra_add_header_check(), teserra_add_compile_fail_test()
+cmake/TeserraTesting.cmake     # teserra_add_test(), _header_check(), _compile_fail_test(), _abort_test()
 cmake/TeserraChecks.cmake      # format, format-check and check targets (tools/scripts/*.py)
 cmake/TeserraToolchain.cmake   # toolchain used by the presets: checks VCPKG_ROOT, includes vcpkg
 engine/<module>/CMakeLists.txt # one module = one target
@@ -51,7 +51,7 @@ engine/<module>/CMakeLists.txt # one module = one target
 | `TESERRA_BUILD_EXAMPLES` | `ON` (top-level project) | `examples/*` |
 | `TESERRA_BUILD_BENCHMARKS` | `OFF` | `benchmarks/*` |
 | `TESERRA_WARNINGS_AS_ERRORS` | `OFF` locally, `ON` in CI presets | `/WX` / `-Werror` |
-| `TESERRA_ENABLE_ASSERTS` | `ON` for Debug/RelWithDebInfo | `TESERRA_ASSERT` active |
+| `TESERRA_ENABLE_ASSERTS` | `DEFAULT` (on for Debug/RelWithDebInfo) | `TESERRA_ASSERT` active; `ON` / `OFF` force it for every configuration |
 | `TESERRA_ENABLE_PROFILING` | `OFF` | Tracy instrumentation |
 | `TESERRA_RHI_OPENGL` | `ON` | OpenGL backend |
 | `TESERRA_RHI_VULKAN` | `OFF` | Future Vulkan backend |

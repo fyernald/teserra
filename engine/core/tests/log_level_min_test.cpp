@@ -3,8 +3,8 @@
 #define TESERRA_LOG_LEVEL_MIN TESERRA_LOG_LEVEL_WARN
 
 #include <teserra/core/log.hpp>
+#include <teserra/test/log_capture.hpp>
 
-#include "log_capture.hpp"
 #include <catch2/catch_test_macros.hpp>
 
 using teserra::LogCategory;

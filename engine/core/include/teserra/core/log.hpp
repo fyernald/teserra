@@ -135,7 +135,7 @@ class CallbackSink {
 public:
     using Callback = std::function<void(const LogRecord&)>;
 
-    /// Starts delivering messages to `callback`, which must not be empty.
+    /// Starts delivering messages to `callback`, which must not be empty (asserted).
     explicit CallbackSink(Callback callback);
     ~CallbackSink();
 
