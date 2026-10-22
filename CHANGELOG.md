@@ -32,4 +32,5 @@ All notable user-visible changes to Teserra are documented here. The format foll
 ### Changed
 
 - `teserra_engine` declares `core` in `DEPENDS`, which it includes directly.
+- Descriptor and config structs give every field a default, so they can be created with partial designated initializers without Clang warnings: `App app{{.title = "Game", .args = {argc, argv}}}`, `app.run({.update = ...})`. `AppCallbacks` members and `LogConfig::filePath` gained `{}` defaults; the `window_input` example and the App tests use the style.
 - The repository is now `fyernald/teserra` (clone with `git clone https://github.com/fyernald/teserra.git`); links are updated and old `fyernald/tessera` URLs redirect. The project name stays Teserra.

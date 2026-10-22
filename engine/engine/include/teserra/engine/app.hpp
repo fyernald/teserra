@@ -48,7 +48,7 @@ struct AppConfig {
     u32 maxFixedStepsPerFrame = platform::FixedStepAccumulator::kDefaultMaxStepsPerFrame;
     /// Number of frames after which run() returns; 0 runs until quit() or the window closes.
     u64 maxFrames = 0;
-    CommandLine args;
+    CommandLine args{};
 };
 
 class App;
@@ -57,11 +57,11 @@ class App;
 /// optional.
 struct AppCallbacks {
     /// Called for every event of the frame, after App::input() has processed it.
-    std::function<void(App& app, const platform::Event& event)> onEvent;
+    std::function<void(App& app, const platform::Event& event)> onEvent{};
     /// Called zero or more times per frame, once per fixed step of `stepSeconds`.
-    std::function<void(App& app, f32 stepSeconds)> fixedUpdate;
+    std::function<void(App& app, f32 stepSeconds)> fixedUpdate{};
     /// Called once per frame with the frame's real time.
-    std::function<void(App& app, f32 deltaSeconds)> update;
+    std::function<void(App& app, f32 deltaSeconds)> update{};
 };
 
 /// Owns the platform, the window and the per-frame services, and runs the main loop. Not a singleton:
@@ -69,14 +69,8 @@ struct AppCallbacks {
 /// destroyed on the main thread.
 ///
 ///     int main(int argc, char** argv) {
-///         engine::AppConfig config;
-///         config.title = "Game";
-///         config.args = {argc, argv};
-///         engine::App app{config};
-///
-///         engine::AppCallbacks callbacks;
-///         callbacks.update = [](engine::App& app, f32 deltaSeconds) { ... };
-///         return app.run(callbacks);
+///         engine::App app{{.title = "Game", .args = {argc, argv}}};
+///         return app.run({.update = [](engine::App& app, f32 deltaSeconds) { ... }});
 ///     }
 ///
 /// Construction creates the services in dependency order; destruction releases them in reverse. A

@@ -104,7 +104,7 @@ struct LogConfig {
     /// Colored output on stdout.
     bool console = true;
     /// Rotating log file; empty for none. Missing directories are created.
-    std::filesystem::path filePath;
+    std::filesystem::path filePath{};
     /// Size at which the file is rotated (renamed to <name>.1.<ext>) and a new one is started.
     usize maxFileSize = usize{5} * 1024 * 1024;
     /// Number of rotated files kept next to the current one.
