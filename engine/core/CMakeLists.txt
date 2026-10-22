@@ -2,6 +2,8 @@ teserra_add_module(core LAYER 0
     PUBLIC_HEADERS
         include/teserra/core/assert.hpp
         include/teserra/core/config.hpp
+        include/teserra/core/handle.hpp
+        include/teserra/core/handle_pool.hpp
         include/teserra/core/log.hpp
         include/teserra/core/math.hpp
         include/teserra/core/profile.hpp
