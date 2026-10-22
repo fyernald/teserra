@@ -227,6 +227,20 @@ TEST_CASE("Null backend: buffers have memory that writeBuffer and map() reach", 
     CHECK(device->bufferData(vertices).empty());
 }
 
+TEST_CASE("Null backend: shader modules keep temporary GLSL blobs readable", "[rhi_null]") {
+    const auto device = null::createHeadlessDevice();
+    constexpr std::string_view kSource = "#version 450 core\nvoid main() {}\n";
+    ShaderModuleHandle shader;
+    {
+        const std::vector<std::byte> blob = temporaryGlslBlob(kSource);
+        shader = *device->createShaderModule({.blob = blob});
+    }
+
+    const ShaderModuleDesc* desc = device->shaderModule(shader);
+    REQUIRE(desc != nullptr);
+    CHECK(temporaryGlslSource(desc->blob) == kSource);
+}
+
 #if TESERRA_ENABLE_ASSERTS
 TEST_CASE("Null backend: writeBuffer and map() are validated", "[rhi_null][validation]") {
     const auto device = null::createHeadlessDevice({.enableValidation = true});
