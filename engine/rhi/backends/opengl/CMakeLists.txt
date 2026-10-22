@@ -13,6 +13,8 @@ teserra_add_module(rhi_opengl LAYER 3
     SOURCES
         src/gl_debug.cpp
         src/gl_device.cpp
+        src/gl_format.cpp
+        src/gl_swapchain.cpp
         src/opengl_backend.cpp
 )
 teserra_link_third_party(rhi_opengl PRIVATE teserra_glad)

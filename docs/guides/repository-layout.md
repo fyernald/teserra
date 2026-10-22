@@ -29,7 +29,7 @@ teserra/
 ├── tools/
 │   ├── shaderc/                # teserra_shaderc host tool (GLSL -> SPIR-V -> GL GLSL + reflection)
 │   └── scripts/                # check_format, check_layers, check_gl_leaks (used by CI)
-├── examples/                   # One directory per runnable example (hello, window_input, rhi_triangle, ...)
+├── examples/                   # One directory per runnable example (hello, window_input, rhi_clear, rhi_triangle, ...)
 ├── tests/                      # Cross-module integration tests, GPU tests, golden images
 │   ├── integration/
 │   ├── gpu/

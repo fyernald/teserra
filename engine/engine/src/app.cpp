@@ -3,13 +3,17 @@
 #include <teserra/core/assert.hpp>
 #include <teserra/core/log.hpp>
 #include <teserra/core/profile.hpp>
-#include <teserra/platform/opengl_context.hpp>
+
+#if TESERRA_HAS_RHI_OPENGL
+#include <teserra/rhi_opengl/opengl_backend.hpp>
+#endif
 
 #include <charconv>
 #include <string_view>
 #include <system_error>
 #include <utility>
 #include <variant>
+#include <vector>
 
 namespace teserra::engine {
 
@@ -37,6 +41,20 @@ Result<void> applyCommandLine(AppConfig& config) {
         }
     }
     return {};
+}
+
+// The RHI backends this build includes (CMake options TESERRA_RHI_*), for rhi::createDevice().
+std::vector<rhi::BackendFactory> compiledBackends() {
+    std::vector<rhi::BackendFactory> backends;
+#if TESERRA_HAS_RHI_OPENGL
+    backends.push_back(rhi::opengl::backendFactory());
+#endif
+    return backends;
+}
+
+// The graphics context a window needs for `backend`.
+platform::GraphicsApi graphicsApiFor(const std::optional<rhi::Backend>& backend) noexcept {
+    return backend == rhi::Backend::OpenGL ? platform::GraphicsApi::OpenGL : platform::GraphicsApi::None;
 }
 
 } // namespace
@@ -74,11 +92,16 @@ Result<void> App::initialize(Result<std::unique_ptr<platform::Platform>> platfor
                                      .size = m_config.windowSize,
                                      .resizable = m_config.resizable,
                                      .visible = m_config.windowVisible,
-                                     .graphicsApi = m_config.graphicsApi,
+                                     .graphicsApi = graphicsApiFor(m_config.backend),
                                  }));
 
-    if (platform::OpenGlContext* context = m_window->openGlContext()) {
-        context->setSwapInterval(m_config.vsync ? 1 : 0);
+    if (m_config.backend) {
+        const rhi::DeviceDesc desc{
+            .backend = *m_config.backend,
+            .swapchain = {.presentMode =
+                              m_config.vsync ? rhi::PresentMode::Fifo : rhi::PresentMode::Immediate},
+        };
+        TESERRA_TRY_ASSIGN(m_device, rhi::createDevice(desc, m_window.get(), compiledBackends()));
     }
     return {};
 }
@@ -117,6 +140,11 @@ void App::runFrame(const AppCallbacks& callbacks) {
         if (std::holds_alternative<platform::WindowCloseRequested>(event) && !m_quitting) {
             quit();
         }
+        if (const auto* resized = std::get_if<platform::WindowResized>(&event)) {
+            if (rhi::Swapchain* swapchain = m_device ? m_device->swapchain() : nullptr) {
+                swapchain->resize(resized->framebufferSize);
+            }
+        }
     }
 
     m_frameTimer.tick(m_platform->clock().now());
@@ -137,14 +165,33 @@ void App::runFrame(const AppCallbacks& callbacks) {
         callbacks.update(*this, m_frameTimer.deltaSeconds());
     }
 
-    present();
+    render(callbacks);
 }
 
-void App::present() {
-    // Placeholder until the RHI swapchain presents (#28). With vsync, this is what paces the loop.
-    if (platform::OpenGlContext* context = m_window->openGlContext()) {
-        context->swapBuffers();
+void App::render(const AppCallbacks& callbacks) {
+    if (!m_device) {
+        return;
     }
+    rhi::Device& device = *m_device;
+    rhi::Swapchain* swapchain = device.swapchain();
+    device.beginFrame();
+    m_backbuffer = swapchain != nullptr ? swapchain->acquireNextImage() : rhi::TextureHandle{};
+    // Without an image (minimized window), there is nothing to render into or present this frame.
+    if (!m_backbuffer.isNull()) {
+        rhi::CommandList& commands = device.acquireCommandList();
+        if (callbacks.render) {
+            callbacks.render(*this, commands);
+        } else {
+            commands.beginRenderPass(
+                {.colorAttachments = {{.texture = m_backbuffer, .loadOp = rhi::LoadOp::Clear}}});
+            commands.endRenderPass();
+        }
+        device.submit(commands);
+        // With vsync, presenting is what paces the loop.
+        swapchain->present();
+    }
+    m_backbuffer = {};
+    device.endFrame();
 }
 
 void App::quit(int exitCode) noexcept {
@@ -160,6 +207,12 @@ platform::Platform& App::platform() {
 platform::Window& App::window() {
     TESERRA_ASSERT(isInitialized(), "The App failed to initialize: {}", *m_initError);
     return *m_window;
+}
+
+rhi::Device& App::device() {
+    TESERRA_ASSERT(isInitialized(), "The App failed to initialize: {}", *m_initError);
+    TESERRA_ASSERT(m_device != nullptr, "The App has no device: AppConfig::backend is std::nullopt");
+    return *m_device;
 }
 
 } // namespace teserra::engine

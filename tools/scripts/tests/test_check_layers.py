@@ -83,6 +83,19 @@ class CheckLayersTest(TreeTestCase):
             "add it to DEPENDS in engine/rhi/backends/opengl/CMakeLists.txt [layer-include]",
         ])
 
+    def test_optional_dependencies_count_as_dependencies(self) -> None:
+        self.write("engine/engine/CMakeLists.txt",
+                   "teserra_add_module(engine LAYER 6 DEPENDS core OPTIONAL_DEPENDS rhi SOURCES src/app.cpp)\n")
+        self.write("engine/engine/src/app.cpp", """
+            #include <teserra/core/types.hpp>
+            #include <teserra/rhi/device.hpp>
+            #include <teserra/platform/window.hpp>
+            """)
+        self.assertEqual([violation.split(": error: ")[1] for violation in self.violations()], [
+            "module 'engine' includes <teserra/platform/window.hpp> but does not depend on 'platform'; "
+            "add it to DEPENDS in engine/engine/CMakeLists.txt [layer-include]",
+        ])
+
     def test_commented_out_includes_are_ignored(self) -> None:
         self.write("engine/core/src/log.cpp", """
             // #include <teserra/platform/window.hpp>

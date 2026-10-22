@@ -39,6 +39,10 @@ _teserra_add_layer_rule_test(rejects_same_layer
 _teserra_add_layer_rule_test(rejects_unknown_module
     EXPECT_OUTPUT "unknown module 'platform' in DEPENDS"
 )
+_teserra_add_layer_rule_test(optional_dependencies)
+_teserra_add_layer_rule_test(rejects_higher_optional_layer
+    EXPECT_OUTPUT "Layer violation: module 'platform' \\(layer 1\\) must not depend on module 'rhi' \\(layer 2\\)"
+)
 
 # Teserra consumed through add_subdirectory() keeps tests and examples off by default. A clean build
 # directory every time, so options cached by an earlier run cannot hide a changed default.

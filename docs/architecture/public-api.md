@@ -109,7 +109,7 @@ stateDiagram-v2
 ```
 
 - `AppConfig` covers window, vsync, fixed timestep, asset mount points, log levels and the RHI backend (default OpenGL).
-- Today (`teserra_engine`, iteration 3) `App` owns the platform and the window and runs the loop with `AppCallbacks` (`onEvent`, `fixedUpdate`, `update`) in place of scenes; `run(scene)` replaces them in iteration 10. `App` also accepts an injected `platform::Platform`, which is how tests run it headless with a `ManualClock`. The engine flags `--frames N` and `--hidden-window` in `AppConfig::args` are what example smoke runs use.
+- Today (`teserra_engine`, iteration 4) `App` owns the platform, the window and the `rhi::Device` (`AppConfig::backend`, default OpenGL; `std::nullopt` for no device) and runs the loop with `AppCallbacks` (`onEvent`, `fixedUpdate`, `update`, and `render`, which records into the frame's `rhi::CommandList` targeting `App::backbuffer()`) in place of scenes; `run(scene)` replaces them in iteration 10. The App submits the commands and presents; without `render`, it clears to black, and while the window is minimized it skips rendering. The backends the build includes are linked through `OPTIONAL_DEPENDS` and passed to `rhi::createDevice()`. `App` also accepts an injected `platform::Platform`, which is how tests run it headless with a `ManualClock`. The engine flags `--frames N` and `--hidden-window` in `AppConfig::args` are what example smoke runs use.
 - Failure during initialization (no GL 4.5 support, missing asset directory) returns a non-zero exit code from `run()` after logging a clear message; it does not throw.
 
 ## Advanced use

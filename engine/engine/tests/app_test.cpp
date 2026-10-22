@@ -23,7 +23,7 @@ using namespace std::chrono_literals;
 namespace {
 
 AppConfig headlessConfig() {
-    return {.title = "Headless test", .graphicsApi = platform::GraphicsApi::None};
+    return {.title = "Headless test", .backend = std::nullopt};
 }
 
 // An App on a headless platform; `headless` stays valid while the App lives.
@@ -181,6 +181,41 @@ TEST_CASE("App: services assert when initialization failed", "[engine][app]") {
 
     REQUIRE_ASSERTS(static_cast<void>(fixture.app.window()));
     REQUIRE_ASSERTS(static_cast<void>(fixture.app.platform()));
+    REQUIRE_ASSERTS(static_cast<void>(fixture.app.device()));
+}
+
+TEST_CASE("App: without a backend there is no device", "[engine][app]") {
+    HeadlessApp fixture;
+
+    REQUIRE(fixture.app.isInitialized());
+    REQUIRE_ASSERTS(static_cast<void>(fixture.app.device()));
+    CHECK(fixture.app.backbuffer().isNull());
+}
+#endif
+
+TEST_CASE("App: a backend the build does not include fails initialization", "[engine][app]") {
+    AppConfig config = headlessConfig();
+    config.backend = rhi::Backend::Vulkan;
+    HeadlessApp fixture{config};
+
+    REQUIRE_FALSE(fixture.app.isInitialized());
+    CHECK(fixture.app.initError()->code == ErrorCode::Unsupported);
+    CHECK(fixture.app.initError()->message == "The Vulkan backend is not part of this build");
+    CHECK(fixture.headless.lastWindowDesc().graphicsApi == platform::GraphicsApi::None);
+}
+
+#if TESERRA_HAS_RHI_OPENGL
+TEST_CASE("App: the OpenGL backend asks for an OpenGL window", "[engine][app]") {
+    AppConfig config = headlessConfig();
+    config.backend = rhi::Backend::OpenGL;
+    HeadlessApp fixture{config};
+
+    // The headless platform's windows have no context, so the device cannot be created on them.
+    CHECK(fixture.headless.lastWindowDesc().graphicsApi == platform::GraphicsApi::OpenGL);
+    REQUIRE_FALSE(fixture.app.isInitialized());
+    CHECK(fixture.app.initError()->code == ErrorCode::Unsupported);
+    CHECK(fixture.app.initError()->message ==
+          "The OpenGL backend needs a window created with GraphicsApi::OpenGL");
 }
 #endif
 

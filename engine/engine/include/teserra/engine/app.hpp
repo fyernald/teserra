@@ -12,6 +12,9 @@
 #include <teserra/platform/input.hpp>
 #include <teserra/platform/platform.hpp>
 #include <teserra/platform/window.hpp>
+#include <teserra/rhi/command_list.hpp>
+#include <teserra/rhi/device.hpp>
+#include <teserra/rhi/handles.hpp>
 
 #include <chrono>
 #include <functional>
@@ -37,11 +40,13 @@ struct AppConfig {
     UVec2 windowSize{1280, 720};
     bool resizable = true;
     bool windowVisible = true;
-    /// Wait for the display's vertical blank when presenting. Paces the loop when the window has an
-    /// OpenGL context.
+    /// Wait for the display's vertical blank when presenting (rhi::PresentMode::Fifo), which paces the
+    /// loop; false presents at once (Immediate).
     bool vsync = true;
-    /// OpenGL until the RHI chooses the backend (iteration 4); None for windows that are never presented.
-    platform::GraphicsApi graphicsApi = platform::GraphicsApi::OpenGL;
+    /// The GPU backend of the App's device. It must be compiled in (TESERRA_RHI_OPENGL, ...), or
+    /// initialization fails. std::nullopt runs without a device: the window gets no graphics context and
+    /// nothing is rendered or presented, e.g. for tests and tools.
+    std::optional<rhi::Backend> backend = rhi::Backend::OpenGL;
     /// Length of one fixedUpdate step.
     std::chrono::nanoseconds fixedStep = platform::FixedStepAccumulator::kDefaultStep;
     /// Fixed steps run at most per frame; the rest are dropped after a stall.
@@ -62,6 +67,9 @@ struct AppCallbacks {
     std::function<void(App& app, f32 stepSeconds)> fixedUpdate{};
     /// Called once per frame with the frame's real time.
     std::function<void(App& app, f32 deltaSeconds)> update{};
+    /// Records the frame's GPU work, after update(); the App submits it and presents App::backbuffer().
+    /// Not called while the window has no image (minimized). Without it, the App clears the image to black.
+    std::function<void(App& app, rhi::CommandList& commands)> render{};
 };
 
 /// Owns the platform, the window and the per-frame services, and runs the main loop. Not a singleton:
@@ -90,8 +98,8 @@ public:
     App& operator=(App&&) = delete;
 
     /// Runs frames until quit(), a close request or maxFrames:
-    /// events -> fixedUpdate x N -> update -> present. Returns the exit code given to quit() (0 by
-    /// default), or 1 at once if initialization failed.
+    /// events -> fixedUpdate x N -> update -> render -> submit and present. Returns the exit code given to
+    /// quit() (0 by default), or 1 at once if initialization failed.
     [[nodiscard]] int run(const AppCallbacks& callbacks = {});
 
     /// Ends run() after the current frame, which returns `exitCode`; the last call wins. A close
@@ -112,6 +120,11 @@ public:
     // Services; initialization must have succeeded (asserted).
     [[nodiscard]] platform::Platform& platform();
     [[nodiscard]] platform::Window& window();
+    /// The GPU device; AppConfig::backend must not be std::nullopt (asserted).
+    [[nodiscard]] rhi::Device& device();
+    /// The swapchain image of the current frame, to render into during AppCallbacks::render; a null handle
+    /// outside it.
+    [[nodiscard]] rhi::TextureHandle backbuffer() const noexcept { return m_backbuffer; }
     [[nodiscard]] const platform::Input& input() const noexcept { return m_input; }
     [[nodiscard]] const platform::FrameTimer& frameTimer() const noexcept { return m_frameTimer; }
     [[nodiscard]] const platform::FixedStepAccumulator& fixedStep() const noexcept { return m_fixedStep; }
@@ -120,13 +133,16 @@ private:
     void start(Result<std::unique_ptr<platform::Platform>> platform);
     Result<void> initialize(Result<std::unique_ptr<platform::Platform>> platform);
     void runFrame(const AppCallbacks& callbacks);
-    void present();
+    void render(const AppCallbacks& callbacks);
 
     AppConfig m_config;
     std::optional<Error> m_initError;
-    // Services in dependency order: members are destroyed in reverse, the window before the platform.
+    // Services in dependency order: members are destroyed in reverse, the device before the window
+    // before the platform.
     std::unique_ptr<platform::Platform> m_platform;
     std::unique_ptr<platform::Window> m_window;
+    std::unique_ptr<rhi::Device> m_device;
+    rhi::TextureHandle m_backbuffer;
     platform::Input m_input;
     platform::EventQueue m_events;
     platform::FrameTimer m_frameTimer;

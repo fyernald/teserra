@@ -83,6 +83,18 @@ Layer violation: module 'core' (layer 0) must not depend on module 'platform' (l
 
 The rule is tested by configuring the fixture project in `tests/cmake/layer_rule/` (CTest label `cmake`).
 
+Modules that an option can leave out of the build, such as RHI backends, are named in `OPTIONAL_DEPENDS`: one that exists is linked and layer-checked like `DEPENDS`, and the module's sources see `TESERRA_HAS_<MODULE>` as 1 or 0. The engine uses it for the backends it passes to `rhi::createDevice()`:
+
+```cmake
+teserra_add_module(engine LAYER 6
+    DEPENDS core platform rhi
+    OPTIONAL_DEPENDS rhi_opengl   # TESERRA_HAS_RHI_OPENGL in app.cpp
+    ...
+)
+```
+
+The include check reads `OPTIONAL_DEPENDS` like `DEPENDS`.
+
 ### Presets
 
 | Preset | Toolchain | Use |

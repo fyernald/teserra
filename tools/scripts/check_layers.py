@@ -28,7 +28,9 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 RULE = "layer-include"
 TEST_SUPPORT = "test"
 _MODULE_CALL = re.compile(r"\bteserra_add_module\s*\(([^)]*)\)", re.IGNORECASE)
-_MODULE_KEYWORDS = frozenset({"LAYER", "DEPENDS", "PUBLIC_HEADERS", "SOURCES"})
+_MODULE_KEYWORDS = frozenset({"LAYER", "DEPENDS", "OPTIONAL_DEPENDS", "PUBLIC_HEADERS", "SOURCES"})
+# Optional dependencies may be absent from a build, but where they are used, they are dependencies.
+_DEPENDS_KEYWORDS = frozenset({"DEPENDS", "OPTIONAL_DEPENDS"})
 _TESERRA_HEADER = re.compile(r"^teserra/([^/]+)/")
 
 
@@ -70,7 +72,7 @@ def find_modules(root: Path) -> dict[str, Module]:
             for token in tokens[1:]:
                 if token in _MODULE_KEYWORDS:
                     keyword = token
-                elif keyword == "DEPENDS":
+                elif keyword in _DEPENDS_KEYWORDS:
                     depends.add(token)
             directory = PurePosixPath(cmake_file.parent.as_posix())
             modules[tokens[0]] = Module(tokens[0], directory, frozenset(depends), cmake_file.as_posix())
