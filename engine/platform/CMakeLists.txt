@@ -1,7 +1,10 @@
 teserra_add_module(platform LAYER 1
     DEPENDS core
     PUBLIC_HEADERS
+        include/teserra/platform/clock.hpp
         include/teserra/platform/event.hpp
+        include/teserra/platform/fixed_step_accumulator.hpp
+        include/teserra/platform/frame_timer.hpp
         include/teserra/platform/input.hpp
         include/teserra/platform/key.hpp
         include/teserra/platform/mouse_button.hpp
@@ -12,6 +15,9 @@ teserra_add_module(platform LAYER 1
 
 # Portable implementation, shared by every backend.
 target_sources(teserra_platform PRIVATE
+    src/common/clock.cpp
+    src/common/fixed_step_accumulator.cpp
+    src/common/frame_timer.cpp
     src/common/input.cpp
     src/common/key.cpp
     src/common/mouse_button.cpp

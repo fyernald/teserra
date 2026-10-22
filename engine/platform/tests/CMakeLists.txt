@@ -1,5 +1,8 @@
 set(platform_test_sources
+    clock_test.cpp
     event_queue_test.cpp
+    fixed_step_accumulator_test.cpp
+    frame_timer_test.cpp
     input_test.cpp
     key_test.cpp
     window_test.cpp

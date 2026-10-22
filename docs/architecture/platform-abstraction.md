@@ -26,7 +26,7 @@ classDiagram
         +createWindow(WindowDesc) Result~unique_ptr~Window~~
         +pollEvents(EventQueue&)
         +fileSystem() FileSystem&
-        +clock() Clock&
+        +clock() const Clock&
     }
     class Window {
         <<interface>>
@@ -56,6 +56,10 @@ classDiagram
         +text() string_view
         +axis2D(Key, Key, Key, Key) Vec2
     }
+    class Clock {
+        <<interface>>
+        +now() nanoseconds
+    }
     class FileSystem {
         <<interface>>
         +readFile(path) Result~vector~byte~~
@@ -67,6 +71,7 @@ classDiagram
     Platform --> Window
     Window --> OpenGlContext
     Platform --> FileSystem
+    Platform --> Clock
 ```
 
 - **`Platform`** is an *abstract factory* for the windowing system and OS services. It owns the windowing library's global state (GLFW init/terminate) via RAII. It is created once by `engine::App` (or by a test) and passed by reference; it is **not** a singleton.
@@ -75,7 +80,8 @@ classDiagram
 - **Events.** `pollEvents()` translates OS/GLFW callbacks into engine `Event`s (`WindowResized`, `WindowCloseRequested`, `FocusChanged`, `KeyChanged`, `TextEntered`, `MouseButtonChanged`, `MouseMoved`, `MouseScrolled`) and appends them to an `EventQueue` (a reused vector of `std::variant`s). Nothing is delivered through user callbacks from inside GLFW.
 - **`Input`** is backend-independent: it consumes `Event`s and records key and button edges per event, so `wasPressed()` means "went down since the last `beginFrame()`", and a tap shorter than a frame still reports both `wasPressed()` and `wasReleased()`. Key repeat creates no edges; `FocusChanged{false}` releases everything held. It also tracks the mouse position and per-frame movement, scrolling and typed text (UTF-8), and offers `axis2D()` for WASD-style movement. It is a copyable value, and tests drive it with synthetic events.
 - **Keys** are an engine enum `platform::Key` based on *physical* key positions (US layout names, like `Key::W`), plus `TextEntered` events for text; mouse buttons are `platform::MouseButton`. The GLFW backend translates codes in one table, `src/glfw/glfw_key_table.cpp`, whose `static_assert` fails the build if a `Key` has no mapping.
-- **`Clock`** wraps `std::chrono::steady_clock` (high resolution and monotonic on all supported platforms). It is an interface for testability (a `ManualClock` drives fixed-step tests), not for portability.
+- **`Clock`** returns monotonic time as `std::chrono::nanoseconds`. `SteadyClock` wraps `std::chrono::steady_clock` (high resolution and monotonic on all supported platforms) and is what `Platform::clock()` returns. It is an interface for testability (a `ManualClock`, advanced by hand, drives loop and fixed-step tests, and a test platform can return one), not for portability.
+- **`FrameTimer`** and **`FixedStepAccumulator`** are plain values fed explicit times. `FrameTimer::tick(clock.now())` gives the frame delta, the elapsed time and an FPS value averaged over 500 ms windows. `FixedStepAccumulator::advance(delta)` returns how many fixed steps (default 1/60 s) to run this frame, carries time below one step over to the next frame, and drops whole steps beyond `maxStepsPerFrame` (default 5) after a stall, so a slow simulation cannot fall into a spiral of death.
 - **`FileSystem`** uses UTF-8 paths at the API (`std::filesystem::path` constructed from `std::u8string_view` where needed). Platform-specific parts are only `executableDirectory()` and `userDataDirectory()`.
 - **Threading:** use `std::thread`/`std::jthread`, `std::mutex`, `std::atomic`, `std::condition_variable` directly. The platform layer adds only `setCurrentThreadName()`. All window and event functions must be called on the main thread (asserted in debug builds).
 
