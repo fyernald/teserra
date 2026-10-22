@@ -224,7 +224,12 @@ sequenceDiagram
     R->>D: endFrame() (signal frame-slot fence)
 ```
 
-- A `CommandList` is a **backend-agnostic command stream**: a sequence of small POD records (`{CommandType type; u16 size;}` header + payload) appended into a reusable byte buffer. Recording performs no backend calls and no heap allocation after warm-up.
+- A `CommandList` is a **backend-agnostic command stream**: a sequence of small POD records appended into a reusable byte buffer. Recording performs no backend calls and no heap allocation after warm-up.
+- Record layout (validated by [spike #15](https://github.com/fyernald/teserra/issues/15)):
+  - Every record starts on an 8-byte boundary with an 8-byte header `{CommandType type; u16 reserved; u32 size}`, followed by a trivially copyable payload (`static_assert`ed), written with `memcpy`.
+  - Variable-size data, such as vertex buffer bindings, dynamic offsets and debug label characters, follows as a trailing array that backends read in place as a `std::span`. Its counts are bounded by public limits and validated in debug.
+  - Debug-only recording state (current pipeline, open render pass) lives next to the stream, not in it.
+  - Measured cost: about 3.4 ns per command for recording plus replay into a mock backend. That is ~34 µs for 10k commands on a mobile Core i5 with an MSVC Release build, about 2 ns per command above direct virtual calls. A `std::variant` command array was rejected: about 4× slower to record and 5.5× the memory, since every entry is as large as the largest command.
 - Recording rules (validated in debug): draws only inside a render pass; a pipeline must be bound before draw; bind groups must be compatible with the bound pipeline's layout; render passes do not nest; copies happen outside render passes.
 - `submit()` hands the stream to the backend, which **replays** (GL) or **translates** (Vulkan) it. Lists are owned by the device per frame slot and reset when the slot is reused.
 - v1 records on the main thread only. Because recording touches no backend state, multithreaded recording later only requires per-thread lists.
@@ -260,6 +265,9 @@ device.endFrame();
 
 - The device keeps `kMaxFramesInFlight = 2` frame slots. `beginFrame()` waits on the fence of the slot being reused; `endFrame()` signals it. This bounds CPU-ahead-of-GPU latency and makes per-frame ring buffers safe.
 - Hazards *within* a frame (render to texture, then sample it) are handled **implicitly** by the backend based on declared usage (render pass attachments, bind group contents). The renderer never issues barriers in v1.
+  - The Vulkan backend derives them by scanning each render pass's commands before `vkCmdBeginRendering`: it collects the resources of the attachments, bound bind groups and vertex/index buffers, and emits the transitions up front, because Vulkan forbids most barriers inside a render pass.
+  - Copies happen only outside render passes and get their barriers inline.
+  - This works because bind groups are immutable and the backend can query their contents (resource and usage) by handle.
 - `device.waitIdle()` exists for shutdown, resize and tests.
 
 ### Uploads and readback
