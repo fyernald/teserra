@@ -10,6 +10,7 @@
 // teserra_core: no spdlog or fmt header is reachable from here.
 
 #include <teserra/core/config.hpp>
+#include <teserra/core/result.hpp>
 #include <teserra/core/types.hpp>
 
 #include <filesystem>
@@ -110,11 +111,11 @@ struct LogConfig {
     usize maxFiles = 3;
 };
 
-/// Replaces the console and file outputs. Callback sinks are not affected. Returns false if the log
-/// file could not be opened; the other outputs are still set up and the failure is logged.
+/// Replaces the console and file outputs. Callback sinks are not affected. Fails with
+/// ErrorCode::IoFailure if the log file cannot be opened; the other outputs are still set up. The
+/// failure is not logged here: the caller logs it once, where it is handled (ADR-0016).
 /// Thread-safe, but meant to be called once at startup.
-// TODO(#12): return Result<void> once it exists.
-[[nodiscard]] bool configure(const LogConfig& config);
+[[nodiscard]] Result<void> configure(const LogConfig& config);
 
 /// Writes buffered output (the log file) to disk. Thread-safe.
 void flush();

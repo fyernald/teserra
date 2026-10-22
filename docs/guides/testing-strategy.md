@@ -59,6 +59,14 @@ teserra_add_compile_fail_test(core.log.format_string_is_checked
     DEPENDS core
 )
 
+# WARNINGS_AS_ERRORS makes a warning (e.g. a discarded [[nodiscard]] Result) fail the build every time.
+teserra_add_compile_fail_test(core.result.discarding_is_diagnosed
+    SOURCE compile_fail/result_discarded.cpp
+    EXPECT "nodiscard"
+    WARNINGS_AS_ERRORS
+    DEPENDS core
+)
+
 # CTest test that runs a small program (no Catch2) and passes only if it ends abnormally with output
 # matching the regex, e.g. TESERRA_FATAL with the default handler. Labeled abort and <module>.
 teserra_add_abort_test(core.assert.fatal_aborts

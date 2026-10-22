@@ -266,11 +266,14 @@ TEST_CASE("log: configure reports a log file that cannot be opened", "[core][log
     log::LogConfig config;
     config.console = false;
     config.filePath = std::filesystem::temp_directory_path();
-    CHECK_FALSE(log::configure(config));
+    const Result<void> result = log::configure(config);
 
-    REQUIRE(capture.records().size() == 1);
-    CHECK(capture.records()[0].level == LogLevel::Error);
-    CHECK(capture.records()[0].message.starts_with("Cannot open log file"));
+    REQUIRE_FALSE(result.has_value());
+    CHECK(result.error().code == ErrorCode::IoFailure);
+    CHECK(result.error().module == Module::Core);
+    CHECK(result.error().message.starts_with("Cannot open log file '"));
+    // Logged by the caller that handles it, not by configure() (ADR-0016).
+    CHECK(capture.records().empty());
 }
 
 #if TESERRA_ENABLE_ASSERTS

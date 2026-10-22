@@ -6,6 +6,7 @@ teserra_add_test(core
         log_level_min_test.cpp
         log_test.cpp
         profile_test.cpp
+        result_test.cpp
         version_test.cpp
     DEPENDS
         core
@@ -42,6 +43,13 @@ teserra_add_header_check(core)
 teserra_add_compile_fail_test(core.log.format_string_is_checked
     SOURCE compile_fail/log_format_mismatch.cpp
     EXPECT "basic_format_string"
+    DEPENDS core
+)
+# A discarded Result is diagnosed (MSVC C4834, Clang and GCC -Wunused-result), an error in CI.
+teserra_add_compile_fail_test(core.result.discarding_is_diagnosed
+    SOURCE compile_fail/result_discarded.cpp
+    EXPECT "nodiscard"
+    WARNINGS_AS_ERRORS
     DEPENDS core
 )
 teserra_add_compile_fail_test(core.log.removed_call_format_string_is_checked
