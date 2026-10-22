@@ -75,7 +75,7 @@ Rules that rely on discipline erode. Teserra enforces layering mechanically at t
 
    The helper (in `cmake/TeserraModule.cmake`) creates `teserra_renderer` + alias `Teserra::Renderer`, sets include directories, links `DEPENDS` as `PUBLIC` engine dependencies, and **fails configuration** if any dependency has a layer number ≥ the module's own. Third-party libraries are linked separately with `teserra_link_third_party(<module> PRIVATE spdlog::spdlog)`, which makes visibility a reviewed, explicit choice.
 2. **Include check (CI).** `tools/scripts/check_layers.py` scans `#include <teserra/<module>/...>` in each module and fails if a module includes headers of a module it does not depend on. This catches include-path leakage through transitive `PUBLIC` dependencies.
-3. **Leak checks (CI).** `tools/scripts/check_gl_leaks.py` fails if GL identifiers (`GL_*`, `gl[A-Z]*`, `GLuint`, `<glad/`) appear outside `engine/rhi/backends/opengl/`, and if GLFW/Win32 headers appear outside `engine/platform/src/`. `glm::` outside `engine/core/` is flagged by the same script ([ADR-0008](../adr/0008-glm-math-behind-aliases.md)).
+3. **Leak checks (CI).** `tools/scripts/check_gl_leaks.py` fails if GL identifiers (`GL_*`, `gl[A-Z][a-z]*`, `GLuint`, `<glad/`) appear outside `engine/rhi/backends/opengl/` (Vulkan ones outside `engine/rhi/backends/vulkan/`), if GLFW names or headers appear outside `engine/platform/src/glfw/`, and if Win32 headers appear outside Windows-only files of `engine/platform/`. `glm::` outside `engine/core/` is flagged by the same script ([ADR-0008](../adr/0008-glm-math-behind-aliases.md)). The exact rules are in [build-and-ci](../guides/build-and-ci.md#layer-and-leak-checks).
 
 ## Runtime structure
 
