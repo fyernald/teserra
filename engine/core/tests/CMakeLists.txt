@@ -3,6 +3,7 @@ teserra_add_test(core
         assert_disabled_test.cpp
         assert_test.cpp
         config_test.cpp
+        handle_test.cpp
         log_level_min_test.cpp
         log_test.cpp
         math_test.cpp
