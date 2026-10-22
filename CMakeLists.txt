@@ -42,6 +42,7 @@ endif()
 # Engine modules, in layer order (docs/architecture/overview.md#layers). A module can only depend on
 # modules that were added before it.
 add_subdirectory(engine/core)
+add_subdirectory(engine/platform)
 
 if(TESERRA_BUILD_EXAMPLES)
     add_subdirectory(examples)

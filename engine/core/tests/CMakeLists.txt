@@ -37,7 +37,7 @@ target_compile_definitions(teserra_core_tests PRIVATE
     "TESERRA_TEST_EXPECTED_ASSERTS=$<IF:$<STREQUAL:${TESERRA_ENABLE_ASSERTS},DEFAULT>,$<IF:$<OR:$<CONFIG:Debug>,$<CONFIG:RelWithDebInfo>>,1,0>,$<BOOL:${TESERRA_ENABLE_ASSERTS}>>"
 )
 
-# Every public header compiles on its own and keeps spdlog and fmt private.
+# Every public header compiles on its own and keeps private dependencies out of its interface.
 teserra_add_header_check(core)
 
 # Format strings are checked at compile time (ADR-0011). Every supported compiler names
