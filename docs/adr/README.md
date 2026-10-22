@@ -38,7 +38,7 @@ Small, reversible decisions belong in the issue's design note instead. A larger 
 | [0014](0014-scripting-deferred.md) | Scripting deferred to v3-v4 | Accepted |
 | [0015](0015-windows-first-platform-abstraction.md) | Windows first, behind a platform abstraction layer | Accepted |
 | [0016](0016-error-handling-policy.md) | Error handling: results, assertions, no exceptions in engine code | Accepted |
-| [0017](0017-shader-pipeline.md) | Shader pipeline: GLSL 450 to SPIR-V, SPIRV-Cross for OpenGL | Proposed (spike pending) |
+| [0017](0017-shader-pipeline.md) | Shader pipeline: GLSL 450 to SPIR-V, SPIRV-Cross for OpenGL | Accepted |
 | [0018](0018-license-mit.md) | License: MIT | Accepted |
 | [0019](0019-ecs-storage-sparse-sets.md) | ECS storage model: sparse sets | Accepted (benchmark validation pending) |
 | [0020](0020-generational-handles.md) | Generational handles for engine resources | Accepted |
