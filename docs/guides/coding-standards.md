@@ -41,7 +41,8 @@ Follow [ADR-0016](../adr/0016-error-handling-policy.md):
 
 - Bugs → `TESERRA_ASSERT` / `TESERRA_VERIFY` from `<teserra/core/assert.hpp>` with a message that names the object (`"Buffer '{}' is not mapped"`). The message is an optional `std::format` string literal. `TESERRA_ASSERT` is compiled out (condition not evaluated) when the `TESERRA_ENABLE_ASSERTS` option is off; use `TESERRA_VERIFY` when the condition has an effect that must happen in every build. Wrap conditions with top-level commas in parentheses.
 - Impossible branches (e.g. a `switch` default over an enum) → `TESERRA_UNREACHABLE()`, always active.
-- Recoverable failures → return `Result<T>`; propagate with `TESERRA_TRY`.
+- Recoverable failures → return `Result<T>` from `<teserra/core/result.hpp>` (`Result<void>` without a value). Create errors with `return fail(ErrorCode::NotFound, Module::Platform, "File '{}' not found", path);` and propagate them with `TESERRA_TRY(expr)` or `TESERRA_TRY_ASSIGN(const Image image, expr)` (on a line of its own).
+- `Result` is a `[[nodiscard]]` type, so ignoring one is a warning (an error in CI); fallible functions are still marked `[[nodiscard]]` to document intent. Errors format with `{}`: `"<message> (<module>, <code>)"`.
 - Unrecoverable → `TESERRA_FATAL`.
 - Engine code does not `throw` and does not `catch` except at third-party boundaries.
 - Log an error once, at the place where it is handled.

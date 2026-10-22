@@ -4,6 +4,7 @@ teserra_add_module(core LAYER 0
         include/teserra/core/config.hpp
         include/teserra/core/log.hpp
         include/teserra/core/profile.hpp
+        include/teserra/core/result.hpp
         include/teserra/core/types.hpp
     SOURCES
         src/assert.cpp
@@ -15,6 +16,10 @@ teserra_add_module(core LAYER 0
 # users of teserra_core. The header check in tests/ verifies it.
 find_package(spdlog CONFIG REQUIRED)
 teserra_link_third_party(core PRIVATE spdlog::spdlog)
+
+# tl-expected is PUBLIC: Result<T> is tl::expected in engine signatures (ADR-0016). Header-only.
+find_package(tl-expected CONFIG REQUIRED)
+teserra_link_third_party(core PUBLIC tl::expected)
 
 # TESERRA_ENABLE_ASSERTS is PUBLIC: TESERRA_ASSERT expands in the code of every module and game that uses
 # it, so they all check (or skip) assertions the same way (ADR-0016).

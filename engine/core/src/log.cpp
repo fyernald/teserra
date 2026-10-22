@@ -295,7 +295,7 @@ bool isEnabled(LogCategory category, LogLevel messageLevel) noexcept {
     return messageLevel != LogLevel::Off && messageLevel >= categories.level(category);
 }
 
-bool configure(const LogConfig& config) {
+Result<void> configure(const LogConfig& config) {
     std::vector<spdlog::sink_ptr> sinks;
     if (config.console) {
         sinks.push_back(makeConsoleSink());
@@ -318,11 +318,10 @@ bool configure(const LogConfig& config) {
     outputs().setSinks(std::move(sinks));
 
     if (!fileError.empty()) {
-        TESERRA_LOG_ERROR(LogCategory::Core, "Cannot open log file '{}': {}", toUtf8(config.filePath),
-                          fileError);
-        return false;
+        return fail(ErrorCode::IoFailure, Module::Core, "Cannot open log file '{}': {}",
+                    toUtf8(config.filePath), fileError);
     }
-    return true;
+    return {};
 }
 
 void flush() {

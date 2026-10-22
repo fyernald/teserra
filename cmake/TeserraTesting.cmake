@@ -16,11 +16,14 @@
 # set. The build fails if a header is not self-contained or exposes spdlog or fmt, which are private to
 # teserra_core (ADR-0011).
 #
-#   teserra_add_compile_fail_test(<name> SOURCE <file> EXPECT <regex> [DEPENDS <module>...])
+#   teserra_add_compile_fail_test(<name> SOURCE <file> EXPECT <regex> [WARNINGS_AS_ERRORS]
+#       [DEPENDS <module>...])
 #
 # Registers the CTest test <name>, which builds <file> (excluded from the normal build) and passes only
 # if the compiler output matches <regex>. For guarantees that are compile errors, such as checked format
 # strings. Make <regex> specific to the expected error, so that an unrelated failure does not pass.
+# WARNINGS_AS_ERRORS compiles <file> with /WX or -Werror whatever TESERRA_WARNINGS_AS_ERRORS says, for
+# guarantees that are warnings (otherwise the object would build and later runs would see no output).
 #
 #   teserra_add_abort_test(<name> SOURCE <file> EXPECT <regex> [DEPENDS <module>...])
 #
@@ -122,7 +125,7 @@ function(teserra_add_header_check module)
 endfunction()
 
 function(teserra_add_compile_fail_test name)
-    cmake_parse_arguments(PARSE_ARGV 1 arg "" "SOURCE;EXPECT" "DEPENDS")
+    cmake_parse_arguments(PARSE_ARGV 1 arg "WARNINGS_AS_ERRORS" "SOURCE;EXPECT" "DEPENDS")
     if(arg_UNPARSED_ARGUMENTS)
         message(FATAL_ERROR "teserra_add_compile_fail_test(${name}): unknown arguments: ${arg_UNPARSED_ARGUMENTS}")
     endif()
@@ -133,6 +136,9 @@ function(teserra_add_compile_fail_test name)
     string(MAKE_C_IDENTIFIER "teserra_compile_fail_${name}" target)
     add_library(${target} OBJECT EXCLUDE_FROM_ALL ${arg_SOURCE})
     _teserra_configure_test_target(${target})
+    if(arg_WARNINGS_AS_ERRORS)
+        target_compile_options(${target} PRIVATE $<IF:$<BOOL:${MSVC}>,/WX,-Werror>)
+    endif()
     foreach(module IN LISTS arg_DEPENDS)
         if(NOT TARGET teserra_${module})
             message(FATAL_ERROR "teserra_add_compile_fail_test(${name}): unknown module '${module}' in DEPENDS")
