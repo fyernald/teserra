@@ -15,8 +15,11 @@
 #include <glad/gl.h>
 
 #include <array>
+#include <cstddef>
 #include <deque>
 #include <memory>
+#include <span>
+#include <string>
 #include <string_view>
 #include <thread>
 #include <vector>
@@ -29,6 +32,22 @@ class Window;
 namespace teserra::rhi::opengl {
 
 class GlSwapchain;
+
+/// A buffer of the device.
+struct GlBuffer {
+    GLuint name = 0;
+    u64 size = 0;
+    BufferUsage usage = BufferUsage::None;
+    MemoryLocation memory = MemoryLocation::GpuOnly;
+    /// The persistent mapping of an Upload or Readback buffer; null for GpuOnly.
+    std::byte* mapped = nullptr;
+    std::string debugName;
+
+    /// The descriptor the buffer was created with, for validation; its name is valid while the buffer lives.
+    [[nodiscard]] BufferDesc desc() const noexcept {
+        return {.sizeInBytes = size, .usage = usage, .memory = memory, .debugName = debugName};
+    }
+};
 
 /// A texture of the device.
 struct GlTexture {
@@ -83,6 +102,9 @@ public:
     void destroy(ShaderModuleHandle handle) override;
     void destroy(GraphicsPipelineHandle handle) override;
 
+    void writeBuffer(BufferHandle buffer, u64 offset, std::span<const std::byte> data) override;
+    [[nodiscard]] std::span<std::byte> map(BufferHandle buffer) override;
+
     void beginFrame() override;
     void endFrame() override;
 
@@ -122,14 +144,17 @@ private:
     [[nodiscard]] GLuint framebuffer(const FramebufferKey& key);
     // Replays the commands of a list (docs/architecture/rhi.md#opengl-backend-mapping).
     void replay(const CommandList& commands);
+    void copyBuffer(const BufferCopy& copy);
     void beginRenderPass(const RenderPassDesc& pass);
     void endRenderPass();
 
     platform::OpenGlContext& m_context;
     GladGLContext m_gl{};
     DeviceLimits m_limits{};
+    bool m_validate = false;
     std::thread::id m_thread;
 
+    HandlePool<GlBuffer, BufferTag> m_buffers;
     HandlePool<GlTexture, TextureTag> m_textures;
     std::vector<CachedFramebuffer> m_framebuffers;
     std::unique_ptr<GlSwapchain> m_swapchain;

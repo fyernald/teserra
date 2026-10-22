@@ -10,10 +10,15 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
 #include <array>
 #include <cstddef>
+#include <format>
+#include <initializer_list>
 #include <memory>
+#include <span>
 #include <string>
+#include <vector>
 
 using namespace teserra;
 using namespace teserra::rhi;
@@ -40,6 +45,14 @@ private:
 };
 
 constexpr std::array<std::byte, 4> kShaderCode{std::byte{1}, std::byte{2}, std::byte{3}, std::byte{4}};
+
+std::vector<std::byte> bytes(std::initializer_list<u8> values) {
+    std::vector<std::byte> result;
+    for (const u8 value : values) {
+        result.push_back(std::byte{value});
+    }
+    return result;
+}
 
 // Resources for a pipeline that renders into an Rgba8Srgb target.
 struct Scene {
@@ -191,6 +204,62 @@ TEST_CASE("Null backend: destroy frees at once", "[rhi_null]") {
     REQUIRE_ASSERTS(device->destroy(texture));
 #endif
 }
+
+TEST_CASE("Null backend: buffers have memory that writeBuffer and map() reach", "[rhi_null]") {
+    const auto device = null::createHeadlessDevice({.enableValidation = true});
+    const BufferHandle vertices = *device->createBuffer(
+        {.sizeInBytes = 8, .usage = BufferUsage::Vertex | BufferUsage::CopyDst, .debugName = "Vertices"});
+    const BufferHandle frameData = *device->createBuffer(
+        {.sizeInBytes = 4, .usage = BufferUsage::Uniform, .memory = MemoryLocation::Upload});
+    CHECK(std::ranges::equal(device->bufferData(vertices), bytes({0, 0, 0, 0, 0, 0, 0, 0})));
+
+    device->writeBuffer(vertices, 4, bytes({1, 2, 3}));
+    device->writeBuffer(vertices, 8, {}); // empty data does nothing, even at the end
+    CHECK(std::ranges::equal(device->bufferData(vertices), bytes({0, 0, 0, 0, 1, 2, 3, 0})));
+
+    const std::span<std::byte> mapped = device->map(frameData);
+    CHECK(mapped.size() == 4);
+    CHECK(device->map(frameData).data() == mapped.data()); // mapped for the buffer's lifetime
+    mapped[2] = std::byte{7};
+    CHECK(std::ranges::equal(device->bufferData(frameData), bytes({0, 0, 7, 0})));
+
+    device->destroy(vertices);
+    CHECK(device->bufferData(vertices).empty());
+}
+
+#if TESERRA_ENABLE_ASSERTS
+TEST_CASE("Null backend: writeBuffer and map() are validated", "[rhi_null][validation]") {
+    const auto device = null::createHeadlessDevice({.enableValidation = true});
+    const BufferHandle vertices = *device->createBuffer(
+        {.sizeInBytes = 8, .usage = BufferUsage::Vertex | BufferUsage::CopyDst, .debugName = "Vertices"});
+    const BufferHandle immutable =
+        *device->createBuffer({.sizeInBytes = 8, .usage = BufferUsage::Vertex, .debugName = "Static"});
+    const BufferHandle frameData =
+        *device->createBuffer({.sizeInBytes = 8,
+                               .usage = BufferUsage::Uniform | BufferUsage::CopyDst,
+                               .memory = MemoryLocation::Upload,
+                               .debugName = "Frame data"});
+    const std::vector<std::byte> data = bytes({1, 2, 3, 4});
+    const auto failureOf = [](auto&& call) { return test::requireAssert(call).message(); };
+
+    CHECK(failureOf([&] { device->writeBuffer(vertices, 6, data); }) ==
+          "writeBuffer of 4 bytes at offset 6 is outside buffer 'Vertices' (8 bytes)");
+    CHECK(failureOf([&] { device->writeBuffer(vertices, ~u64{0}, data); }) ==
+          std::format("writeBuffer of 4 bytes at offset {} is outside buffer 'Vertices' (8 bytes)", ~u64{0}));
+    CHECK(failureOf([&] { device->writeBuffer(immutable, 0, data); }) ==
+          "writeBuffer to buffer 'Static', created without BufferUsage::CopyDst");
+    CHECK(failureOf([&] { device->writeBuffer(frameData, 0, data); }) ==
+          "writeBuffer to buffer 'Frame data', which is not GpuOnly; write Upload buffers through map()");
+    CHECK(failureOf([&] { static_cast<void>(device->map(vertices)); }) ==
+          "map() of buffer 'Vertices', which is GpuOnly; only Upload and Readback buffers are mapped");
+
+    device->destroy(frameData);
+    CHECK(failureOf([&] { device->writeBuffer(frameData, 0, data); }) ==
+          std::format("writeBuffer to buffer {}, which is not alive", frameData));
+    CHECK(failureOf([&] { static_cast<void>(device->map(frameData)); }) ==
+          std::format("map() of buffer {}, which is not alive", frameData));
+}
+#endif
 
 TEST_CASE("Null backend: the swapchain follows the window size", "[rhi_null]") {
     TestWindow window({320, 200});

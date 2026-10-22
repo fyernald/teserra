@@ -6,6 +6,7 @@
 #include <teserra/rhi/validation.hpp>
 
 #include <algorithm>
+#include <cstddef>
 #include <string_view>
 #include <type_traits>
 
@@ -140,6 +141,8 @@ NullDevice::Object<Desc> NullDevice::store(const Desc& desc) {
         object->entryPoint = desc.entryPoint;
         object->desc.blob = object->blob;
         object->desc.entryPoint = object->entryPoint;
+    } else if constexpr (std::is_same_v<Desc, BufferDesc>) {
+        object->data.resize(desc.sizeInBytes);
     } else if constexpr (std::is_same_v<Desc, GraphicsPipelineDesc>) {
         object->vertexBuffers.assign(desc.vertexBuffers.begin(), desc.vertexBuffers.end());
         object->vertexAttributes.assign(desc.vertexAttributes.begin(), desc.vertexAttributes.end());
@@ -230,6 +233,32 @@ void NullDevice::destroy(GraphicsPipelineHandle handle) {
     }
 }
 
+void NullDevice::writeBuffer(BufferHandle buffer, u64 offset, std::span<const std::byte> data) {
+    Object<BufferDesc>* object = m_buffers.tryGet(buffer);
+    TESERRA_ASSERT(object != nullptr, "writeBuffer to buffer {}, which is not alive", buffer);
+    if (object == nullptr) {
+        return;
+    }
+    if (m_validate) {
+        validateWriteBuffer((*object)->desc, offset, data.size());
+    }
+    if (!data.empty() && offset <= (*object)->data.size() && data.size() <= (*object)->data.size() - offset) {
+        std::ranges::copy(data, (*object)->data.begin() + static_cast<std::ptrdiff_t>(offset));
+    }
+}
+
+std::span<std::byte> NullDevice::map(BufferHandle buffer) {
+    Object<BufferDesc>* object = m_buffers.tryGet(buffer);
+    TESERRA_ASSERT(object != nullptr, "map() of buffer {}, which is not alive", buffer);
+    if (object == nullptr) {
+        return {};
+    }
+    if (m_validate) {
+        validateMapBuffer((*object)->desc);
+    }
+    return (*object)->data;
+}
+
 void NullDevice::beginFrame() {
     TESERRA_ASSERT(!m_inFrame, "beginFrame() twice without endFrame()");
     for (CommandList& list : m_commandLists[m_frame % kMaxFramesInFlight]) {
@@ -292,6 +321,11 @@ const ShaderModuleDesc* NullDevice::shaderModule(ShaderModuleHandle handle) cons
 
 const GraphicsPipelineDesc* NullDevice::graphicsPipeline(GraphicsPipelineHandle handle) const noexcept {
     return find(m_pipelines, handle);
+}
+
+std::span<const std::byte> NullDevice::bufferData(BufferHandle handle) const noexcept {
+    const Object<BufferDesc>* object = m_buffers.tryGet(handle);
+    return object != nullptr ? std::span<const std::byte>((*object)->data) : std::span<const std::byte>();
 }
 
 // ---------------------------------------------------------------------------------------------------------

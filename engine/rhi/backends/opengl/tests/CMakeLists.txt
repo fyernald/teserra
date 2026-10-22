@@ -1,6 +1,7 @@
 teserra_add_test(rhi_opengl
     SOURCES
         gl_debug_test.cpp
+        opengl_buffer_test.cpp
         opengl_device_test.cpp
         opengl_gpu_test.cpp
         opengl_swapchain_test.cpp

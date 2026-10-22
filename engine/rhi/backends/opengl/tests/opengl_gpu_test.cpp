@@ -11,10 +11,15 @@
 #include <catch2/catch_test_macros.hpp>
 #include <glad/gl.h>
 
+#include <algorithm>
 #include <array>
+#include <cstddef>
 #include <cstdlib>
 #include <format>
 #include <memory>
+#include <ranges>
+#include <span>
+#include <vector>
 
 using namespace teserra;
 using namespace teserra::rhi;
@@ -145,6 +150,57 @@ TEST_CASE("OpenGL backend (GPU): clears and presents frames", "[rhi_opengl][gpu]
     CHECK_FALSE(swapchain.acquireNextImage().isNull());
     device.waitIdle();
 
+    for (const test::CapturedLog& record : log.records()) {
+        INFO(record.message);
+        CHECK(record.level < LogLevel::Warn);
+    }
+}
+
+TEST_CASE("OpenGL backend (GPU): buffer uploads round trip through readback", "[rhi_opengl][gpu]") {
+    const GpuWindow gpu = createGpuWindowOrSkip();
+    const test::LogCapture log;
+    auto created =
+        createDevice({.backend = Backend::OpenGL, .enableValidation = true, .enableBackendDebug = true},
+                     gpu.window.get(), std::array{opengl::backendFactory()});
+    REQUIRE(created.has_value());
+    Device& device = **created;
+
+    constexpr usize kSize = 1024;
+    std::vector<std::byte> pattern(kSize);
+    for (usize i = 0; i < kSize; ++i) {
+        pattern[i] = static_cast<std::byte>((i * 7) & 0xFFU);
+    }
+    const BufferHandle gpuOnly = *device.createBuffer({.sizeInBytes = kSize,
+                                                       .usage = BufferUsage::CopySrc | BufferUsage::CopyDst,
+                                                       .debugName = "Round trip: GpuOnly"});
+    const BufferHandle upload = *device.createBuffer({.sizeInBytes = kSize,
+                                                      .usage = BufferUsage::CopySrc,
+                                                      .memory = MemoryLocation::Upload,
+                                                      .debugName = "Round trip: Upload"});
+    const BufferHandle readback = *device.createBuffer({.sizeInBytes = 2 * kSize,
+                                                        .usage = BufferUsage::CopyDst,
+                                                        .memory = MemoryLocation::Readback,
+                                                        .debugName = "Round trip: Readback"});
+
+    device.writeBuffer(gpuOnly, 0, pattern);
+    std::ranges::reverse_copy(pattern, device.map(upload).begin());
+
+    device.beginFrame();
+    CommandList& cmd = device.acquireCommandList();
+    cmd.copyBuffer({.source = gpuOnly, .destination = readback, .size = kSize});
+    cmd.copyBuffer({.source = upload, .destination = readback, .destinationOffset = kSize, .size = kSize});
+    device.submit(cmd);
+    device.endFrame();
+    device.waitIdle();
+
+    const std::span<const std::byte> result = device.map(readback);
+    REQUIRE(result.size() == 2 * kSize);
+    CHECK(std::ranges::equal(result.first(kSize), pattern));
+    CHECK(std::ranges::equal(result.last(kSize), std::views::reverse(pattern)));
+
+    device.destroy(gpuOnly);
+    device.destroy(upload);
+    device.destroy(readback);
     for (const test::CapturedLog& record : log.records()) {
         INFO(record.message);
         CHECK(record.level < LogLevel::Warn);

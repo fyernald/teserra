@@ -28,6 +28,7 @@ classDiagram
       +createBindGroup(desc) Result~BindGroupHandle~
       +destroy(handle)
       +writeBuffer() / writeTexture()
+      +map(BufferHandle) span~byte~
       +acquireCommandList() CommandList&
       +submit(CommandList&)
       +beginFrame() / endFrame()
@@ -311,8 +312,10 @@ device.endFrame();
 
 ### Uploads and readback
 
-- `writeBuffer(buffer, offset, bytes)` and `writeTexture(texture, region, bytes, rowPitch)` copy the caller's data immediately (caller may free it after the call) and are ordered **before** the next submitted command list.
-- `MemoryLocation::Upload` buffers may be persistently mapped (`device.map(buffer)` returns `std::span<std::byte>`), used by the renderer's per-frame ring buffers. The caller is responsible for not overwriting regions still in flight (the ring buffer partitions by frame slot).
+- `writeBuffer(buffer, offset, bytes)` and `writeTexture(texture, region, bytes, rowPitch)` copy the caller's data immediately (caller may free it after the call). On the GPU they come **after** the command lists submitted before the call and **before** the next one.
+  - `writeBuffer` needs `BufferUsage::CopyDst` and `GpuOnly` memory: `device.writeBuffer(vertices, 0, std::as_bytes(std::span(kVertices)))`.
+  - `Upload` buffers are written through their mapping instead. A `writeBuffer` into CPU-visible memory would have to be either a plain copy, which breaks the ordering above for work already submitted, or a staged copy that the caller can avoid.
+- `Upload` and `Readback` buffers are **persistently mapped**: `device.map(buffer)` returns the same `std::span<std::byte>` of the whole buffer for its lifetime, and there is no `unmap`. The renderer's per-frame ring buffers write through it; the caller is responsible for not overwriting regions still in flight (the ring buffer partitions by frame slot). `GpuOnly` buffers cannot be mapped.
 - Readback: `cmd.copyTextureToBuffer({.buffer = readback, .texture = target, .width = w, .height = h})` (a `BufferTextureCopy`, which also describes uploads with `copyBufferToTexture`), then after the frame's fence (or `waitIdle()` in tests), `map()` the readback buffer. Row 0 is the top row.
 
 ## Validation layer
@@ -329,7 +332,7 @@ Violations log an error with the object's `debugName` and trigger `TESERRA_ASSER
 Where it is implemented:
 
 - **Recording rules** (render pass nesting, draws need a pipeline, copies outside passes, limits): `CommandList`, at the call that breaks them.
-- **Descriptor sanity**: `<teserra/rhi/validation.hpp>` (`validateBufferDesc`, `validateTextureDesc`, `validateSamplerDesc`, `validateShaderModuleDesc`, `validateGraphicsPipelineDesc`), which every backend calls at the start of `create*`. Checks that need the device's objects, such as whether a pipeline's shaders are alive, are the device's.
+- **Descriptor sanity**: `<teserra/rhi/validation.hpp>` (`validateBufferDesc`, `validateTextureDesc`, `validateSamplerDesc`, `validateShaderModuleDesc`, `validateGraphicsPipelineDesc`), which every backend calls at the start of `create*`, and the checks of uploads and mappings (`validateWriteBuffer`: `CopyDst`, `GpuOnly`, range inside the buffer; `validateMapBuffer`: not `GpuOnly`). Checks that need the device's objects, such as whether a handle or a pipeline's shaders are alive, are the device's.
 - **Streams against objects** (handle liveness; `RenderTarget`/`Vertex`/`Index`/`CopySrc`/`CopyDst` usage; pipeline target formats against the render pass; copy ranges inside buffers and textures): at `submit()` in the null device today. It moves into common code with a resource-lookup interface when the OpenGL backend validates streams too (#32 to #35). Bind group checks follow with bind groups (#42).
 
 ## What must not leak out of the RHI
@@ -348,7 +351,7 @@ This list is checked in review and partly by CI ([build-and-ci](../guides/build-
 
 ## Null backend
 
-`teserra_rhi_null` implements `Device` without a GPU: resources are allocated in handle pools, uploads are copied into CPU memory (with `writeBuffer`/`writeTexture`, #32 and #49), submitted command lists are validated and **kept for inspection**. Renderer unit tests use it to assert "this frame recorded N draws with pipeline P and bind group G" without a window or GPU ([testing strategy](../guides/testing-strategy.md#rhi-and-renderer-tests)).
+`teserra_rhi_null` implements `Device` without a GPU: resources are allocated in handle pools, buffers have CPU memory that `writeBuffer` copies into and `map()` returns (textures follow with `writeTexture`, #49), submitted command lists are validated and **kept for inspection**. Renderer unit tests use it to assert "this frame recorded N draws with pipeline P and bind group G" without a window or GPU ([testing strategy](../guides/testing-strategy.md#rhi-and-renderer-tests)).
 
 ```cpp
 auto device = rhi::null::createHeadlessDevice({.enableValidation = true});   // <teserra/rhi_null/null_device.hpp>
@@ -359,7 +362,8 @@ CHECK(device->graphicsPipeline(pipeline)->targets.colorFormats[0] == rhi::Format
 ```
 
 - It is always built (no option) and is offered by `rhi::null::backendFactory()`. Without a window it has no swapchain. With a window (`createDevice(desc, window, ...)`), it has a `NullSwapchain` of the window's framebuffer size, so an `engine::App` with `AppConfig::backend = Backend::Null` runs, records and "presents" on the headless platform.
-- `submitted()` lists the command lists of the frame since the last `beginFrame()`; they stay valid until their frame slot is reused. `buffer(handle)`, `texture(handle)`, ... return the stored descriptor (with copies of names, shader code and vertex layouts), or `nullptr` for a dead handle; `liveObjectCount()` checks for leaks.
+- `submitted()` lists the command lists of the frame since the last `beginFrame()`; they stay valid until their frame slot is reused. `buffer(handle)`, `texture(handle)`, ... return the stored descriptor (with copies of names, shader code and vertex layouts), or `nullptr` for a dead handle; `bufferData(handle)` returns a buffer's memory; `liveObjectCount()` checks for leaks.
+- Copy commands are validated but not executed: a `Readback` buffer keeps what the CPU wrote.
 - `destroy()` frees at once: there is no GPU work to wait for.
 - With `enableValidation` it checks descriptors with `<teserra/rhi/validation.hpp>` and every submitted stream against its objects (see [Validation layer](#validation-layer)).
 
@@ -387,7 +391,7 @@ This is the **only** section of the engine documentation where OpenGL specifics 
 | RHI concept | OpenGL 4.5 core (DSA) implementation |
 |---|---|
 | Device creation | `rhi::opengl::backendFactory()` (`<teserra/rhi_opengl/opengl_backend.hpp>`). Context provided by `platform::OpenGlContext` of the window, which must outlive the device; no window or no context → `Unsupported`. Functions loaded with glad in MX mode via `getProcAddress`: the device owns its function table (`GladGLContext`), there are no global GL function pointers. A context below 4.5 → `Unsupported` naming the version and renderer. `GL_MAX_UNIFORM_BUFFER_BINDINGS` and `GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS` ≥ 32 and the `DeviceLimits` minimums are checked, then `DeviceLimits` is filled from the driver. With `enableBackendDebug`, synchronous `KHR_debug` output is routed to `TESERRA_LOG_*` (category `Rhi`): errors and high severity → Error; medium, deprecated and undefined behavior → Warn; low → Info; notifications → Debug. `glClipControl(GL_UPPER_LEFT, GL_ZERO_TO_ONE)` set once ([ADR-0024](../adr/0024-coordinate-conventions.md)) |
-| Buffer | `glCreateBuffers` + `glNamedBufferStorage` (immutable storage). `GpuOnly` → `GL_DYNAMIC_STORAGE_BIT` so `writeBuffer` can use `glNamedBufferSubData`; `Upload` → `GL_MAP_WRITE_BIT \| GL_MAP_PERSISTENT_BIT \| GL_MAP_COHERENT_BIT`, mapped once with `glMapNamedBufferRange`; `Readback` → `GL_MAP_READ_BIT \| GL_MAP_PERSISTENT_BIT` |
+| Buffer | `glCreateBuffers` + `glNamedBufferStorage` (immutable storage) + `glObjectLabel`. `GpuOnly` → `GL_DYNAMIC_STORAGE_BIT` so `writeBuffer` can use `glNamedBufferSubData`; `Upload` → `GL_MAP_WRITE_BIT \| GL_MAP_PERSISTENT_BIT \| GL_MAP_COHERENT_BIT`, mapped once with `glMapNamedBufferRange`; `Readback` → `GL_MAP_READ_BIT \| GL_MAP_PERSISTENT_BIT \| GL_MAP_COHERENT_BIT` plus `GL_CLIENT_STORAGE_BIT` (cached memory for CPU reads). Coherent mappings need no `glMemoryBarrier`: GPU writes are visible once the commands have completed. `GL_OUT_OF_MEMORY` → `ErrorCode::OutOfMemory`, a failed mapping → `DeviceFailure`. `destroy` → `glDeleteBuffers` at once (GL keeps the storage while submitted commands use it); `copyBuffer` → `glCopyNamedBufferSubData` |
 | Texture | `glCreateTextures(target)` + `glTextureStorage2D/3D`; uploads via `glTextureSubImage*`; full mip chain via `glGenerateTextureMipmap` |
 | Sampler | `glCreateSamplers` + `glSamplerParameter*`; anisotropy only if `EXT_texture_filter_anisotropic` is present |
 | ShaderModule | GL GLSL payload of the `.tshader` blob, compiled with `glCreateShader`/`glCompileShader`; errors returned as `Error` with the shader's debug name |

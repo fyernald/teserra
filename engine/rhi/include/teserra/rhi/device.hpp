@@ -17,6 +17,7 @@
 #include <teserra/rhi/swapchain.hpp>
 #include <teserra/rhi/texture.hpp>
 
+#include <cstddef>
 #include <memory>
 #include <span>
 #include <string_view>
@@ -80,6 +81,17 @@ public:
     virtual void destroy(SamplerHandle handle) = 0;
     virtual void destroy(ShaderModuleHandle handle) = 0;
     virtual void destroy(GraphicsPipelineHandle handle) = 0;
+
+    /// Copies `data` into `buffer` from byte `offset` on. The bytes are copied before the call returns, so
+    /// the caller may reuse its memory at once. On the GPU, the write comes after the command lists submitted
+    /// before the call and before those submitted after it. The buffer needs BufferUsage::CopyDst and
+    /// MemoryLocation::GpuOnly; Upload buffers are written through map(). Empty data does nothing.
+    virtual void writeBuffer(BufferHandle buffer, u64 offset, std::span<const std::byte> data) = 0;
+    /// The memory of an Upload or Readback buffer. It stays mapped while the buffer lives, so every call
+    /// returns the same span of BufferDesc::sizeInBytes bytes. The CPU must not overwrite what submitted work
+    /// may still read. A Readback buffer holds the GPU's writes once that work has completed: after
+    /// waitIdle(), or once its frame slot is reused.
+    [[nodiscard]] virtual std::span<std::byte> map(BufferHandle buffer) = 0;
 
     /// Starts a frame: waits until the frame slot being reused is no longer in flight, then releases what
     /// it held (command lists, destroyed objects).
