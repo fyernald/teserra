@@ -4,6 +4,7 @@
 #include <teserra/platform/opengl_context.hpp>
 #include <teserra/platform/platform.hpp>
 #include <teserra/rhi/device.hpp>
+#include <teserra/rhi/shader.hpp>
 #include <teserra/rhi_opengl/opengl_backend.hpp>
 #include <teserra/test/log_capture.hpp>
 
@@ -19,6 +20,7 @@
 #include <memory>
 #include <ranges>
 #include <span>
+#include <string>
 #include <vector>
 
 using namespace teserra;
@@ -205,4 +207,59 @@ TEST_CASE("OpenGL backend (GPU): buffer uploads round trip through readback", "[
         INFO(record.message);
         CHECK(record.level < LogLevel::Warn);
     }
+}
+
+TEST_CASE("OpenGL backend (GPU): compiles GLSL and reports errors with line numbers", "[rhi_opengl][gpu]") {
+    const GpuWindow gpu = createGpuWindowOrSkip();
+    auto created =
+        createDevice({.backend = Backend::OpenGL, .enableValidation = true, .enableBackendDebug = true},
+                     gpu.window.get(), std::array{opengl::backendFactory()});
+    REQUIRE(created.has_value());
+    Device& device = **created;
+    const test::LogCapture log;
+
+    const std::vector<std::byte> vertexBlob = temporaryGlslBlob(R"(#version 450 core
+layout(location = 0) in vec3 position;
+layout(location = 1) in vec4 color;
+layout(location = 0) out vec4 vColor;
+void main() {
+    vColor = color;
+    gl_Position = vec4(position, 1.0);
+}
+)");
+    const std::vector<std::byte> fragmentBlob = temporaryGlslBlob(R"(#version 450 core
+layout(location = 0) in vec4 vColor;
+layout(location = 0) out vec4 fragColor;
+void main() { fragColor = vColor; }
+)");
+    const auto vertex = device.createShaderModule(
+        {.stage = ShaderStage::Vertex, .blob = vertexBlob, .debugName = "GPU test vertex"});
+    const auto fragment = device.createShaderModule(
+        {.stage = ShaderStage::Fragment, .blob = fragmentBlob, .debugName = "GPU test fragment"});
+    REQUIRE(vertex.has_value());
+    REQUIRE(fragment.has_value());
+    for (const test::CapturedLog& record : log.records()) {
+        INFO(record.message);
+        CHECK(record.level < LogLevel::Warn);
+    }
+
+    // An undeclared identifier on line 4.
+    const std::vector<std::byte> brokenBlob = temporaryGlslBlob(R"(#version 450 core
+layout(location = 0) out vec4 fragColor;
+void main() {
+    fragColor = undeclaredColor;
+}
+)");
+    const auto broken = device.createShaderModule(
+        {.stage = ShaderStage::Fragment, .blob = brokenBlob, .debugName = "GPU test broken"});
+    REQUIRE_FALSE(broken.has_value());
+    CHECK(broken.error().code == ErrorCode::CompilationFailed);
+    const std::string& message = broken.error().message;
+    INFO(message);
+    CHECK(message.starts_with("Shader module 'GPU test broken' (fragment) failed to compile:\n"));
+    // Drivers write the line as "0(4)" (NVIDIA) or "0:4:" (Intel, AMD, Mesa).
+    CHECK((message.find("(4)") != std::string::npos || message.find(":4:") != std::string::npos));
+
+    device.destroy(*vertex);
+    device.destroy(*fragment);
 }

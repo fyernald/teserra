@@ -49,6 +49,13 @@ struct GlBuffer {
     }
 };
 
+/// A compiled shader stage; pipelines link programs from these (#34).
+struct GlShaderModule {
+    GLuint shader = 0;
+    ShaderStage stage = ShaderStage::Vertex;
+    std::string debugName;
+};
+
 /// A texture of the device.
 struct GlTexture {
     GLuint name = 0;
@@ -135,6 +142,10 @@ public:
     [[nodiscard]] const GlTexture* texture(TextureHandle handle) const noexcept {
         return m_textures.tryGet(handle);
     }
+    /// The shader module behind `handle`, or nullptr if the handle is not live.
+    [[nodiscard]] const GlShaderModule* shaderModule(ShaderModuleHandle handle) const noexcept {
+        return m_shaderModules.tryGet(handle);
+    }
     /// The buffer behind `handle`, or nullptr if the handle is not live.
     [[nodiscard]] const GlBuffer* buffer(BufferHandle handle) const noexcept {
         return m_buffers.tryGet(handle);
@@ -168,6 +179,7 @@ private:
     std::thread::id m_thread;
 
     HandlePool<GlBuffer, BufferTag> m_buffers;
+    HandlePool<GlShaderModule, ShaderModuleTag> m_shaderModules;
     HandlePool<GlTexture, TextureTag> m_textures;
     std::vector<CachedFramebuffer> m_framebuffers;
     std::unique_ptr<GlSwapchain> m_swapchain;

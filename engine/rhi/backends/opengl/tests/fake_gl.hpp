@@ -12,6 +12,7 @@
 
 #include <glad/gl.h>
 
+#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstring>
@@ -57,6 +58,10 @@ struct FakeGlState {
     GLenum nextError = GL_NO_ERROR;
     /// glMapNamedBufferRange() returns null.
     bool failMapping = false;
+    /// The source of each live shader object.
+    std::map<GLuint, std::string> shaders{};
+    /// When not empty, every compile fails with this info log.
+    std::string compileLog{};
 };
 
 namespace fake_gl {
@@ -70,6 +75,9 @@ inline std::string name(GLenum value) {
         {GL_TEXTURE_2D, "GL_TEXTURE_2D"},
         {GL_TEXTURE, "GL_TEXTURE"},
         {GL_BUFFER, "GL_BUFFER"},
+        {GL_SHADER, "GL_SHADER"},
+        {GL_VERTEX_SHADER, "GL_VERTEX_SHADER"},
+        {GL_FRAGMENT_SHADER, "GL_FRAGMENT_SHADER"},
         {GL_SRGB8_ALPHA8, "GL_SRGB8_ALPHA8"},
         {GL_RGBA8, "GL_RGBA8"},
         {GL_RGBA16F, "GL_RGBA16F"},
@@ -298,6 +306,51 @@ inline void GLAD_API_PTR deleteBuffers(GLsizei count, const GLuint* buffers) {
     }
 }
 
+// Shaders
+
+inline GLuint GLAD_API_PTR createShader(GLenum type) {
+    const GLuint shader = ++current->lastName;
+    current->shaders[shader];
+    log(std::format("CreateShader({}) = {}", name(type), shader));
+    return shader;
+}
+
+inline void GLAD_API_PTR shaderSource(GLuint shader, GLsizei count, const GLchar* const* strings,
+                                      const GLint* lengths) {
+    std::string& source = current->shaders.at(shader);
+    source.clear();
+    for (GLsizei i = 0; i < count; ++i) {
+        source += lengths != nullptr ? std::string_view(strings[i], static_cast<std::size_t>(lengths[i]))
+                                     : std::string_view(strings[i]);
+    }
+    log(std::format("ShaderSource({}, {} bytes)", shader, source.size()));
+}
+
+inline void GLAD_API_PTR compileShader(GLuint shader) {
+    log(std::format("CompileShader({})", shader));
+}
+
+inline void GLAD_API_PTR getShaderiv(GLuint /*shader*/, GLenum which, GLint* value) {
+    if (which == GL_COMPILE_STATUS) {
+        *value = current->compileLog.empty() ? GL_TRUE : GL_FALSE;
+    } else if (which == GL_INFO_LOG_LENGTH) {
+        *value = current->compileLog.empty() ? 0 : static_cast<GLint>(current->compileLog.size() + 1);
+    }
+}
+
+inline void GLAD_API_PTR getShaderInfoLog(GLuint /*shader*/, GLsizei size, GLsizei* length, GLchar* infoLog) {
+    const std::string& text = current->compileLog;
+    const auto copied = std::min(text.size(), static_cast<std::size_t>(std::max(size - 1, 0)));
+    std::memcpy(infoLog, text.data(), copied);
+    infoLog[copied] = '\0';
+    *length = static_cast<GLsizei>(copied);
+}
+
+inline void GLAD_API_PTR deleteShader(GLuint shader) {
+    current->shaders.erase(shader);
+    log(std::format("DeleteShader({})", shader));
+}
+
 // Framebuffers
 
 inline void GLAD_API_PTR createFramebuffers(GLsizei count, GLuint* framebuffers) {
@@ -396,6 +449,12 @@ public:
             {"glCopyNamedBufferSubData",
              reinterpret_cast<platform::GlProc>(&fake_gl::copyNamedBufferSubData)},
             {"glDeleteBuffers", reinterpret_cast<platform::GlProc>(&fake_gl::deleteBuffers)},
+            {"glCreateShader", reinterpret_cast<platform::GlProc>(&fake_gl::createShader)},
+            {"glShaderSource", reinterpret_cast<platform::GlProc>(&fake_gl::shaderSource)},
+            {"glCompileShader", reinterpret_cast<platform::GlProc>(&fake_gl::compileShader)},
+            {"glGetShaderiv", reinterpret_cast<platform::GlProc>(&fake_gl::getShaderiv)},
+            {"glGetShaderInfoLog", reinterpret_cast<platform::GlProc>(&fake_gl::getShaderInfoLog)},
+            {"glDeleteShader", reinterpret_cast<platform::GlProc>(&fake_gl::deleteShader)},
             {"glCreateFramebuffers", reinterpret_cast<platform::GlProc>(&fake_gl::createFramebuffers)},
             {"glNamedFramebufferTexture",
              reinterpret_cast<platform::GlProc>(&fake_gl::namedFramebufferTexture)},

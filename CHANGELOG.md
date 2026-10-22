@@ -41,6 +41,7 @@ All notable user-visible changes to Teserra are documented here. The format foll
 - Descriptor validation for every backend, `<teserra/rhi/validation.hpp>`: buffer, texture, sampler, shader module and graphics pipeline descriptors are checked at creation (sizes, usages, formats, mip levels, vertex layouts, render targets).
 - RHI buffers: `Device::writeBuffer()` copies into `GpuOnly` buffers with `CopyDst` usage, ordered between submissions, and `Device::map()` returns the persistent mapping of `Upload` and `Readback` buffers. Both are validated (`validateWriteBuffer()`, `validateMapBuffer()`). The OpenGL backend creates buffers with immutable storage, persistently and coherently mapped where the CPU accesses them, replays `copyBuffer`, and reports `OutOfMemory`; the null backend keeps buffer memory for tests (`NullDevice::bufferData()`).
 - Command stream validation for every backend: `rhi::validateCommands(list, objects)` checks a submitted list against a device's objects through `rhi::ResourceLookup`. The null and OpenGL backends call it in `submit()` with `enableValidation`; the OpenGL backend now validates before any GL call.
+- RHI shader modules in the OpenGL backend: GLSL is compiled per stage, and a failed compile returns `ErrorCode::CompilationFailed` with the debug name, the stage and the driver's log with its line numbers, logged at Error. Until `.tshader` blobs exist, `rhi::temporaryGlslBlob()` wraps GLSL 450 source in a shader blob (temporary, removed by #44).
 
 ### Changed
 

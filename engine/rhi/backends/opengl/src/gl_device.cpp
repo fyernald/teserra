@@ -47,6 +47,10 @@ private:
     const GlDevice& m_device;
 };
 
+std::string_view stageName(ShaderStage stage) noexcept {
+    return stage == ShaderStage::Fragment ? "fragment" : "vertex";
+}
+
 std::string_view glString(const GladGLContext& gl, GLenum name) {
     const GLubyte* value = gl.GetString(name);
     return value != nullptr ? std::string_view(reinterpret_cast<const char*>(value))
@@ -88,6 +92,9 @@ GlDevice::~GlDevice() {
         [&](TextureHandle /*handle*/, const GlTexture& texture) { m_gl.DeleteTextures(1, &texture.name); });
     m_buffers.forEach(
         [&](BufferHandle /*handle*/, const GlBuffer& buffer) { m_gl.DeleteBuffers(1, &buffer.name); });
+    m_shaderModules.forEach([&](ShaderModuleHandle /*handle*/, const GlShaderModule& shaderModule) {
+        m_gl.DeleteShader(shaderModule.shader);
+    });
 }
 
 Result<void> GlDevice::initialize(const DeviceDesc& desc, platform::Window& window) {
@@ -285,6 +292,76 @@ std::span<std::byte> GlDevice::map(BufferHandle handle) {
 }
 
 // ---------------------------------------------------------------------------------------------------------
+// Shader modules: GLSL compiled per stage; pipelines link them into programs (#34).
+
+Result<ShaderModuleHandle> GlDevice::createShaderModule(const ShaderModuleDesc& desc) {
+    requireContextThread();
+    if (m_validate) {
+        validateShaderModuleDesc(desc);
+    }
+    // TODO(#44): take the GL GLSL of a .tshader blob instead
+    const std::optional<std::string_view> source = temporaryGlslSource(desc.blob);
+    if (!source) {
+        return fail(ErrorCode::Unsupported, Module::Rhi,
+                    "The OpenGL backend reads only temporary GLSL blobs until .tshader blobs exist (#44) "
+                    "('{}')",
+                    desc.debugName);
+    }
+    if (desc.entryPoint != "main") {
+        return fail(ErrorCode::Unsupported, Module::Rhi,
+                    "Shader module '{}': GLSL has no entry point '{}'; it must be 'main'", desc.debugName,
+                    desc.entryPoint);
+    }
+
+    const GLuint shader =
+        m_gl.CreateShader(desc.stage == ShaderStage::Fragment ? GL_FRAGMENT_SHADER : GL_VERTEX_SHADER);
+    const GLchar* text = source->data();
+    const auto length = static_cast<GLint>(source->size());
+    m_gl.ShaderSource(shader, 1, &text, &length);
+    m_gl.CompileShader(shader);
+    GLint compiled = GL_FALSE;
+    m_gl.GetShaderiv(shader, GL_COMPILE_STATUS, &compiled);
+    if (compiled == GL_FALSE) {
+        GLint logLength = 0;
+        m_gl.GetShaderiv(shader, GL_INFO_LOG_LENGTH, &logLength);
+        std::string log(static_cast<usize>(std::max(logLength, 1)), '\0');
+        GLsizei written = 0;
+        m_gl.GetShaderInfoLog(shader, static_cast<GLsizei>(log.size()), &written, log.data());
+        log.resize(static_cast<usize>(written));
+        while (!log.empty() && (log.back() == '\n' || log.back() == '\r')) {
+            log.pop_back();
+        }
+        m_gl.DeleteShader(shader);
+        // A shader is content, not code: report the driver's log, whose line numbers are the source's.
+        Unexpected error =
+            fail(ErrorCode::CompilationFailed, Module::Rhi, "Shader module '{}' ({}) failed to compile:\n{}",
+                 desc.debugName, stageName(desc.stage), log);
+        TESERRA_LOG_ERROR(LogCategory::Rhi, "{}", error.value().message);
+        return error;
+    }
+    if (!desc.debugName.empty()) {
+        m_gl.ObjectLabel(GL_SHADER, shader, static_cast<GLsizei>(desc.debugName.size()),
+                         desc.debugName.data());
+    }
+    return m_shaderModules.create(
+        GlShaderModule{.shader = shader, .stage = desc.stage, .debugName = std::string(desc.debugName)});
+}
+
+void GlDevice::destroy(ShaderModuleHandle handle) {
+    if (handle.isNull()) {
+        return;
+    }
+    requireContextThread();
+    const GlShaderModule* shaderModule = m_shaderModules.tryGet(handle);
+    TESERRA_ASSERT(shaderModule != nullptr, "Destroying shader module {}, which is not alive", handle);
+    if (shaderModule == nullptr) {
+        return;
+    }
+    m_gl.DeleteShader(shaderModule->shader);
+    m_shaderModules.destroy(handle);
+}
+
+// ---------------------------------------------------------------------------------------------------------
 // Other resources: created by the OpenGL backend from iteration 5 on.
 
 Result<TextureHandle> GlDevice::createTexture(const TextureDesc& desc) {
@@ -297,12 +374,6 @@ Result<SamplerHandle> GlDevice::createSampler(const SamplerDesc& desc) {
     // TODO(#50): samplers
     return fail(ErrorCode::Unsupported, Module::Rhi, "The OpenGL backend cannot create samplers yet ('{}')",
                 desc.debugName);
-}
-
-Result<ShaderModuleHandle> GlDevice::createShaderModule(const ShaderModuleDesc& desc) {
-    // TODO(#33): shader modules
-    return fail(ErrorCode::Unsupported, Module::Rhi,
-                "The OpenGL backend cannot create shader modules yet ('{}')", desc.debugName);
 }
 
 Result<GraphicsPipelineHandle> GlDevice::createGraphicsPipeline(const GraphicsPipelineDesc& desc) {
@@ -318,10 +389,6 @@ void GlDevice::destroy(TextureHandle handle) {
 
 void GlDevice::destroy(SamplerHandle handle) {
     TESERRA_ASSERT(handle.isNull(), "Destroying sampler {}, which this device did not create", handle);
-}
-
-void GlDevice::destroy(ShaderModuleHandle handle) {
-    TESERRA_ASSERT(handle.isNull(), "Destroying shader module {}, which this device did not create", handle);
 }
 
 void GlDevice::destroy(GraphicsPipelineHandle handle) {

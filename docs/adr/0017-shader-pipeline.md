@@ -19,7 +19,7 @@ Shaders should be authored once and run on OpenGL now and Vulkan later. Vulkan c
 - CMake function `teserra_add_shaders(<target> SOURCES ...)` invokes the tool and makes the blobs available (embedded for engine built-ins, files for game assets).
 - The OpenGL backend consumes the **emitted GLSL**, not SPIR-V. We do **not** depend on `ARB_gl_spirv` in v1: driver support and quality are inconsistent, it gives no reflection, and debugging GLSL in RenderDoc is easier.
 - The RHI `ShaderModuleDesc` takes a `.tshader` blob; each backend picks its payload. Backends never receive raw source from the renderer.
-- Until the pipeline lands (iteration 6), the first triangle uses a temporary GLSL-only path that is removed by the pipeline issue.
+- Until the pipeline lands (iteration 6), the first triangle uses a temporary GLSL-only path (`rhi::temporaryGlslBlob()`, #33) that is removed by the pipeline issue (#44).
 
 ## Alternatives considered
 
