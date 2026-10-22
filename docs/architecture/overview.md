@@ -50,7 +50,7 @@ Arrows point from a module to what it depends on. A module may depend on any mod
 | 2 | `teserra_rhi` | Backend-agnostic GPU interface, command recording, validation | core, platform | - |
 | 2 | `teserra_assets` | Asset IDs, handles, registry, loader interfaces, CPU-side decoding | platform | stb_image (PRIVATE) |
 | 3 | `teserra_rhi_opengl` | OpenGL 4.5 backend (separate target, linked by `engine`) | core, platform, rhi | glad (vendored as `teserra_glad`, PRIVATE) |
-| 3 | `teserra_rhi_null` | Recording/validating backend for headless tests | rhi | - |
+| 3 | `teserra_rhi_null` | Recording/validating backend for headless tests and runs; always built | core, platform, rhi | - |
 | 3 | `teserra_renderer` | Frame structure, render passes, cameras, materials, sprite batching, debug draw | rhi, assets | - |
 | 4 | `teserra_ecs` | Entities, component storage, views, events, deferred commands | core | - |
 | 5 | `teserra_scene` | Scenes owning worlds, transforms, system scheduling, ECS-to-renderer extraction, tilemaps | ecs, renderer, assets | - |

@@ -14,18 +14,21 @@ teserra_add_module(rhi LAYER 2
         include/teserra/rhi/shader.hpp
         include/teserra/rhi/swapchain.hpp
         include/teserra/rhi/texture.hpp
+        include/teserra/rhi/validation.hpp
     SOURCES
         src/command_list.cpp
         src/device.cpp
         src/format.cpp
+        src/validation.cpp
 )
 
 if(TESERRA_BUILD_TESTS)
     add_subdirectory(tests)
 endif()
 
-# Backends are layer-3 modules that implement Device, each behind its option. The null backend follows
-# with #29.
+# Backends are layer-3 modules that implement Device. The null backend is always built (tests and headless
+# runs use it); the others each have an option.
+add_subdirectory(backends/null)
 if(TESERRA_RHI_OPENGL)
     add_subdirectory(backends/opengl)
 endif()

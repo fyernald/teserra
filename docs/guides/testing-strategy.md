@@ -82,7 +82,7 @@ The `ci-windows` test preset also writes a JUnit report to `build/ci-windows/jun
 
 ## RHI and renderer tests
 
-- **Null backend** (`teserra_rhi_null`): renderer tests build a `FramePacket` by hand, render one frame, and assert on the recorded stream ("2 batches, 1 pipeline switch, bind group 2 changes once"). RHI validation tests assert that invalid usage is detected (draw outside a render pass, mismatched pipeline/target formats, stale handles).
+- **Null backend** (`teserra_rhi_null`, `rhi::null::createHeadlessDevice()`): renderer tests build a `FramePacket` by hand, render one frame, and assert on the recorded stream (`NullDevice::submitted()`, `describeCommands()`: "2 batches, 1 pipeline switch, bind group 2 changes once"). Engine tests run an `App` with `AppConfig::backend = rhi::Backend::Null` on the headless platform and inspect the frames it rendered (`engine/engine/tests/app_render_test.cpp`). RHI validation tests assert that invalid usage is detected (draw outside a render pass, mismatched pipeline/target formats, stale handles).
 - **Command stream tests**: record → serialize → compare to expected sequence.
 - **Allocation tests**: a steady-state frame performs zero heap allocations ([memory and performance](../architecture/memory-and-performance.md#verifying-the-allocation-rule)).
 
