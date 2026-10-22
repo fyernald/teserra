@@ -2,13 +2,18 @@
 // presents as with a real device, and the null device keeps the frame's command lists for inspection.
 
 #include <teserra/engine/app.hpp>
+#include <teserra/rhi/shader.hpp>
 #include <teserra/rhi_null/null_device.hpp>
 #include <teserra/test/allocation_counter.hpp>
 
 #include "headless_platform.hpp"
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
+#include <array>
+#include <format>
 #include <memory>
+#include <span>
 #include <utility>
 
 using namespace teserra;
@@ -124,4 +129,84 @@ TEST_CASE("App on the Null backend: steady-state frames do not allocate",
     }}) == 0);
 
     CHECK(allocations == 0);
+}
+
+TEST_CASE("App on the Null backend: the rhi_triangle frame is recorded and validated headlessly",
+          "[engine][app][render]") {
+    NullApp fixture(nullConfig(2));
+    REQUIRE(fixture.app.isInitialized());
+    rhi::Device& device = fixture.app.device();
+
+    // The resources and render callback of examples/rhi_triangle, with placeholder shader code: the null
+    // backend compiles nothing.
+    constexpr std::array<f32, usize{3} * 7> kVertices{
+        0.0F,  0.5F,  0.0F, 1.0F, 0.0F, 0.0F, 1.0F, //
+        -0.5F, -0.5F, 0.0F, 0.0F, 1.0F, 0.0F, 1.0F, //
+        0.5F,  -0.5F, 0.0F, 0.0F, 0.0F, 1.0F, 1.0F, //
+    };
+    constexpr std::array<u16, 3> kIndices{0, 1, 2};
+    constexpr std::array kBuffers{rhi::VertexBufferLayout{.stride = 7 * sizeof(f32)}};
+    constexpr std::array kAttributes{
+        rhi::VertexAttribute{.location = 0, .format = rhi::VertexFormat::Float3},
+        rhi::VertexAttribute{.location = 1, .format = rhi::VertexFormat::Float4, .offset = 3 * sizeof(f32)},
+    };
+    const rhi::BufferHandle vertices =
+        *device.createBuffer({.sizeInBytes = sizeof(kVertices),
+                              .usage = rhi::BufferUsage::Vertex | rhi::BufferUsage::CopyDst,
+                              .debugName = "Triangle vertices"});
+    const rhi::BufferHandle indices =
+        *device.createBuffer({.sizeInBytes = sizeof(kIndices),
+                              .usage = rhi::BufferUsage::Index | rhi::BufferUsage::CopyDst,
+                              .debugName = "Triangle indices"});
+    device.writeBuffer(vertices, 0, std::as_bytes(std::span(kVertices)));
+    device.writeBuffer(indices, 0, std::as_bytes(std::span(kIndices)));
+    const rhi::ShaderModuleHandle vertexShader = *device.createShaderModule(
+        {.stage = rhi::ShaderStage::Vertex, .blob = rhi::temporaryGlslBlob("vertex")});
+    const rhi::ShaderModuleHandle fragmentShader = *device.createShaderModule(
+        {.stage = rhi::ShaderStage::Fragment, .blob = rhi::temporaryGlslBlob("fragment")});
+    const rhi::GraphicsPipelineHandle pipeline = *device.createGraphicsPipeline({
+        .vertexShader = vertexShader,
+        .fragmentShader = fragmentShader,
+        .vertexBuffers = kBuffers,
+        .vertexAttributes = kAttributes,
+        .raster = {.cullMode = rhi::CullMode::Back},
+        .targets = {.colorFormats = {device.swapchain()->format()}},
+        .debugName = "Triangle",
+    });
+
+    rhi::TextureHandle image;
+    CHECK(fixture.app.run({.render = [&](App& app, rhi::CommandList& commands) {
+        image = app.backbuffer();
+        commands.pushDebugGroup("Triangle");
+        commands.beginRenderPass({.colorAttachments = {{.texture = app.backbuffer(),
+                                                        .loadOp = rhi::LoadOp::Clear,
+                                                        .clearColor = {0.05F, 0.05F, 0.06F, 1.0F}}}});
+        commands.bindPipeline(pipeline);
+        commands.bindVertexBuffer(0, vertices);
+        commands.bindIndexBuffer(indices, rhi::IndexType::Uint16);
+        commands.drawIndexed({.indexCount = 3});
+        commands.endRenderPass();
+        commands.popDebugGroup();
+    }}) == 0);
+
+    REQUIRE(fixture.device().submitted().size() == 1);
+    CHECK(rhi::describeCommands(*fixture.device().submitted()[0]) ==
+          std::format(
+              "PushDebugGroup \"Triangle\"\n"
+              "  BeginRenderPass color0={} load=Clear store=Store clear=(0.05, 0.05, 0.06, 1)\n"
+              "    BindPipeline pipeline={}\n"
+              "    BindVertexBuffers firstSlot=0 buffers=[{}+0]\n"
+              "    BindIndexBuffer buffer={}+0 indexType=Uint16\n"
+              "    DrawIndexed indexCount=3 instanceCount=1 firstIndex=0 vertexOffset=0 firstInstance=0\n"
+              "  EndRenderPass\n"
+              "PopDebugGroup\n",
+              image, pipeline, vertices, indices));
+    // The uploads reached the buffers.
+    CHECK(std::ranges::equal(fixture.device().bufferData(indices), std::as_bytes(std::span(kIndices))));
+
+    device.destroy(pipeline);
+    device.destroy(vertexShader);
+    device.destroy(fragmentShader);
+    device.destroy(indices);
+    device.destroy(vertices);
 }

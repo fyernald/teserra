@@ -331,3 +331,102 @@ void main() { fragColor = vColor; }
         CHECK(record.level < LogLevel::Warn);
     }
 }
+
+TEST_CASE("OpenGL backend (GPU): front faces are counter-clockwise and row 0 is the top",
+          "[rhi_opengl][gpu]") {
+    const GpuWindow gpu = createGpuWindowOrSkip();
+    auto created =
+        createDevice({.backend = Backend::OpenGL, .enableValidation = true, .enableBackendDebug = true},
+                     gpu.window.get(), std::array{opengl::backendFactory()});
+    REQUIRE(created.has_value());
+    auto& device = static_cast<opengl::GlDevice&>(**created);
+    const test::LogCapture log;
+
+    const auto vertex = device.createShaderModule({.stage = ShaderStage::Vertex,
+                                                   .blob = temporaryGlslBlob(R"(#version 450 core
+layout(location = 0) in vec3 position;
+layout(location = 1) in vec4 color;
+layout(location = 0) out vec4 vColor;
+void main() {
+    vColor = color;
+    gl_Position = vec4(position, 1.0);
+}
+)"),
+                                                   .debugName = "Winding vertex"});
+    const auto fragment = device.createShaderModule({.stage = ShaderStage::Fragment,
+                                                     .blob = temporaryGlslBlob(R"(#version 450 core
+layout(location = 0) in vec4 vColor;
+layout(location = 0) out vec4 fragColor;
+void main() { fragColor = vColor; }
+)"),
+                                                     .debugName = "Winding fragment"});
+    REQUIRE(vertex.has_value());
+    REQUIRE(fragment.has_value());
+    constexpr std::array kBuffers{VertexBufferLayout{.stride = 28}};
+    constexpr std::array kAttributes{
+        VertexAttribute{.location = 0, .format = VertexFormat::Float3},
+        VertexAttribute{.location = 1, .format = VertexFormat::Float4, .offset = 12},
+    };
+    const auto pipeline = device.createGraphicsPipeline({
+        .vertexShader = *vertex,
+        .fragmentShader = *fragment,
+        .vertexBuffers = kBuffers,
+        .vertexAttributes = kAttributes,
+        .raster = {.cullMode = CullMode::Back, .frontFace = FrontFace::CounterClockwise},
+        .targets = {.colorFormats = {device.swapchain()->format()}},
+        .debugName = "Winding",
+    });
+    REQUIRE(pipeline.has_value());
+
+    // NDC, +Y up: a green counter-clockwise triangle in the top-left corner and a red clockwise one in the
+    // top-right corner. With back faces culled, only the green one may appear, and at the top.
+    constexpr std::array<f32, usize{6} * 7> kVertices{
+        -1.0F, 1.0F, 0.0F, 0.0F, 1.0F, 0.0F, 1.0F, // counter-clockwise
+        -1.0F, 0.0F, 0.0F, 0.0F, 1.0F, 0.0F, 1.0F, //
+        0.0F,  1.0F, 0.0F, 0.0F, 1.0F, 0.0F, 1.0F, //
+        1.0F,  1.0F, 0.0F, 1.0F, 0.0F, 0.0F, 1.0F, // clockwise
+        1.0F,  0.0F, 0.0F, 1.0F, 0.0F, 0.0F, 1.0F, //
+        0.0F,  1.0F, 0.0F, 1.0F, 0.0F, 0.0F, 1.0F, //
+    };
+    const BufferHandle vertices = *device.createBuffer(
+        {.sizeInBytes = sizeof(kVertices), .usage = BufferUsage::Vertex | BufferUsage::CopyDst});
+    device.writeBuffer(vertices, 0, std::as_bytes(std::span(kVertices)));
+
+    device.beginFrame();
+    const TextureHandle image = device.swapchain()->acquireNextImage();
+    CommandList& cmd = device.acquireCommandList();
+    cmd.beginRenderPass(
+        {.colorAttachments = {
+             {.texture = image, .loadOp = LoadOp::Clear, .clearColor = {0.0F, 0.0F, 0.0F, 1.0F}}}});
+    cmd.bindPipeline(*pipeline);
+    cmd.bindVertexBuffer(0, vertices);
+    cmd.draw({.vertexCount = 6});
+    cmd.endRenderPass();
+    device.submit(cmd);
+
+    const auto texel = [&](u32 x, u32 y) {
+        std::array<GLubyte, 4> rgba{};
+        device.gl().GetTextureSubImage(device.texture(image)->name, 0, static_cast<GLint>(x),
+                                       static_cast<GLint>(y), 0, 1, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE,
+                                       static_cast<GLsizei>(rgba.size()), rgba.data());
+        return rgba;
+    };
+    const UVec2 size = device.swapchain()->size();
+    constexpr std::array<GLubyte, 4> kGreen{0, 255, 0, 255};
+    constexpr std::array<GLubyte, 4> kBlack{0, 0, 0, 255};
+    CHECK(texel(10, 10) == kGreen);          // the counter-clockwise triangle, at the top
+    CHECK(texel(size.x - 10, 10) == kBlack); // the clockwise one is culled
+    CHECK(texel(10, size.y - 10) == kBlack); // nothing at the bottom
+    device.swapchain()->present();
+    device.endFrame();
+    device.waitIdle();
+
+    device.destroy(vertices);
+    device.destroy(*pipeline);
+    device.destroy(*vertex);
+    device.destroy(*fragment);
+    for (const test::CapturedLog& record : log.records()) {
+        INFO(record.message);
+        CHECK(record.level < LogLevel::Warn);
+    }
+}

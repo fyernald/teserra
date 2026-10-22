@@ -60,6 +60,9 @@ void validateCommands(const CommandList& commands, const ResourceLookup& objects
     // Formats of the open render pass's attachments, which a bound pipeline must declare.
     std::array<Format, kMaxColorAttachments> passColorFormats{};
     Format passDepthFormat = Format::Undefined;
+    // The pass's bound pipeline and vertex buffer slots (bit per slot), which draws need.
+    std::optional<GraphicsPipelineDesc> passPipeline;
+    u32 boundVertexSlots = 0;
 
     const auto liveBuffer = [&](BufferHandle handle, [[maybe_unused]] std::string_view use,
                                 BufferUsage usage) {
@@ -106,6 +109,8 @@ void validateCommands(const CommandList& commands, const ResourceLookup& objects
                 const RenderPassDesc& pass = command.as<BeginRenderPassCommand>().pass;
                 passColorFormats.fill(Format::Undefined);
                 passDepthFormat = Format::Undefined;
+                passPipeline.reset();
+                boundVertexSlots = 0;
                 for (u32 i = 0; i < kMaxColorAttachments && !pass.colorAttachments[i].texture.isNull(); ++i) {
                     if (const std::optional<TextureDesc> desc =
                             liveTexture(pass.colorAttachments[i].texture, "A color attachment",
@@ -126,6 +131,7 @@ void validateCommands(const CommandList& commands, const ResourceLookup& objects
                 const GraphicsPipelineHandle handle = command.as<BindPipelineCommand>().pipeline;
                 const std::optional<GraphicsPipelineDesc> desc = objects.graphicsPipeline(handle);
                 TESERRA_ASSERT(desc.has_value(), "bindPipeline uses pipeline {}, which is not alive", handle);
+                passPipeline = desc;
                 if (!desc) {
                     break;
                 }
@@ -143,7 +149,11 @@ void validateCommands(const CommandList& commands, const ResourceLookup& objects
                     formatInfo(passDepthFormat).name);
                 break;
             }
-            case CommandType::BindVertexBuffers:
+            case CommandType::BindVertexBuffers: {
+                const u32 firstSlot = command.as<BindVertexBuffersCommand>().firstSlot;
+                for (usize i = 0; i < command.vertexBuffers().size(); ++i) {
+                    boundVertexSlots |= 1U << (firstSlot + i);
+                }
                 for (const VertexBufferBinding& binding : command.vertexBuffers()) {
                     if (const std::optional<BufferDesc> desc =
                             liveBuffer(binding.buffer, "bindVertexBuffers", BufferUsage::Vertex)) {
@@ -151,6 +161,17 @@ void validateCommands(const CommandList& commands, const ResourceLookup& objects
                             binding.offset < desc->sizeInBytes,
                             "bindVertexBuffers offset {} is past the end of buffer '{}' ({} bytes)",
                             binding.offset, desc->debugName, desc->sizeInBytes);
+                    }
+                }
+                break;
+            }
+            case CommandType::Draw:
+            case CommandType::DrawIndexed:
+                if (passPipeline) {
+                    for (u32 slot = 0; slot < passPipeline->vertexBuffers.size(); ++slot) {
+                        TESERRA_ASSERT((boundVertexSlots & (1U << slot)) != 0,
+                                       "draw needs vertex buffer {} of pipeline '{}', which is not bound",
+                                       slot, passPipeline->debugName);
                     }
                 }
                 break;
