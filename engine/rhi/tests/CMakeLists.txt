@@ -1,5 +1,6 @@
 teserra_add_test(rhi
     SOURCES
+        command_list_test.cpp
         create_device_test.cpp
         descriptor_test.cpp
         format_test.cpp

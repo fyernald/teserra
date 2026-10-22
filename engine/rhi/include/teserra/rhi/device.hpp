@@ -8,6 +8,7 @@
 #include <teserra/core/result.hpp>
 #include <teserra/core/types.hpp>
 #include <teserra/rhi/buffer.hpp>
+#include <teserra/rhi/command_list.hpp>
 #include <teserra/rhi/handles.hpp>
 #include <teserra/rhi/limits.hpp>
 #include <teserra/rhi/pipeline.hpp>
@@ -25,8 +26,6 @@ class Window;
 }
 
 namespace teserra::rhi {
-
-class CommandList;
 
 /// Graphics API behind a Device.
 enum class Backend : u8 {

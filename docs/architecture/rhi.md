@@ -44,13 +44,14 @@ classDiagram
       +beginRenderPass(RenderPassDesc)
       +bindPipeline(GraphicsPipelineHandle)
       +bindGroup(index, BindGroupHandle, offsets)
-      +bindVertexBuffer(slot, BufferHandle, offset)
+      +bindVertexBuffer(s)(slot, BufferHandle, offset)
       +bindIndexBuffer(BufferHandle, IndexType, offset)
       +setViewport() / setScissor()
       +draw() / drawIndexed()
-      +copyBufferToTexture() / copyTextureToBuffer()
+      +copyBuffer() / copyBufferToTexture() / copyTextureToBuffer()
       +pushDebugGroup() / popDebugGroup()
       +endRenderPass()
+      +commands() CommandRange
     }
     Device --> Swapchain
     Device --> CommandList
@@ -243,14 +244,39 @@ sequenceDiagram
   - Variable-size data, such as vertex buffer bindings, dynamic offsets and debug label characters, follows as a trailing array that backends read in place as a `std::span`. Its counts are bounded by public limits and validated in debug.
   - Debug-only recording state (current pipeline, open render pass) lives next to the stream, not in it.
   - Measured cost: about 3.4 ns per command for recording plus replay into a mock backend. That is ~34 µs for 10k commands on a mobile Core i5 with an MSVC Release build, about 2 ns per command above direct virtual calls. A `std::variant` command array was rejected: about 4× slower to record and 5.5× the memory, since every entry is as large as the largest command.
-- Recording rules (validated in debug): draws only inside a render pass; a pipeline must be bound before draw; bind groups must be compatible with the bound pipeline's layout; render passes do not nest; copies happen outside render passes.
-- `submit()` hands the stream to the backend, which **replays** (GL) or **translates** (Vulkan) it. Lists are owned by the device per frame slot and reset when the slot is reused.
+- The records are defined in `<teserra/rhi/commands.hpp>`: `CommandType`, a `*Command` payload struct per command (each names its `kType`), and the argument structs (`DrawArgs`, `Viewport`, `BufferTextureCopy`, ...). `EndRenderPass` and `PopDebugGroup` are a bare header.
+- Recording rules, asserted at the call that breaks them (`TESERRA_ASSERT`, so Debug and RelWithDebInfo):
+  - Render passes do not nest and have at least one attachment.
+  - Bindings (pipeline, bind groups, vertex and index buffers), viewport and scissor are recorded **inside** a render pass, and **each pass starts with nothing bound**, as in WebGPU. A pass is self-contained, which the Vulkan barrier pre-scan and Metal's per-pass encoders need.
+  - A draw needs a bound pipeline; an indexed draw also needs a bound index buffer.
+  - Copies happen outside render passes.
+  - Debug groups are balanced. A group opened inside a pass is closed inside it, and a pass cannot close a group opened before it (Metal encoders cannot span passes).
+  - Handles are not null and counts stay within the `k*` limits.
+  - Device validation at submit covers what recording cannot see: handle liveness, pipeline target formats against the pass, bind groups against the pipeline layout.
+- Without `setViewport` / `setScissor`, a pass draws to its whole render area; backends set both at the start of every pass.
+- `submit()` calls `CommandList::finish()`, which checks that no pass or debug group is open; a finished list asserts on recording until `reset()`. The backend then **replays** (GL) or **translates** (Vulkan) it, walking the records with `commands()`:
+
+  ```cpp
+  for (const Command command : list.commands()) {
+      switch (command.type()) {
+      case CommandType::Draw:
+          draw(command.as<DrawCommand>().args);   // payload in place; as<T>() asserts the type
+          break;
+      case CommandType::BindVertexBuffers:
+          bindVertexBuffers(command.as<BindVertexBuffersCommand>().firstSlot,
+                            command.vertexBuffers()); // trailing array as std::span, in place
+          break;
+      // ...
+  ```
+
+  Trailing arrays are read through typed accessors (`dynamicOffsets()`, `vertexBuffers()`, `debugLabel()`), so a reader cannot pair the wrong element type or count with a record. `describeCommands(list)` prints the stream, one indented line per command, for debugging and tests.
+- Lists are owned by the device per frame slot and reset when the slot is reused; `reset()` keeps the stream's capacity.
 - v1 records on the main thread only. Because recording touches no backend state, multithreaded recording later only requires per-thread lists.
 
 ```cpp
 // Per frame (illustrative)
 device.beginFrame();
-TextureHandle backbuffer = device.swapchain().acquireNextImage();
+TextureHandle backbuffer = device.swapchain()->acquireNextImage();
 
 CommandList& cmd = device.acquireCommandList();
 cmd.pushDebugGroup("Main pass");
@@ -266,7 +292,7 @@ cmd.endRenderPass();
 cmd.popDebugGroup();
 
 device.submit(cmd);
-device.swapchain().present();
+device.swapchain()->present();
 device.endFrame();
 ```
 
@@ -287,7 +313,7 @@ device.endFrame();
 
 - `writeBuffer(buffer, offset, bytes)` and `writeTexture(texture, region, bytes, rowPitch)` copy the caller's data immediately (caller may free it after the call) and are ordered **before** the next submitted command list.
 - `MemoryLocation::Upload` buffers may be persistently mapped (`device.map(buffer)` returns `std::span<std::byte>`), used by the renderer's per-frame ring buffers. The caller is responsible for not overwriting regions still in flight (the ring buffer partitions by frame slot).
-- Readback: `cmd.copyTextureToBuffer(texture, readbackBuffer, region)`, then after the frame's fence (or `waitIdle()` in tests), `map()` the readback buffer. Row 0 is the top row.
+- Readback: `cmd.copyTextureToBuffer({.buffer = readback, .texture = target, .width = w, .height = h})` (a `BufferTextureCopy`, which also describes uploads with `copyBufferToTexture`), then after the frame's fence (or `waitIdle()` in tests), `map()` the readback buffer. Row 0 is the top row.
 
 ## Validation layer
 

@@ -1,5 +1,6 @@
 teserra_add_test(core
     SOURCES
+        allocation_counter_test.cpp
         assert_disabled_test.cpp
         assert_test.cpp
         config_test.cpp

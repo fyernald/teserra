@@ -6,8 +6,9 @@
 # (teserra_add_test(core ...) -> teserra_core_tests). DEPENDS links Teserra modules, LIBRARIES any
 # other target. Every TEST_CASE is registered as its own CTest test, labeled <name>, so `ctest -N`,
 # IDE test explorers and the JUnit report list individual test cases. Every test executable also links
-# teserra_test_support (tests/support/): the <teserra/test/...> helpers and a listener that turns off
-# console logging and makes failed engine assertions fail the current test instead of aborting.
+# teserra_test_support (tests/support/): the <teserra/test/...> helpers, a listener that turns off
+# console logging and makes failed engine assertions fail the current test instead of aborting, and
+# global operator new/delete that count allocations per thread (<teserra/test/allocation_counter.hpp>).
 #
 #   teserra_add_header_check(<module>)
 #
@@ -194,7 +195,10 @@ endfunction()
 # Shared test support, linked into every teserra_add_test() executable. An OBJECT library, so that the
 # Catch2 listener in it is always linked, although no test refers to it.
 set(_teserra_testing_dir "${CMAKE_CURRENT_LIST_DIR}")
-add_library(teserra_test_support OBJECT "${CMAKE_CURRENT_LIST_DIR}/../tests/support/src/test_support.cpp")
+add_library(teserra_test_support OBJECT
+    "${CMAKE_CURRENT_LIST_DIR}/../tests/support/src/allocation_counter.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../tests/support/src/test_support.cpp"
+)
 _teserra_configure_test_target(teserra_test_support)
 target_include_directories(teserra_test_support PUBLIC "${CMAKE_CURRENT_LIST_DIR}/../tests/support/include")
 # teserra_core is defined later (engine/core); target names are resolved when the build is generated.

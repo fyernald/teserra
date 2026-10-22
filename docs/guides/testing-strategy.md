@@ -35,7 +35,7 @@ teserra_add_test(core
 )
 ```
 
-It creates `teserra_core_tests` linked to `Catch2::Catch2WithMain` and to `teserra_test_support` (`tests/support/`: the `<teserra/test/...>` helpers and a listener that turns off console logging and installs the throwing assert handler), applies the warning set, and registers every `TEST_CASE` as its own CTest test labeled with the module name (discovery runs when CTest starts, not at build time). Useful commands:
+It creates `teserra_core_tests` linked to `Catch2::Catch2WithMain` and to `teserra_test_support` (`tests/support/`: the `<teserra/test/...>` helpers, a listener that turns off console logging and installs the throwing assert handler, and allocation-counting `operator new` / `delete` for `AllocationCounter`), applies the warning set, and registers every `TEST_CASE` as its own CTest test labeled with the module name (discovery runs when CTest starts, not at build time). Useful commands:
 
 ```bash
 ctest --preset windows-msvc-debug -N          # list test cases
