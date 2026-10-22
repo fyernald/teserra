@@ -28,6 +28,8 @@ All notable user-visible changes to Teserra are documented here. The format foll
 - `teserra_window_input` example: logs keyboard, mouse and text input, shows FPS, the cursor and a WASD-moved position in the title, and quits on Escape or close; its CTest smoke run (`--frames 120 --hidden-window`) is skipped on machines without OpenGL 4.5.
 - Shared test support for all test executables (`tests/support/`): failed assertions fail the current test instead of aborting, `REQUIRE_ASSERTS(expr)` / `teserra::test::requireAssert()`, `teserra::test::LogCapture`; `teserra_add_abort_test()` for behavior that ends the process.
 - Layer and leak checks: `tools/scripts/check_layers.py` (a module includes only its own headers and those of its direct `DEPENDS`) and `tools/scripts/check_gl_leaks.py` (GL, Vulkan, GLFW, Win32 and glm names stay in their backend or module; `TODO(#issue)`), with unit tests, `layer-check` / `leak-check` targets in `check`, and steps with pull request annotations in the CI `checks` job.
+- `teserra_rhi` (layer 2), the public RHI types: handles, `Format` / `VertexFormat` with `formatInfo()` / `vertexFormatInfo()`, API bounds (`kMaxColorAttachments`, ...) and `DeviceLimits`, the descriptors `BufferDesc`, `TextureDesc`, `SamplerDesc`, `ShaderModuleDesc`, `GraphicsPipelineDesc` (all fixed-function state) and `RenderPassDesc` (trivially copyable, load/store ops), the `Device` and `Swapchain` interfaces, and `createDevice()`, which picks among the backend factories the build passes in. No backend yet.
+- `<teserra/core/flags.hpp>`: `TESERRA_FLAGS(Enum)` gives scoped flag enums `| & ^ ~`, compound assignment, `hasAll()` and `hasAny()`.
 
 ### Changed
 

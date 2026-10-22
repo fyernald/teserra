@@ -31,13 +31,14 @@ classDiagram
       +acquireCommandList() CommandList&
       +submit(CommandList&)
       +beginFrame() / endFrame()
-      +swapchain() Swapchain&
+      +swapchain() Swapchain*
       +limits() DeviceLimits
     }
     class Swapchain {
       +acquireNextImage() TextureHandle
       +present()
-      +resize(width, height)
+      +resize(framebufferSize)
+      +format() Format
     }
     class CommandList {
       +beginRenderPass(RenderPassDesc)
@@ -98,37 +99,45 @@ enum class Backend : u8 { OpenGL, Vulkan, Null };
 
 struct DeviceDesc {
     Backend backend = Backend::OpenGL;
-    bool enableValidation = TESERRA_DEBUG_BUILD;  // RHI-level validation, see below
-    bool enableBackendDebug = TESERRA_DEBUG_BUILD; // driver debug output / validation layers
-    SwapchainDesc swapchain;
+    bool enableValidation = TESERRA_DEBUG_BUILD != 0;   // RHI-level validation, see below
+    bool enableBackendDebug = TESERRA_DEBUG_BUILD != 0; // driver debug output / validation layers
+    SwapchainDesc swapchain{};                          // preferred format, present mode
 };
 
-// Factory: backends register at link time (teserra_engine links the enabled ones).
-[[nodiscard]] Result<std::unique_ptr<Device>> createDevice(const DeviceDesc& desc,
-                                                           platform::Window& window);
-[[nodiscard]] Result<std::unique_ptr<Device>> createHeadlessDevice(const DeviceDesc& desc);
+// What each backend library exports, e.g. rhi::null::backendFactory().
+struct BackendFactory {
+    Backend backend = Backend::Null;
+    Result<std::unique_ptr<Device>> (*create)(const DeviceDesc& desc, platform::Window* window) = nullptr;
+};
+
+// Uses the factory for desc.backend; `window` is null for a headless device (no swapchain).
+[[nodiscard]] Result<std::unique_ptr<Device>> createDevice(const DeviceDesc& desc, platform::Window* window,
+                                                           std::span<const BackendFactory> backends);
 
 } // namespace teserra::rhi
 ```
 
-- Backends are compiled in by CMake options (`TESERRA_RHI_OPENGL=ON`, `TESERRA_RHI_VULKAN=OFF`, null always on for tests). Asking for a backend that is not compiled in returns an `Error`.
-- `Device` is an abstract interface (virtual calls at resource-creation and submit granularity only; never per draw).
+- Backends are compiled in by CMake options (`TESERRA_RHI_OPENGL=ON`, `TESERRA_RHI_VULKAN=OFF`, null always on for tests). `teserra_engine` passes the factories of the compiled-in backends to `createDevice()`; tests pass the ones they need. Asking for a backend that is not among them returns an `Error` (`Unsupported`).
+- Backends do not register themselves: a self-registering object in a static library is dropped by the linker when nothing references it, and a registry would be global state.
+- `Device` is an abstract interface (virtual calls at resource-creation and submit granularity only; never per draw). `swapchain()` returns null for a headless device.
 
 ## Resource descriptors
 
+Descriptors are aggregates in which every field has a default; code names only the fields that differ, with designated initializers (`device.createTexture({.format = Format::Rgba8Unorm, .width = 64, .height = 64})`). Usage enums are bit flags (`TESERRA_FLAGS` from `<teserra/core/flags.hpp>`) with `None = 0`.
+
 ```cpp
-enum class BufferUsage : u32 { Vertex = 1, Index = 2, Uniform = 4, Storage = 8, CopySrc = 16, CopyDst = 32 };
+enum class BufferUsage : u8 { None = 0, Vertex = 1, Index = 2, Uniform = 4, Storage = 8, CopySrc = 16, CopyDst = 32 };
 enum class MemoryLocation : u8 { GpuOnly, Upload /* CPU writes, GPU reads */, Readback /* GPU writes, CPU reads */ };
 
 struct BufferDesc {
     u64 sizeInBytes = 0;
-    BufferUsage usage{};
+    BufferUsage usage = BufferUsage::None;
     MemoryLocation memory = MemoryLocation::GpuOnly;
-    std::string_view debugName;
+    std::string_view debugName{};
 };
 
 enum class TextureDimension : u8 { Tex2D, Tex2DArray, Tex3D, Cube };
-enum class TextureUsage : u32 { Sampled = 1, RenderTarget = 2, DepthStencil = 4, Storage = 8, CopySrc = 16, CopyDst = 32 };
+enum class TextureUsage : u8 { None = 0, Sampled = 1, RenderTarget = 2, DepthStencil = 4, Storage = 8, CopySrc = 16, CopyDst = 32 };
 
 struct TextureDesc {
     TextureDimension dimension = TextureDimension::Tex2D;
@@ -137,7 +146,7 @@ struct TextureDesc {
     u32 mipLevels = 1;     // kAllMips = full chain
     u32 sampleCount = 1;
     TextureUsage usage = TextureUsage::Sampled | TextureUsage::CopyDst;
-    std::string_view debugName;
+    std::string_view debugName{};
 };
 
 struct SamplerDesc {
@@ -146,35 +155,39 @@ struct SamplerDesc {
     AddressMode addressU = AddressMode::ClampToEdge, addressV = AddressMode::ClampToEdge,
                 addressW = AddressMode::ClampToEdge;
     f32 maxAnisotropy = 1.0f;
-    std::optional<CompareOp> compare;   // shadow samplers (future use)
-    std::string_view debugName;
+    std::optional<CompareOp> compare{};   // shadow samplers (future use)
+    std::string_view debugName{};
 };
 ```
 
-`Format` is an engine enum (`R8Unorm`, `Rg8Unorm`, `Rgba8Unorm`, `Rgba8Srgb`, `Bgra8Unorm`, `Bgra8Srgb`, `R16Float`, `Rgba16Float`, `R32Float`, `Rgba32Float`, `Depth16Unorm`, `Depth24UnormStencil8`, `Depth32Float`, ...) with a `formatInfo()` table (bytes per texel, depth/stencil flags, sRGB flag). Vertex attribute formats use a separate `VertexFormat` enum (`Float2`, `Float3`, `Float4`, `Unorm8x4`, ...).
+`Format` is an engine enum (`Undefined`, `R8Unorm`, `Rg8Unorm`, `Rgba8Unorm`, `Rgba8Srgb`, `Bgra8Unorm`, `Bgra8Srgb`, `Rgb10A2Unorm`, `R16Float`, `Rg16Float`, `Rgba16Float`, `R32Float`, `Rg32Float`, `Rgba32Float`, `R32Uint`, `Depth16Unorm`, `Depth24UnormStencil8`, `Depth32Float`, `Depth32FloatStencil8`) with a `formatInfo()` table (name, bytes per texel, components, depth/stencil flags, sRGB flag). `Depth24UnormStencil8` is missing on some Vulkan devices; `Depth32FloatStencil8` is the portable stencil format. Vertex attribute formats use a separate `VertexFormat` enum (`Float` … `Float4`, `Unorm8x4`, `Uint8x4`, `Uint16x2`, `Uint32`) with `vertexFormatInfo()`.
+
+**Limits.** The `k*` constants of `<teserra/rhi/limits.hpp>` are bounds of the API, equal on every backend; they size the fixed arrays below and are checked when recording: `kMaxColorAttachments = 4`, `kMaxVertexBuffers = 8`, `kMaxVertexAttributes = 16`, `kMaxBindGroups = 4`, `kMaxBindingsPerGroup = 8`, `kMaxDynamicOffsets = 8`, `kMaxDebugLabelLength = 255`, `kMaxFramesInFlight = 2`. What the hardware allows is in `DeviceLimits` (`maxTextureDimension2D`, `maxTextureArrayLayers`, `uniformBufferOffsetAlignment`, `maxUniformBufferRange`, `maxSamplerAnisotropy`), whose defaults are the minimums every backend guarantees.
 
 ### Graphics pipelines
 
 All fixed-function state is baked into the pipeline. There are no "set blend mode" commands.
 
 ```cpp
-struct VertexBufferLayout { u32 stride; VertexStepRate stepRate = VertexStepRate::PerVertex; };
-struct VertexAttribute    { u32 location; u32 bufferIndex; VertexFormat format; u32 offset; };
+struct VertexBufferLayout { u32 stride = 0; VertexStepRate stepRate = VertexStepRate::PerVertex; };
+struct VertexAttribute    { u32 location = 0; u32 bufferIndex = 0; VertexFormat format = VertexFormat::Float; u32 offset = 0; };
 
 struct GraphicsPipelineDesc {
-    ShaderModuleHandle vertexShader;
-    ShaderModuleHandle fragmentShader;
-    PipelineLayoutHandle layout;
-    std::span<const VertexBufferLayout> vertexBuffers;
-    std::span<const VertexAttribute> vertexAttributes;
+    ShaderModuleHandle vertexShader{};
+    ShaderModuleHandle fragmentShader{};
+    PipelineLayoutHandle layout{};
+    std::span<const VertexBufferLayout> vertexBuffers{};
+    std::span<const VertexAttribute> vertexAttributes{};
     PrimitiveTopology topology = PrimitiveTopology::TriangleList;
-    RasterState raster;              // cullMode, frontFace (default CounterClockwise), fillMode, depthBias
-    DepthStencilState depthStencil;  // depthTest, depthWrite, compareOp, stencil (future)
-    std::span<const BlendState> colorBlend;  // one per color attachment
-    RenderTargetLayout targets;      // color formats, depth format, sampleCount
-    std::string_view debugName;
+    RasterState raster{};              // cullMode, frontFace (default CounterClockwise), fillMode, depthBias
+    DepthStencilState depthStencil{};  // depthTest, depthWrite, depthCompare; stencil (future)
+    BlendState colorBlend[kMaxColorAttachments]{};  // indexed like targets.colorFormats
+    RenderTargetLayout targets{};      // colorFormats (Undefined = unused), depthStencilFormat, sampleCount
+    std::string_view debugName{};
 };
 ```
+
+`colorBlend` and `RenderPassDesc::colorAttachments` are C arrays rather than `std::array`: designated initializers of `std::array` elements need a third pair of braces (`.colorBlend = {{{.enabled = true}}}`), a C array does not (`.colorBlend = {{.enabled = true}}`).
 
 The pipeline declares the **formats** of the render targets it draws into (like Vulkan dynamic rendering and Metal). Validation checks that the active render pass matches.
 
@@ -259,7 +272,7 @@ device.endFrame();
 
 ### Render passes
 
-`RenderPassDesc` lists color attachments and an optional depth-stencil attachment, each with a texture handle (+ mip/layer), `LoadOp {Load, Clear, DontCare}`, `StoreOp {Store, DontCare}` and clear values. There are no persistent "framebuffer" objects in the API; backends cache whatever they need internally.
+`RenderPassDesc` lists up to `kMaxColorAttachments` color attachments and an optional depth-stencil attachment, each with a texture handle (+ mip/layer), `LoadOp {Load, Clear, DontCare}`, `StoreOp {Store, DontCare}` and clear values. The color attachments in use are the leading ones with a non-null texture; a null depth texture means no depth. The struct is trivially copyable (fixed arrays, no pointers or debug name) because the command stream copies it; a pass is labeled with `pushDebugGroup`. There are no persistent "framebuffer" objects in the API; backends cache whatever they need internally.
 
 ### Synchronization and frames in flight
 

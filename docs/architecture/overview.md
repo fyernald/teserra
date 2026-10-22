@@ -47,10 +47,10 @@ Arrows point from a module to what it depends on. A module may depend on any mod
 |---|---|---|---|---|
 | 0 | `teserra_core` | Fundamental types, assertions, logging facade, `Result`, generational handles, math aliases, allocators, profiling macros | - | glm (PUBLIC), tl-expected (PUBLIC), spdlog (PRIVATE), Tracy (PRIVATE, optional) |
 | 1 | `teserra_platform` | OS and windowing services behind interfaces | core | GLFW (PRIVATE) |
-| 2 | `teserra_rhi` | Backend-agnostic GPU interface, command recording, validation | platform | - |
-| 2 | `teserra_rhi_opengl` | OpenGL 4.5 backend (separate target, linked by `engine`) | rhi | glad (vendored, PRIVATE) |
-| 2 | `teserra_rhi_null` | Recording/validating backend for headless tests | rhi | - |
+| 2 | `teserra_rhi` | Backend-agnostic GPU interface, command recording, validation | core, platform | - |
 | 2 | `teserra_assets` | Asset IDs, handles, registry, loader interfaces, CPU-side decoding | platform | stb_image (PRIVATE) |
+| 3 | `teserra_rhi_opengl` | OpenGL 4.5 backend (separate target, linked by `engine`) | rhi | glad (vendored, PRIVATE) |
+| 3 | `teserra_rhi_null` | Recording/validating backend for headless tests | rhi | - |
 | 3 | `teserra_renderer` | Frame structure, render passes, cameras, materials, sprite batching, debug draw | rhi, assets | - |
 | 4 | `teserra_ecs` | Entities, component storage, views, events, deferred commands | core | - |
 | 5 | `teserra_scene` | Scenes owning worlds, transforms, system scheduling, ECS-to-renderer extraction, tilemaps | ecs, renderer, assets | - |
@@ -61,7 +61,7 @@ Notes:
 
 - `ecs` depends only on `core`. It sits above `renderer` so that **the renderer can never depend on the ECS**. The renderer consumes plain render data; `scene` extracts that data from the ECS.
 - `assets` is a sibling of `rhi`: it knows files and CPU-side data, not GPU objects. GPU-resident asset types (textures, shaders) are created by loaders that the **renderer** registers with the asset registry.
-- Backends (`teserra_rhi_opengl`, `teserra_rhi_null`, later `teserra_rhi_vulkan`) are linked only by `teserra_engine` and tests. The renderer links only the abstract `teserra_rhi`.
+- Backends (`teserra_rhi_opengl`, `teserra_rhi_null`, later `teserra_rhi_vulkan`) are linked only by `teserra_engine` and tests. The renderer links only the abstract `teserra_rhi`. Backends are in layer 3 because they depend on `rhi` (layer 2); nothing depends on them except `engine` and tests.
 
 ## How the layering is enforced
 
