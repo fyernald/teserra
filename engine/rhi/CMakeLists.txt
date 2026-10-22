@@ -2,6 +2,8 @@ teserra_add_module(rhi LAYER 2
     DEPENDS core platform
     PUBLIC_HEADERS
         include/teserra/rhi/buffer.hpp
+        include/teserra/rhi/command_list.hpp
+        include/teserra/rhi/commands.hpp
         include/teserra/rhi/device.hpp
         include/teserra/rhi/format.hpp
         include/teserra/rhi/handles.hpp
@@ -13,6 +15,7 @@ teserra_add_module(rhi LAYER 2
         include/teserra/rhi/swapchain.hpp
         include/teserra/rhi/texture.hpp
     SOURCES
+        src/command_list.cpp
         src/device.cpp
         src/format.cpp
 )

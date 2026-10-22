@@ -70,17 +70,24 @@ public:
 
     void beginFrame() override {}
     void endFrame() override {}
-    // Command lists arrive with #26; nothing here records commands.
-    [[nodiscard]] CommandList& acquireCommandList() override { TESERRA_UNREACHABLE(); }
-    void submit(CommandList& /*commands*/) override {}
+    [[nodiscard]] CommandList& acquireCommandList() override {
+        m_commands.reset();
+        return m_commands;
+    }
+    void submit(CommandList& commands) override {
+        commands.finish();
+        submittedCommands += commands.commandCount();
+    }
     [[nodiscard]] Swapchain* swapchain() noexcept override { return m_swapchain.get(); }
     void waitIdle() override {}
 
     platform::Window* createdFor;
+    u32 submittedCommands = 0;
 
 private:
     Backend m_backend;
     DeviceLimits m_limits{};
+    CommandList m_commands;
     std::unique_ptr<FakeSwapchain> m_swapchain;
 };
 
@@ -184,6 +191,25 @@ TEST_CASE("Device: creation errors and resource handles", "[rhi][device]") {
         (*device)->createShaderModule({.stage = ShaderStage::Fragment, .debugName = "Broken"});
     REQUIRE_FALSE(shader.has_value());
     CHECK(shader.error().code == ErrorCode::CompilationFailed);
+}
+
+TEST_CASE("Device: a frame records into an acquired command list and submits it", "[rhi][device]") {
+    UnusedWindow window;
+    auto created = createDevice({.backend = Backend::OpenGL}, &window, kBackends);
+    REQUIRE(created.has_value());
+    Device& device = **created;
+
+    device.beginFrame();
+    const TextureHandle backbuffer = device.swapchain()->acquireNextImage();
+    CommandList& cmd = device.acquireCommandList();
+    cmd.beginRenderPass({.colorAttachments = {{.texture = backbuffer, .loadOp = LoadOp::Clear}}});
+    cmd.endRenderPass();
+    device.submit(cmd);
+    device.swapchain()->present();
+    device.endFrame();
+
+    CHECK(cmd.isFinished());
+    CHECK(static_cast<FakeDevice&>(device).submittedCommands == 2);
 }
 
 TEST_CASE("backendName: names every backend", "[rhi][device]") {

@@ -31,7 +31,15 @@ Rules:
 
 ### Verifying the allocation rule
 
-Debug and test builds can install a counting global allocator hook (`teserra::test::AllocationCounter`). Tests for the renderer, ECS views and command recording assert **zero allocations** in a steady-state frame after a warm-up frame. This turns principle 1 into a regression test.
+Every test executable replaces the global `operator new` / `delete` with versions that count allocations per thread (`tests/support/`). `teserra::test::AllocationCounter` from `<teserra/test/allocation_counter.hpp>` counts the current thread's allocations while it is alive. Tests for the renderer, ECS views and command recording assert **zero allocations** in a steady-state frame after a warm-up frame. This turns principle 1 into a regression test.
+
+```cpp
+recordFrame(list); // warm-up
+list.reset();
+const test::AllocationCounter allocations;
+recordFrame(list);
+CHECK(allocations.count() == 0);
+```
 
 ## Profiling
 
