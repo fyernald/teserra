@@ -16,4 +16,17 @@ namespace teserra::rhi::opengl {
 /// the RGBA format of the same encoding for BGRA, and Rgba8Srgb for anything else.
 [[nodiscard]] Format swapchainFormat(Format preferred) noexcept;
 
+/// How a vertex attribute of a VertexFormat is read: glVertexArrayAttribFormat() for float and normalized
+/// formats, glVertexArrayAttribIFormat() for integer ones.
+struct GlVertexFormat {
+    GLint components = 1;
+    GLenum type = GL_FLOAT;
+    bool normalized = false;
+    /// Read as integers by the shader (uint, uvec*).
+    bool integer = false;
+};
+
+/// The GL layout of a vertex attribute format.
+[[nodiscard]] GlVertexFormat glVertexFormat(VertexFormat format) noexcept;
+
 } // namespace teserra::rhi::opengl

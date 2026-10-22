@@ -11,6 +11,7 @@
 #include "gl_swapchain.hpp"
 
 #include <algorithm>
+#include <format>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -37,15 +38,29 @@ public:
         const GlTexture* texture = m_device.texture(handle);
         return texture != nullptr ? std::optional(texture->desc()) : std::nullopt;
     }
-    // TODO(#34): pipelines
     [[nodiscard]] std::optional<GraphicsPipelineDesc>
-    graphicsPipeline(GraphicsPipelineHandle /*handle*/) const override {
-        return std::nullopt;
+    graphicsPipeline(GraphicsPipelineHandle handle) const override {
+        const GlPipeline* pipeline = m_device.pipeline(handle);
+        return pipeline != nullptr ? std::optional(pipeline->desc()) : std::nullopt;
     }
 
 private:
     const GlDevice& m_device;
 };
+
+// The info log of a shader or program, without trailing line breaks.
+std::string infoLog(GLuint object, PFNGLGETSHADERIVPROC getParameter, PFNGLGETSHADERINFOLOGPROC getLog) {
+    GLint length = 0;
+    getParameter(object, GL_INFO_LOG_LENGTH, &length);
+    std::string log(static_cast<usize>(std::max(length, 1)), '\0');
+    GLsizei written = 0;
+    getLog(object, static_cast<GLsizei>(log.size()), &written, log.data());
+    log.resize(static_cast<usize>(written));
+    while (!log.empty() && (log.back() == '\n' || log.back() == '\r')) {
+        log.pop_back();
+    }
+    return log;
+}
 
 std::string_view stageName(ShaderStage stage) noexcept {
     return stage == ShaderStage::Fragment ? "fragment" : "vertex";
@@ -92,6 +107,12 @@ GlDevice::~GlDevice() {
         [&](TextureHandle /*handle*/, const GlTexture& texture) { m_gl.DeleteTextures(1, &texture.name); });
     m_buffers.forEach(
         [&](BufferHandle /*handle*/, const GlBuffer& buffer) { m_gl.DeleteBuffers(1, &buffer.name); });
+    m_pipelines.forEach([&](GraphicsPipelineHandle /*handle*/, const GlPipeline& pipeline) {
+        m_gl.DeleteVertexArrays(1, &pipeline.vertexArray);
+    });
+    for (const CachedProgram& cached : m_programs) {
+        m_gl.DeleteProgram(cached.program);
+    }
     m_shaderModules.forEach([&](ShaderModuleHandle /*handle*/, const GlShaderModule& shaderModule) {
         m_gl.DeleteShader(shaderModule.shader);
     });
@@ -127,6 +148,8 @@ Result<void> GlDevice::initialize(const DeviceDesc& desc, platform::Window& wind
     m_gl.ClipControl(GL_UPPER_LEFT, GL_ZERO_TO_ONE);
     // Shaders and clear colors work in linear values; writes to sRGB textures encode them.
     m_gl.Enable(GL_FRAMEBUFFER_SRGB);
+    // From here on, the cache knows every piece of pipeline state.
+    m_stateCache.reset();
 
     m_swapchain = std::make_unique<GlSwapchain>(*this, m_context, desc.swapchain, window.framebufferSize());
 
@@ -322,15 +345,7 @@ Result<ShaderModuleHandle> GlDevice::createShaderModule(const ShaderModuleDesc& 
     GLint compiled = GL_FALSE;
     m_gl.GetShaderiv(shader, GL_COMPILE_STATUS, &compiled);
     if (compiled == GL_FALSE) {
-        GLint logLength = 0;
-        m_gl.GetShaderiv(shader, GL_INFO_LOG_LENGTH, &logLength);
-        std::string log(static_cast<usize>(std::max(logLength, 1)), '\0');
-        GLsizei written = 0;
-        m_gl.GetShaderInfoLog(shader, static_cast<GLsizei>(log.size()), &written, log.data());
-        log.resize(static_cast<usize>(written));
-        while (!log.empty() && (log.back() == '\n' || log.back() == '\r')) {
-            log.pop_back();
-        }
+        const std::string log = infoLog(shader, m_gl.GetShaderiv, m_gl.GetShaderInfoLog);
         m_gl.DeleteShader(shader);
         // A shader is content, not code: report the driver's log, whose line numbers are the source's.
         Unexpected error =
@@ -362,6 +377,146 @@ void GlDevice::destroy(ShaderModuleHandle handle) {
 }
 
 // ---------------------------------------------------------------------------------------------------------
+// Graphics pipelines: a shared program, a vertex array per pipeline and captured fixed-function state.
+
+Result<GraphicsPipelineHandle> GlDevice::createGraphicsPipeline(const GraphicsPipelineDesc& desc) {
+    requireContextThread();
+    if (m_validate) {
+        validateGraphicsPipelineDesc(desc);
+    }
+    const GlShaderModule* vertex = m_shaderModules.tryGet(desc.vertexShader);
+    const GlShaderModule* fragment =
+        desc.fragmentShader.isNull() ? nullptr : m_shaderModules.tryGet(desc.fragmentShader);
+    const bool vertexValid = vertex != nullptr && vertex->stage == ShaderStage::Vertex;
+    const bool fragmentValid =
+        desc.fragmentShader.isNull() || (fragment != nullptr && fragment->stage == ShaderStage::Fragment);
+    TESERRA_ASSERT(vertexValid, "Graphics pipeline '{}': vertex shader {} is not a live vertex shader",
+                   desc.debugName, desc.vertexShader);
+    TESERRA_ASSERT(fragmentValid, "Graphics pipeline '{}': fragment shader {} is not a live fragment shader",
+                   desc.debugName, desc.fragmentShader);
+    if (!vertexValid || !fragmentValid) {
+        return fail(ErrorCode::InvalidArgument, Module::Rhi,
+                    "Graphics pipeline '{}' needs a live vertex shader and, if any, a live fragment shader",
+                    desc.debugName);
+    }
+    TESERRA_TRY_ASSIGN(const GLuint program, acquireProgram(desc, *vertex, fragment));
+
+    GLuint vertexArray = 0;
+    m_gl.CreateVertexArrays(1, &vertexArray);
+    for (const VertexAttribute& attribute : desc.vertexAttributes) {
+        const GlVertexFormat format = glVertexFormat(attribute.format);
+        m_gl.EnableVertexArrayAttrib(vertexArray, attribute.location);
+        if (format.integer) {
+            m_gl.VertexArrayAttribIFormat(vertexArray, attribute.location, format.components, format.type,
+                                          attribute.offset);
+        } else {
+            m_gl.VertexArrayAttribFormat(vertexArray, attribute.location, format.components, format.type,
+                                         format.normalized ? GL_TRUE : GL_FALSE, attribute.offset);
+        }
+        m_gl.VertexArrayAttribBinding(vertexArray, attribute.location, attribute.bufferIndex);
+    }
+    GlPipeline pipeline{
+        .program = program,
+        .vertexArray = vertexArray,
+        .state = capturePipelineState(desc),
+        .primitiveMode = glPrimitiveMode(desc.topology),
+        .stored = desc,
+        .debugName = std::string(desc.debugName),
+    };
+    for (u32 i = 0; i < desc.vertexBuffers.size() && i < kMaxVertexBuffers; ++i) {
+        const VertexBufferLayout& layout = desc.vertexBuffers[i];
+        m_gl.VertexArrayBindingDivisor(vertexArray, i,
+                                       layout.stepRate == VertexStepRate::PerInstance ? 1U : 0U);
+        pipeline.strides[i] = layout.stride;
+    }
+    if (!desc.debugName.empty()) {
+        m_gl.ObjectLabel(GL_VERTEX_ARRAY, vertexArray, static_cast<GLsizei>(desc.debugName.size()),
+                         desc.debugName.data());
+    }
+    if (desc.raster.depthBias.clamp != 0.0F) {
+        TESERRA_LOG_WARN(LogCategory::Rhi,
+                         "Graphics pipeline '{}': the depth bias clamp needs OpenGL 4.6 and is ignored",
+                         desc.debugName);
+    }
+    // The views of the caller's descriptor are only valid during this call.
+    pipeline.stored.vertexBuffers = {};
+    pipeline.stored.vertexAttributes = {};
+    pipeline.stored.debugName = {};
+    return m_pipelines.create(std::move(pipeline));
+}
+
+Result<GLuint> GlDevice::acquireProgram(const GraphicsPipelineDesc& desc, const GlShaderModule& vertex,
+                                        const GlShaderModule* fragment) {
+    const auto cached = std::ranges::find_if(m_programs, [&](const CachedProgram& entry) {
+        return entry.vertexShader == desc.vertexShader && entry.fragmentShader == desc.fragmentShader;
+    });
+    if (cached != m_programs.end()) {
+        ++cached->users;
+        return cached->program;
+    }
+
+    const GLuint program = m_gl.CreateProgram();
+    m_gl.AttachShader(program, vertex.shader);
+    if (fragment != nullptr) {
+        m_gl.AttachShader(program, fragment->shader);
+    }
+    m_gl.LinkProgram(program);
+    // A linked program keeps working without its shaders, which stay independent of pipelines.
+    m_gl.DetachShader(program, vertex.shader);
+    if (fragment != nullptr) {
+        m_gl.DetachShader(program, fragment->shader);
+    }
+    GLint linked = GL_FALSE;
+    m_gl.GetProgramiv(program, GL_LINK_STATUS, &linked);
+    if (linked == GL_FALSE) {
+        const std::string log = infoLog(program, m_gl.GetProgramiv, m_gl.GetProgramInfoLog);
+        m_gl.DeleteProgram(program);
+        Unexpected error = fail(ErrorCode::CompilationFailed, Module::Rhi,
+                                "Graphics pipeline '{}' failed to link:\n{}", desc.debugName, log);
+        TESERRA_LOG_ERROR(LogCategory::Rhi, "{}", error.value().message);
+        return error;
+    }
+    const std::string label = fragment != nullptr
+                                  ? std::format("{} + {}", vertex.debugName, fragment->debugName)
+                                  : vertex.debugName;
+    if (!label.empty()) {
+        m_gl.ObjectLabel(GL_PROGRAM, program, static_cast<GLsizei>(label.size()), label.data());
+    }
+    m_programs.push_back({.vertexShader = desc.vertexShader,
+                          .fragmentShader = desc.fragmentShader,
+                          .program = program,
+                          .users = 1});
+    return program;
+}
+
+void GlDevice::releaseProgram(GLuint program) {
+    const auto cached = std::ranges::find(m_programs, program, &CachedProgram::program);
+    TESERRA_ASSERT(cached != m_programs.end(), "Program {} is not in the cache", program);
+    if (cached == m_programs.end() || --cached->users > 0) {
+        return;
+    }
+    m_stateCache.unbind(program, 0);
+    m_gl.DeleteProgram(program);
+    m_programs.erase(cached);
+}
+
+void GlDevice::destroy(GraphicsPipelineHandle handle) {
+    if (handle.isNull()) {
+        return;
+    }
+    requireContextThread();
+    const GlPipeline* pipeline = m_pipelines.tryGet(handle);
+    TESERRA_ASSERT(pipeline != nullptr, "Destroying graphics pipeline {}, which is not alive", handle);
+    if (pipeline == nullptr) {
+        return;
+    }
+    m_stateCache.unbind(0, pipeline->vertexArray);
+    m_gl.DeleteVertexArrays(1, &pipeline->vertexArray);
+    releaseProgram(pipeline->program);
+    m_pipelines.destroy(handle);
+}
+
+// ---------------------------------------------------------------------------------------------------------
 // Other resources: created by the OpenGL backend from iteration 5 on.
 
 Result<TextureHandle> GlDevice::createTexture(const TextureDesc& desc) {
@@ -376,12 +531,6 @@ Result<SamplerHandle> GlDevice::createSampler(const SamplerDesc& desc) {
                 desc.debugName);
 }
 
-Result<GraphicsPipelineHandle> GlDevice::createGraphicsPipeline(const GraphicsPipelineDesc& desc) {
-    // TODO(#34): graphics pipelines
-    return fail(ErrorCode::Unsupported, Module::Rhi,
-                "The OpenGL backend cannot create graphics pipelines yet ('{}')", desc.debugName);
-}
-
 // Nothing else can be created yet, so only null handles can be destroyed.
 void GlDevice::destroy(TextureHandle handle) {
     TESERRA_ASSERT(handle.isNull(), "Destroying texture {}, which this device did not create", handle);
@@ -389,11 +538,6 @@ void GlDevice::destroy(TextureHandle handle) {
 
 void GlDevice::destroy(SamplerHandle handle) {
     TESERRA_ASSERT(handle.isNull(), "Destroying sampler {}, which this device did not create", handle);
-}
-
-void GlDevice::destroy(GraphicsPipelineHandle handle) {
-    TESERRA_ASSERT(handle.isNull(), "Destroying graphics pipeline {}, which this device did not create",
-                   handle);
 }
 
 // ---------------------------------------------------------------------------------------------------------
@@ -474,17 +618,29 @@ void GlDevice::replay(const CommandList& commands) {
             case CommandType::PopDebugGroup:
                 m_gl.PopDebugGroup();
                 break;
+            case CommandType::BindPipeline:
+                bindPipeline(command.as<BindPipelineCommand>().pipeline);
+                break;
             case CommandType::CopyBuffer:
                 copyBuffer(command.as<CopyBufferCommand>().copy);
                 break;
             default:
-                // Draws and their bindings follow with pipelines (#34, #35), bind groups with #42 and
-                // texture copies with textures (#49).
+                // Draws and vertex and index buffers follow with #35, bind groups with #42 and texture
+                // copies with textures (#49).
                 TESERRA_ASSERT(false, "The OpenGL backend cannot replay {} commands yet",
                                commandTypeName(command.type()));
                 break;
         }
     }
+}
+
+void GlDevice::bindPipeline(GraphicsPipelineHandle handle) {
+    const GlPipeline* pipeline = m_pipelines.tryGet(handle);
+    TESERRA_ASSERT(pipeline != nullptr, "bindPipeline uses pipeline {}, which is not alive", handle);
+    if (pipeline == nullptr) {
+        return;
+    }
+    m_stateCache.bind(pipeline->program, pipeline->vertexArray, pipeline->state);
 }
 
 void GlDevice::copyBuffer(const BufferCopy& copy) {
@@ -535,7 +691,12 @@ void GlDevice::beginRenderPass(const RenderPassDesc& pass) {
     m_gl.ViewportIndexedf(0, 0.0F, 0.0F, static_cast<f32>(renderArea.x), static_cast<f32>(renderArea.y));
     m_gl.DepthRangef(0.0F, 1.0F);
 
-    // TODO(#34): restore color write masks before clearing once pipelines can change them
+    u32 colorCount = 0;
+    while (colorCount < kMaxColorAttachments && !pass.colorAttachments[colorCount].texture.isNull()) {
+        ++colorCount;
+    }
+    // Clears are masked like draws: a pipeline bound earlier must not keep components from being cleared.
+    m_stateCache.prepareColorClear(colorCount);
     std::array<GLenum, kMaxColorAttachments> undefined{};
     u32 undefinedCount = 0;
     m_passDiscardCount = 0;

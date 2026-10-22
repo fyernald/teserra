@@ -62,6 +62,10 @@ struct FakeGlState {
     std::map<GLuint, std::string> shaders{};
     /// When not empty, every compile fails with this info log.
     std::string compileLog{};
+    /// When not empty, every link fails with this info log.
+    std::string linkLog{};
+    std::set<GLuint> livePrograms{};
+    std::set<GLuint> liveVertexArrays{};
 };
 
 namespace fake_gl {
@@ -76,6 +80,39 @@ inline std::string name(GLenum value) {
         {GL_TEXTURE, "GL_TEXTURE"},
         {GL_BUFFER, "GL_BUFFER"},
         {GL_SHADER, "GL_SHADER"},
+        {GL_PROGRAM, "GL_PROGRAM"},
+        {GL_VERTEX_ARRAY, "GL_VERTEX_ARRAY"},
+        {GL_FLOAT, "GL_FLOAT"},
+        {GL_UNSIGNED_BYTE, "GL_UNSIGNED_BYTE"},
+        {GL_UNSIGNED_SHORT, "GL_UNSIGNED_SHORT"},
+        {GL_UNSIGNED_INT, "GL_UNSIGNED_INT"},
+        {GL_CULL_FACE, "GL_CULL_FACE"},
+        {GL_FRONT, "GL_FRONT"},
+        {GL_BACK, "GL_BACK"},
+        {GL_FRONT_AND_BACK, "GL_FRONT_AND_BACK"},
+        {GL_CCW, "GL_CCW"},
+        {GL_CW, "GL_CW"},
+        {GL_FILL, "GL_FILL"},
+        {GL_LINE, "GL_LINE"},
+        {GL_POLYGON_OFFSET_FILL, "GL_POLYGON_OFFSET_FILL"},
+        {GL_POLYGON_OFFSET_LINE, "GL_POLYGON_OFFSET_LINE"},
+        {GL_DEPTH_TEST, "GL_DEPTH_TEST"},
+        {GL_BLEND, "GL_BLEND"},
+        {GL_NEVER, "GL_NEVER"},
+        {GL_LESS, "GL_LESS"},
+        {GL_EQUAL, "GL_EQUAL"},
+        {GL_LEQUAL, "GL_LEQUAL"},
+        {GL_GREATER, "GL_GREATER"},
+        {GL_NOTEQUAL, "GL_NOTEQUAL"},
+        {GL_GEQUAL, "GL_GEQUAL"},
+        {GL_ALWAYS, "GL_ALWAYS"},
+        {GL_ZERO, "GL_ZERO"},
+        {GL_ONE, "GL_ONE"},
+        {GL_SRC_ALPHA, "GL_SRC_ALPHA"},
+        {GL_ONE_MINUS_SRC_ALPHA, "GL_ONE_MINUS_SRC_ALPHA"},
+        {GL_FUNC_ADD, "GL_FUNC_ADD"},
+        {GL_FUNC_SUBTRACT, "GL_FUNC_SUBTRACT"},
+        {GL_MAX, "GL_MAX"},
         {GL_VERTEX_SHADER, "GL_VERTEX_SHADER"},
         {GL_FRAGMENT_SHADER, "GL_FRAGMENT_SHADER"},
         {GL_SRGB8_ALPHA8, "GL_SRGB8_ALPHA8"},
@@ -351,6 +388,146 @@ inline void GLAD_API_PTR deleteShader(GLuint shader) {
     log(std::format("DeleteShader({})", shader));
 }
 
+// Programs and vertex arrays
+
+inline GLuint GLAD_API_PTR createProgram() {
+    const GLuint program = ++current->lastName;
+    current->livePrograms.insert(program);
+    log(std::format("CreateProgram() = {}", program));
+    return program;
+}
+
+inline void GLAD_API_PTR attachShader(GLuint program, GLuint shader) {
+    log(std::format("AttachShader({}, {})", program, shader));
+}
+
+inline void GLAD_API_PTR detachShader(GLuint program, GLuint shader) {
+    log(std::format("DetachShader({}, {})", program, shader));
+}
+
+inline void GLAD_API_PTR linkProgram(GLuint program) {
+    log(std::format("LinkProgram({})", program));
+}
+
+inline void GLAD_API_PTR getProgramiv(GLuint /*program*/, GLenum which, GLint* value) {
+    if (which == GL_LINK_STATUS) {
+        *value = current->linkLog.empty() ? GL_TRUE : GL_FALSE;
+    } else if (which == GL_INFO_LOG_LENGTH) {
+        *value = current->linkLog.empty() ? 0 : static_cast<GLint>(current->linkLog.size() + 1);
+    }
+}
+
+inline void GLAD_API_PTR getProgramInfoLog(GLuint /*program*/, GLsizei size, GLsizei* length,
+                                           GLchar* infoLog) {
+    const std::string& text = current->linkLog;
+    const auto copied = std::min(text.size(), static_cast<std::size_t>(std::max(size - 1, 0)));
+    std::memcpy(infoLog, text.data(), copied);
+    infoLog[copied] = '\0';
+    *length = static_cast<GLsizei>(copied);
+}
+
+inline void GLAD_API_PTR deleteProgram(GLuint program) {
+    current->livePrograms.erase(program);
+    log(std::format("DeleteProgram({})", program));
+}
+
+inline void GLAD_API_PTR useProgram(GLuint program) {
+    log(std::format("UseProgram({})", program));
+}
+
+inline void GLAD_API_PTR createVertexArrays(GLsizei count, GLuint* arrays) {
+    for (GLsizei i = 0; i < count; ++i) {
+        arrays[i] = ++current->lastName;
+        current->liveVertexArrays.insert(arrays[i]);
+        log(std::format("CreateVertexArrays() = {}", arrays[i]));
+    }
+}
+
+inline void GLAD_API_PTR enableVertexArrayAttrib(GLuint vertexArray, GLuint index) {
+    log(std::format("EnableVertexArrayAttrib({}, {})", vertexArray, index));
+}
+
+inline void GLAD_API_PTR vertexArrayAttribFormat(GLuint vertexArray, GLuint index, GLint size, GLenum type,
+                                                 GLboolean normalized, GLuint offset) {
+    log(std::format("VertexArrayAttribFormat({}, {}, {} {}{}, offset {})", vertexArray, index, size,
+                    name(type), normalized != 0U ? " normalized" : "", offset));
+}
+
+inline void GLAD_API_PTR vertexArrayAttribIFormat(GLuint vertexArray, GLuint index, GLint size, GLenum type,
+                                                  GLuint offset) {
+    log(std::format("VertexArrayAttribIFormat({}, {}, {} {}, offset {})", vertexArray, index, size,
+                    name(type), offset));
+}
+
+inline void GLAD_API_PTR vertexArrayAttribBinding(GLuint vertexArray, GLuint index, GLuint binding) {
+    log(std::format("VertexArrayAttribBinding({}, {}, {})", vertexArray, index, binding));
+}
+
+inline void GLAD_API_PTR vertexArrayBindingDivisor(GLuint vertexArray, GLuint binding, GLuint divisor) {
+    log(std::format("VertexArrayBindingDivisor({}, {}, {})", vertexArray, binding, divisor));
+}
+
+inline void GLAD_API_PTR bindVertexArray(GLuint vertexArray) {
+    log(std::format("BindVertexArray({})", vertexArray));
+}
+
+inline void GLAD_API_PTR deleteVertexArrays(GLsizei count, const GLuint* arrays) {
+    for (GLsizei i = 0; i < count; ++i) {
+        current->liveVertexArrays.erase(arrays[i]);
+        log(std::format("DeleteVertexArrays({})", arrays[i]));
+    }
+}
+
+// Fixed-function state
+
+inline void GLAD_API_PTR cullFace(GLenum face) {
+    log(std::format("CullFace({})", name(face)));
+}
+
+inline void GLAD_API_PTR frontFace(GLenum winding) {
+    log(std::format("FrontFace({})", name(winding)));
+}
+
+inline void GLAD_API_PTR polygonMode(GLenum face, GLenum mode) {
+    log(std::format("PolygonMode({}, {})", name(face), name(mode)));
+}
+
+inline void GLAD_API_PTR polygonOffset(GLfloat factor, GLfloat units) {
+    log(std::format("PolygonOffset({} {})", factor, units));
+}
+
+inline void GLAD_API_PTR depthMask(GLboolean enabled) {
+    log(std::format("DepthMask({})", enabled != 0U ? "on" : "off"));
+}
+
+inline void GLAD_API_PTR depthFunc(GLenum function) {
+    log(std::format("DepthFunc({})", name(function)));
+}
+
+inline void GLAD_API_PTR enablei(GLenum capability, GLuint index) {
+    log(std::format("Enablei({}, {})", name(capability), index));
+}
+
+inline void GLAD_API_PTR disablei(GLenum capability, GLuint index) {
+    log(std::format("Disablei({}, {})", name(capability), index));
+}
+
+inline void GLAD_API_PTR blendFuncSeparatei(GLuint target, GLenum srcColor, GLenum dstColor, GLenum srcAlpha,
+                                            GLenum dstAlpha) {
+    log(std::format("BlendFuncSeparatei({}, {} {} {} {})", target, name(srcColor), name(dstColor),
+                    name(srcAlpha), name(dstAlpha)));
+}
+
+inline void GLAD_API_PTR blendEquationSeparatei(GLuint target, GLenum color, GLenum alpha) {
+    log(std::format("BlendEquationSeparatei({}, {} {})", target, name(color), name(alpha)));
+}
+
+inline void GLAD_API_PTR colorMaski(GLuint target, GLboolean red, GLboolean green, GLboolean blue,
+                                    GLboolean alpha) {
+    log(std::format("ColorMaski({}, {}{}{}{})", target, red != 0U ? "R" : "-", green != 0U ? "G" : "-",
+                    blue != 0U ? "B" : "-", alpha != 0U ? "A" : "-"));
+}
+
 // Framebuffers
 
 inline void GLAD_API_PTR createFramebuffers(GLsizei count, GLuint* framebuffers) {
@@ -455,6 +632,39 @@ public:
             {"glGetShaderiv", reinterpret_cast<platform::GlProc>(&fake_gl::getShaderiv)},
             {"glGetShaderInfoLog", reinterpret_cast<platform::GlProc>(&fake_gl::getShaderInfoLog)},
             {"glDeleteShader", reinterpret_cast<platform::GlProc>(&fake_gl::deleteShader)},
+            {"glCreateProgram", reinterpret_cast<platform::GlProc>(&fake_gl::createProgram)},
+            {"glAttachShader", reinterpret_cast<platform::GlProc>(&fake_gl::attachShader)},
+            {"glDetachShader", reinterpret_cast<platform::GlProc>(&fake_gl::detachShader)},
+            {"glLinkProgram", reinterpret_cast<platform::GlProc>(&fake_gl::linkProgram)},
+            {"glGetProgramiv", reinterpret_cast<platform::GlProc>(&fake_gl::getProgramiv)},
+            {"glGetProgramInfoLog", reinterpret_cast<platform::GlProc>(&fake_gl::getProgramInfoLog)},
+            {"glDeleteProgram", reinterpret_cast<platform::GlProc>(&fake_gl::deleteProgram)},
+            {"glUseProgram", reinterpret_cast<platform::GlProc>(&fake_gl::useProgram)},
+            {"glCreateVertexArrays", reinterpret_cast<platform::GlProc>(&fake_gl::createVertexArrays)},
+            {"glEnableVertexArrayAttrib",
+             reinterpret_cast<platform::GlProc>(&fake_gl::enableVertexArrayAttrib)},
+            {"glVertexArrayAttribFormat",
+             reinterpret_cast<platform::GlProc>(&fake_gl::vertexArrayAttribFormat)},
+            {"glVertexArrayAttribIFormat",
+             reinterpret_cast<platform::GlProc>(&fake_gl::vertexArrayAttribIFormat)},
+            {"glVertexArrayAttribBinding",
+             reinterpret_cast<platform::GlProc>(&fake_gl::vertexArrayAttribBinding)},
+            {"glVertexArrayBindingDivisor",
+             reinterpret_cast<platform::GlProc>(&fake_gl::vertexArrayBindingDivisor)},
+            {"glBindVertexArray", reinterpret_cast<platform::GlProc>(&fake_gl::bindVertexArray)},
+            {"glDeleteVertexArrays", reinterpret_cast<platform::GlProc>(&fake_gl::deleteVertexArrays)},
+            {"glCullFace", reinterpret_cast<platform::GlProc>(&fake_gl::cullFace)},
+            {"glFrontFace", reinterpret_cast<platform::GlProc>(&fake_gl::frontFace)},
+            {"glPolygonMode", reinterpret_cast<platform::GlProc>(&fake_gl::polygonMode)},
+            {"glPolygonOffset", reinterpret_cast<platform::GlProc>(&fake_gl::polygonOffset)},
+            {"glDepthMask", reinterpret_cast<platform::GlProc>(&fake_gl::depthMask)},
+            {"glDepthFunc", reinterpret_cast<platform::GlProc>(&fake_gl::depthFunc)},
+            {"glEnablei", reinterpret_cast<platform::GlProc>(&fake_gl::enablei)},
+            {"glDisablei", reinterpret_cast<platform::GlProc>(&fake_gl::disablei)},
+            {"glBlendFuncSeparatei", reinterpret_cast<platform::GlProc>(&fake_gl::blendFuncSeparatei)},
+            {"glBlendEquationSeparatei",
+             reinterpret_cast<platform::GlProc>(&fake_gl::blendEquationSeparatei)},
+            {"glColorMaski", reinterpret_cast<platform::GlProc>(&fake_gl::colorMaski)},
             {"glCreateFramebuffers", reinterpret_cast<platform::GlProc>(&fake_gl::createFramebuffers)},
             {"glNamedFramebufferTexture",
              reinterpret_cast<platform::GlProc>(&fake_gl::namedFramebufferTexture)},

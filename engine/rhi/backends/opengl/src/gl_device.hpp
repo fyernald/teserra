@@ -12,6 +12,7 @@
 #include <teserra/rhi/device.hpp>
 #include <teserra/rhi/limits.hpp>
 
+#include "gl_pipeline_state.hpp"
 #include <glad/gl.h>
 
 #include <array>
@@ -54,6 +55,28 @@ struct GlShaderModule {
     GLuint shader = 0;
     ShaderStage stage = ShaderStage::Vertex;
     std::string debugName;
+};
+
+/// A graphics pipeline: a program shared by the pipelines with the same shaders, its own vertex array, and
+/// the state that binding it sets.
+struct GlPipeline {
+    GLuint program = 0;
+    GLuint vertexArray = 0;
+    GlPipelineState state{};
+    GLenum primitiveMode = GL_TRIANGLES;
+    /// Bytes between elements of each vertex buffer slot, which binding a buffer needs (#35).
+    std::array<u32, kMaxVertexBuffers> strides{};
+    /// The descriptor without its vertex layouts and name, for validation; see desc().
+    GraphicsPipelineDesc stored{};
+    std::string debugName;
+
+    /// The descriptor the pipeline was created with, without vertex layouts; its name is valid while the
+    /// pipeline lives.
+    [[nodiscard]] GraphicsPipelineDesc desc() const noexcept {
+        GraphicsPipelineDesc result = stored;
+        result.debugName = debugName;
+        return result;
+    }
 };
 
 /// A texture of the device.
@@ -146,6 +169,10 @@ public:
     [[nodiscard]] const GlShaderModule* shaderModule(ShaderModuleHandle handle) const noexcept {
         return m_shaderModules.tryGet(handle);
     }
+    /// The pipeline behind `handle`, or nullptr if the handle is not live.
+    [[nodiscard]] const GlPipeline* pipeline(GraphicsPipelineHandle handle) const noexcept {
+        return m_pipelines.tryGet(handle);
+    }
     /// The buffer behind `handle`, or nullptr if the handle is not live.
     [[nodiscard]] const GlBuffer* buffer(BufferHandle handle) const noexcept {
         return m_buffers.tryGet(handle);
@@ -158,6 +185,13 @@ private:
         FramebufferKey key;
         GLuint name = 0;
     };
+    // A linked program and the number of pipelines that use it.
+    struct CachedProgram {
+        ShaderModuleHandle vertexShader{};
+        ShaderModuleHandle fragmentShader{};
+        GLuint program = 0;
+        u32 users = 0;
+    };
 
     // Loads GL, checks the version and limits, and sets up debug output, conventions and the swapchain.
     [[nodiscard]] Result<void> initialize(const DeviceDesc& desc, platform::Window& window);
@@ -166,9 +200,14 @@ private:
     void requireContextThread() const;
 
     [[nodiscard]] GLuint framebuffer(const FramebufferKey& key);
+    // The program of a shader pair, linked on first use; the caller becomes one of its users.
+    [[nodiscard]] Result<GLuint> acquireProgram(const GraphicsPipelineDesc& desc,
+                                                const GlShaderModule& vertex, const GlShaderModule* fragment);
+    void releaseProgram(GLuint program);
     // Replays the commands of a list (docs/architecture/rhi.md#opengl-backend-mapping).
     void replay(const CommandList& commands);
     void copyBuffer(const BufferCopy& copy);
+    void bindPipeline(GraphicsPipelineHandle handle);
     void beginRenderPass(const RenderPassDesc& pass);
     void endRenderPass();
 
@@ -180,6 +219,9 @@ private:
 
     HandlePool<GlBuffer, BufferTag> m_buffers;
     HandlePool<GlShaderModule, ShaderModuleTag> m_shaderModules;
+    HandlePool<GlPipeline, GraphicsPipelineTag> m_pipelines;
+    std::vector<CachedProgram> m_programs;
+    GlStateCache m_stateCache{m_gl};
     HandlePool<GlTexture, TextureTag> m_textures;
     std::vector<CachedFramebuffer> m_framebuffers;
     std::unique_ptr<GlSwapchain> m_swapchain;

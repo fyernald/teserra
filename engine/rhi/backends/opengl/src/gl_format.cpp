@@ -62,4 +62,26 @@ Format swapchainFormat(Format preferred) noexcept {
     }
 }
 
+GlVertexFormat glVertexFormat(VertexFormat format) noexcept {
+    switch (format) {
+        case VertexFormat::Float:
+            return {.components = 1, .type = GL_FLOAT};
+        case VertexFormat::Float2:
+            return {.components = 2, .type = GL_FLOAT};
+        case VertexFormat::Float3:
+            return {.components = 3, .type = GL_FLOAT};
+        case VertexFormat::Float4:
+            return {.components = 4, .type = GL_FLOAT};
+        case VertexFormat::Unorm8x4:
+            return {.components = 4, .type = GL_UNSIGNED_BYTE, .normalized = true};
+        case VertexFormat::Uint8x4:
+            return {.components = 4, .type = GL_UNSIGNED_BYTE, .integer = true};
+        case VertexFormat::Uint16x2:
+            return {.components = 2, .type = GL_UNSIGNED_SHORT, .integer = true};
+        case VertexFormat::Uint32:
+            return {.components = 1, .type = GL_UNSIGNED_INT, .integer = true};
+    }
+    return {};
+}
+
 } // namespace teserra::rhi::opengl

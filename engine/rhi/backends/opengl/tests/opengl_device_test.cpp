@@ -221,7 +221,6 @@ TEST_CASE("OpenGL backend: other resources are not implemented yet", "[rhi_openg
     CHECK(texture.error().message == "The OpenGL backend cannot create textures yet ('Sprites')");
     CHECK_FALSE(device->createSampler({}).has_value());
     CHECK_FALSE(device->createShaderModule({}).has_value());
-    CHECK_FALSE(device->createGraphicsPipeline({}).has_value());
     device->destroy(TextureHandle{}); // null handles are ignored
 }
 
@@ -235,13 +234,13 @@ TEST_CASE("OpenGL backend: frame and submission misuse asserts", "[rhi_opengl]")
 
     device->beginFrame();
     REQUIRE_ASSERTS(device->beginFrame());
-    // No pipeline can exist yet, so only a made-up handle can be bound.
+    // A handle this device never gave out: replay catches it even without validation.
     CommandList& commands = device->acquireCommandList();
     commands.beginRenderPass({.colorAttachments = {{.texture = device->swapchain()->acquireNextImage()}}});
     commands.bindPipeline(GraphicsPipelineHandle{1, 1});
     commands.endRenderPass();
     const auto failure = test::requireAssert([&] { device->submit(commands); });
-    CHECK(failure.message() == "The OpenGL backend cannot replay BindPipeline commands yet");
+    CHECK(failure.message() == "bindPipeline uses pipeline 1:1, which is not alive");
     device->endFrame();
 
     REQUIRE_ASSERTS(device->destroy(BufferHandle{1, 1}));

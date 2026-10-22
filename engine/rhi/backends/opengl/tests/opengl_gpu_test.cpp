@@ -263,3 +263,71 @@ void main() {
     device.destroy(*vertex);
     device.destroy(*fragment);
 }
+
+TEST_CASE("OpenGL backend (GPU): creates and binds a graphics pipeline", "[rhi_opengl][gpu]") {
+    const GpuWindow gpu = createGpuWindowOrSkip();
+    auto created =
+        createDevice({.backend = Backend::OpenGL, .enableValidation = true, .enableBackendDebug = true},
+                     gpu.window.get(), std::array{opengl::backendFactory()});
+    REQUIRE(created.has_value());
+    Device& device = **created;
+    const test::LogCapture log;
+
+    const auto vertex = device.createShaderModule({.stage = ShaderStage::Vertex,
+                                                   .blob = temporaryGlslBlob(R"(#version 450 core
+layout(location = 0) in vec3 position;
+layout(location = 1) in vec4 color;
+layout(location = 0) out vec4 vColor;
+void main() {
+    vColor = color;
+    gl_Position = vec4(position, 1.0);
+}
+)"),
+                                                   .debugName = "GPU pipeline vertex"});
+    const auto fragment = device.createShaderModule({.stage = ShaderStage::Fragment,
+                                                     .blob = temporaryGlslBlob(R"(#version 450 core
+layout(location = 0) in vec4 vColor;
+layout(location = 0) out vec4 fragColor;
+void main() { fragColor = vColor; }
+)"),
+                                                     .debugName = "GPU pipeline fragment"});
+    REQUIRE(vertex.has_value());
+    REQUIRE(fragment.has_value());
+
+    constexpr std::array kBuffers{VertexBufferLayout{.stride = 28}};
+    constexpr std::array kAttributes{
+        VertexAttribute{.location = 0, .format = VertexFormat::Float3},
+        VertexAttribute{.location = 1, .format = VertexFormat::Float4, .offset = 12},
+    };
+    const auto pipeline = device.createGraphicsPipeline({
+        .vertexShader = *vertex,
+        .fragmentShader = *fragment,
+        .vertexBuffers = kBuffers,
+        .vertexAttributes = kAttributes,
+        .raster = {.cullMode = CullMode::Back},
+        .colorBlend = {{.enabled = true,
+                        .srcColor = BlendFactor::SrcAlpha,
+                        .dstColor = BlendFactor::OneMinusSrcAlpha}},
+        .targets = {.colorFormats = {device.swapchain()->format()}},
+        .debugName = "GPU pipeline",
+    });
+    REQUIRE(pipeline.has_value());
+
+    device.beginFrame();
+    CommandList& cmd = device.acquireCommandList();
+    cmd.beginRenderPass({.colorAttachments = {{.texture = device.swapchain()->acquireNextImage()}}});
+    cmd.bindPipeline(*pipeline);
+    cmd.bindPipeline(*pipeline);
+    cmd.endRenderPass();
+    device.submit(cmd);
+    device.endFrame();
+    device.waitIdle();
+
+    device.destroy(*pipeline);
+    device.destroy(*vertex);
+    device.destroy(*fragment);
+    for (const test::CapturedLog& record : log.records()) {
+        INFO(record.message);
+        CHECK(record.level < LogLevel::Warn);
+    }
+}
