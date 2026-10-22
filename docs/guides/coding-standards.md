@@ -59,6 +59,8 @@ Follow [ADR-0016](../adr/0016-error-handling-policy.md):
 
 - Use aliases and functions from `<teserra/core/math.hpp>` (`Vec3`, `Mat4`, `Quat`, `math::normalize`). Direct `glm::` only inside `engine/core/` ([ADR-0008](../adr/0008-glm-math-behind-aliases.md)).
 - Conventions: right-handed, Y-up, radians, column vectors, depth `[0, 1]`, top-left texture origin ([ADR-0024](../adr/0024-coordinate-conventions.md)).
+- Bounds are 3D: a 2D box is an `Aabb` with `min.z == max.z`. `Rect` (top-left `position` + `size`) is for pixel and texture space: viewports, scissors, UV rectangles.
+- glm is configured only by `teserra_core`'s PUBLIC compile definitions; never define `GLM_*` macros elsewhere (checked by the `cmake.glm_configured_only_by_core` test).
 - GPU-visible structs use explicit `alignas` and `static_assert` on size and member offsets.
 
 ## Classes

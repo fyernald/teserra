@@ -50,3 +50,10 @@ add_test(NAME cmake.subproject.tests_and_examples_default_off
         ${_teserra_fixture_args}
 )
 set_tests_properties(cmake.subproject.tests_and_examples_default_off PROPERTIES LABELS "cmake")
+
+# glm settings come only from teserra_core's PUBLIC compile definitions (ADR-0008).
+add_test(NAME cmake.glm_configured_only_by_core
+    COMMAND "${CMAKE_COMMAND}" "-DTESERRA_SOURCE_DIR=${PROJECT_SOURCE_DIR}"
+        -P "${PROJECT_SOURCE_DIR}/cmake/scripts/CheckGlmConfig.cmake"
+)
+set_tests_properties(cmake.glm_configured_only_by_core PROPERTIES LABELS "cmake")
