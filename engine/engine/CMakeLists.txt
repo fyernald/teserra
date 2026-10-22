@@ -1,5 +1,5 @@
 teserra_add_module(engine LAYER 6
-    DEPENDS platform
+    DEPENDS platform core
     PUBLIC_HEADERS
         include/teserra/engine/app.hpp
     SOURCES

@@ -38,6 +38,24 @@ jobs:
           echo "::add-matcher::.github/problem-matchers/clang-format.json"
           python tools/scripts/check_format.py
 
+      # The remaining checks also run after a failed one, so a single run reports every problem.
+      - name: Test check scripts
+        if: success() || failure()
+        run: python -m unittest discover -s tools/scripts/tests -v
+
+      # The matcher turns "file:line:col: error: message [rule]" lines into annotations.
+      - name: Check layer includes
+        if: success() || failure()
+        run: |
+          echo "::add-matcher::.github/problem-matchers/teserra-checks.json"
+          python tools/scripts/check_layers.py
+
+      - name: Check backend and platform leaks
+        if: success() || failure()
+        run: |
+          echo "::add-matcher::.github/problem-matchers/teserra-checks.json"
+          python tools/scripts/check_gl_leaks.py
+
   windows-msvc:
     name: windows-msvc
     runs-on: windows-latest

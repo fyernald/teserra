@@ -4,8 +4,8 @@
     python tools/scripts/check_format.py            # report files that need formatting, exit 1 if any
     python tools/scripts/check_format.py --fix      # format them in place
 
-Formats C++ files under the source directories below, skipping third-party and generated code. Files
-are taken from git (tracked and untracked-but-not-ignored), so build trees are never touched. Used by
+Formats C++ files under the source directories of teserra_sources.py, skipping third-party and generated
+code. Files are taken from git (tracked and untracked-but-not-ignored), so build trees are never touched. Used by
 the `format` / `format-check` CMake targets and by the CI `checks` job (docs/guides/build-and-ci.md).
 """
 
@@ -18,27 +18,13 @@ import subprocess
 import sys
 from pathlib import Path
 
+from teserra_sources import CPP_EXTENSIONS, list_files as list_source_files
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
-SOURCE_DIRS = ("engine", "examples", "tests", "tools", "benchmarks", "editor")
-EXTENSIONS = {".cpp", ".hpp", ".h", ".inl"}
-EXCLUDED_PARTS = {"third_party"}
 
 
 def list_files() -> list[Path]:
-    result = subprocess.run(
-        ["git", "ls-files", "--cached", "--others", "--exclude-standard", "--", *SOURCE_DIRS],
-        cwd=REPO_ROOT,
-        capture_output=True,
-        text=True,
-        check=True,
-    )
-    files = []
-    for line in sorted(set(result.stdout.splitlines())):
-        path = Path(line)
-        if path.suffix in EXTENSIONS and not EXCLUDED_PARTS.intersection(path.parts):
-            if (REPO_ROOT / path).is_file():  # skip deleted-but-tracked files
-                files.append(path)
-    return files
+    return [path for path in list_source_files(REPO_ROOT) if path.suffix in CPP_EXTENSIONS]
 
 
 def find_clang_format(explicit: str | None) -> str:

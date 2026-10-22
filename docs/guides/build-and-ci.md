@@ -131,17 +131,20 @@ Pinned baseline: [`9e593bb`](https://github.com/microsoft/vcpkg/commit/9e593bb18
 
 ## Layer and leak checks
 
-Run locally with `cmake --build --preset <preset> --target check` (and in CI):
+Run locally with `cmake --build --preset <preset> --target check` (or one of `layer-check`, `leak-check`, `format-check`), or run the scripts directly with Python 3; CI runs the scripts in the `checks` job. They print `path:line:col: error: message [rule]`, which CI turns into annotations on the pull request.
 
 | Check | Tool | Fails when |
 |---|---|---|
 | Layer rule at configure time | `teserra_add_module(... LAYER n DEPENDS ...)` | A module depends on a module in the same or a higher layer |
-| Include rule | `tools/scripts/check_layers.py` | A module includes `<teserra/<x>/...>` without depending on `x` |
-| Backend leak | `tools/scripts/check_gl_leaks.py` | GL identifiers/headers appear outside `engine/rhi/backends/opengl/`; GLFW/Win32 headers outside `engine/platform/src/` |
-| glm leak | same script | `glm::` appears outside `engine/core/` |
-| TODO hygiene | same script | `TODO` without `(#issue)` |
+| Include rule (`layer-include`) | `tools/scripts/check_layers.py` | A module includes `<teserra/<x>/...>` and `x` is neither the module itself nor a **direct** `DEPENDS` entry (transitive dependencies do not count). `<teserra/test/...>` is allowed only under a module's `tests/` |
+| Backend leak (`gl-leak`, `vulkan-leak`) | `tools/scripts/check_gl_leaks.py` | GL names (`GL_*`, `gl[A-Z][a-z]*`, `GLuint`-style types, `GLAD_*`) or headers (`glad/`, `GL/`, `KHR/`, ...) outside `engine/rhi/backends/opengl/`; Vulkan names (`Vk*`, `vk*`) or headers outside `engine/rhi/backends/vulkan/` |
+| Platform leak (`glfw-leak`, `win32-leak`) | same script | GLFW names or headers outside `engine/platform/src/glfw/`; Win32 headers (`<windows.h>`, ...) outside Windows-only platform files (a `windows/` directory or a `*_windows` file under `engine/platform/`) |
+| glm leak (`glm-leak`) | same script | `glm::`, `GLM_*` or `<glm/...>` outside `engine/core/` |
+| TODO hygiene (`todo-issue`) | same script | `TODO` without `(#issue)` in a C++ comment or a CMake file |
 | Format | `tools/scripts/check_format.py` (`clang-format --dry-run --Werror` per file) | Any file differs from the format |
 | Static analysis | `clang-tidy` (config in repo) | New warnings in changed files |
+
+Names are matched in code only: comments and string literals do not count, so `"glClear"` in a test or "GLFW" in a doc comment is fine; includes are matched in `#include` and `__has_include`. Third-party and generated code (`third_party/`, `generated/`, e.g. glad) and git-ignored files are skipped. Reviewed exceptions are listed with their reason in `EXCEPTIONS` of `check_gl_leaks.py` (today: `<windows.h>` in `engine/core/src/assert.cpp`, see ADR-0015). Each script has unit tests in `tools/scripts/tests/` (CTest `tools.scripts`); both scripts check the whole repository in well under a second.
 
 ## GitHub Actions
 

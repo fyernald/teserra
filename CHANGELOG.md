@@ -27,7 +27,9 @@ All notable user-visible changes to Teserra are documented here. The format foll
 - `teserra_engine` (layer 6) with `engine::App`: owns the platform and the window (created in dependency order, destroyed in reverse), runs the frame (events and `Input`, fixed steps, update, present with vsync) with `AppCallbacks` until `quit(exitCode)`, a close request or `AppConfig::maxFrames`, and returns the exit code from `run()`. Initialization failures are logged and make `run()` return 1. The engine flags `--frames N` and `--hidden-window` are read from `AppConfig::args`. An injected `platform::Platform` lets tests run it headless.
 - `teserra_window_input` example: logs keyboard, mouse and text input, shows FPS, the cursor and a WASD-moved position in the title, and quits on Escape or close; its CTest smoke run (`--frames 120 --hidden-window`) is skipped on machines without OpenGL 4.5.
 - Shared test support for all test executables (`tests/support/`): failed assertions fail the current test instead of aborting, `REQUIRE_ASSERTS(expr)` / `teserra::test::requireAssert()`, `teserra::test::LogCapture`; `teserra_add_abort_test()` for behavior that ends the process.
+- Layer and leak checks: `tools/scripts/check_layers.py` (a module includes only its own headers and those of its direct `DEPENDS`) and `tools/scripts/check_gl_leaks.py` (GL, Vulkan, GLFW, Win32 and glm names stay in their backend or module; `TODO(#issue)`), with unit tests, `layer-check` / `leak-check` targets in `check`, and steps with pull request annotations in the CI `checks` job.
 
 ### Changed
 
+- `teserra_engine` declares `core` in `DEPENDS`, which it includes directly.
 - The repository is now `fyernald/teserra` (clone with `git clone https://github.com/fyernald/teserra.git`); links are updated and old `fyernald/tessera` URLs redirect. The project name stays Teserra.
