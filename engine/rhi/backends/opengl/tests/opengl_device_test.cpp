@@ -9,6 +9,7 @@
 #include "fake_gl.hpp"
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
 #include <array>
 #include <memory>
 #include <string>
@@ -145,10 +146,19 @@ TEST_CASE("OpenGL backend: debug output only with enableBackendDebug", "[rhi_ope
         CHECK(window.context.state.enabled.contains(GL_DEBUG_OUTPUT));
         CHECK(window.context.state.enabled.contains(GL_DEBUG_OUTPUT_SYNCHRONOUS));
         CHECK(window.context.state.debugCallback != nullptr);
+        // The driver's echoes of debug groups are turned off.
+        const auto& calls = window.context.state.calls;
+        CHECK(std::ranges::count(calls,
+                                 std::string("DebugMessageControl(GL_DONT_CARE, GL_DEBUG_TYPE_PUSH_GROUP, "
+                                             "GL_DONT_CARE, off)")) == 1);
+        CHECK(std::ranges::count(calls,
+                                 std::string("DebugMessageControl(GL_DONT_CARE, GL_DEBUG_TYPE_POP_GROUP, "
+                                             "GL_DONT_CARE, off)")) == 1);
     }
     SECTION("disabled") {
         const auto device = requireOpenGl(window, /*backendDebug=*/false);
-        CHECK(window.context.state.enabled.empty());
+        CHECK_FALSE(window.context.state.enabled.contains(GL_DEBUG_OUTPUT));
+        CHECK_FALSE(window.context.state.enabled.contains(GL_DEBUG_OUTPUT_SYNCHRONOUS));
         CHECK(window.context.state.debugCallback == nullptr);
     }
 }
@@ -193,7 +203,6 @@ TEST_CASE("OpenGL backend: frames hand out command lists per frame slot", "[rhi_
         device->endFrame();
     }
 
-    CHECK(device->swapchain() == nullptr); // until #28
     device->waitIdle();
     CHECK(window.context.state.finishCalls == 1);
 }
@@ -223,11 +232,13 @@ TEST_CASE("OpenGL backend: frame and submission misuse asserts", "[rhi_opengl]")
 
     device->beginFrame();
     REQUIRE_ASSERTS(device->beginFrame());
+    // No pipeline can exist yet, so only a made-up handle can be bound.
     CommandList& commands = device->acquireCommandList();
-    commands.pushDebugGroup("Frame");
-    commands.popDebugGroup();
+    commands.beginRenderPass({.colorAttachments = {{.texture = device->swapchain()->acquireNextImage()}}});
+    commands.bindPipeline(GraphicsPipelineHandle{1, 1});
+    commands.endRenderPass();
     const auto failure = test::requireAssert([&] { device->submit(commands); });
-    CHECK(failure.message() == "The OpenGL backend cannot replay commands yet: PushDebugGroup");
+    CHECK(failure.message() == "The OpenGL backend cannot replay BindPipeline commands yet");
     device->endFrame();
 
     REQUIRE_ASSERTS(device->destroy(BufferHandle{1, 1}));

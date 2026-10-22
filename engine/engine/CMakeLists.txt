@@ -1,5 +1,7 @@
 teserra_add_module(engine LAYER 6
-    DEPENDS platform core
+    DEPENDS core platform rhi
+    # The RHI backends the build includes; App passes them to rhi::createDevice().
+    OPTIONAL_DEPENDS rhi_opengl
     PUBLIC_HEADERS
         include/teserra/engine/app.hpp
     SOURCES

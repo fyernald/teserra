@@ -2,6 +2,7 @@
 #
 #   teserra_add_module(<name> LAYER <n>
 #       [DEPENDS <module>...]
+#       [OPTIONAL_DEPENDS <module>...]
 #       [PUBLIC_HEADERS <file>...]
 #       [SOURCES <file>...])
 #
@@ -9,6 +10,10 @@
 # C++20 without extensions and with the Teserra warning set. include/ is the public include directory
 # (as the HEADERS file set), src/ the private one. Every module in DEPENDS is linked PUBLIC and must
 # already exist in a strictly lower layer; otherwise configuration fails.
+#
+# OPTIONAL_DEPENDS names modules that an option may leave out of the build, such as RHI backends. One
+# that exists is linked and checked like DEPENDS; the module's sources see TESERRA_HAS_<MODULE> (the
+# name in upper case) defined to 1 if it exists and 0 if not.
 #
 #   teserra_link_third_party(<name> <PUBLIC|PRIVATE|INTERFACE> <target>...)
 #
@@ -33,7 +38,7 @@ function(_teserra_pascal_case out name)
 endfunction()
 
 function(teserra_add_module name)
-    cmake_parse_arguments(PARSE_ARGV 1 arg "" "LAYER" "DEPENDS;PUBLIC_HEADERS;SOURCES")
+    cmake_parse_arguments(PARSE_ARGV 1 arg "" "LAYER" "DEPENDS;OPTIONAL_DEPENDS;PUBLIC_HEADERS;SOURCES")
 
     if(arg_UNPARSED_ARGUMENTS)
         message(FATAL_ERROR "teserra_add_module(${name}): unknown arguments: ${arg_UNPARSED_ARGUMENTS}")
@@ -49,6 +54,22 @@ function(teserra_add_module name)
     if(already_defined)
         message(FATAL_ERROR "teserra_add_module(${name}): module '${name}' is already defined")
     endif()
+
+    # Optional dependencies that exist count as dependencies from here on.
+    set(optional_definitions "")
+    foreach(dependency IN LISTS arg_OPTIONAL_DEPENDS)
+        if(NOT dependency MATCHES "^[a-z][a-z0-9_]*$")
+            message(FATAL_ERROR "teserra_add_module(${name}): '${dependency}' in OPTIONAL_DEPENDS is not a module name")
+        endif()
+        string(TOUPPER "${dependency}" upper_dependency)
+        get_property(dependency_known GLOBAL PROPERTY TESERRA_MODULE_LAYER_${dependency} SET)
+        if(dependency_known)
+            list(APPEND arg_DEPENDS ${dependency})
+            list(APPEND optional_definitions TESERRA_HAS_${upper_dependency}=1)
+        else()
+            list(APPEND optional_definitions TESERRA_HAS_${upper_dependency}=0)
+        endif()
+    endforeach()
 
     # Layer rule: a module may only depend on modules in strictly lower layers.
     foreach(dependency IN LISTS arg_DEPENDS)
@@ -100,6 +121,7 @@ function(teserra_add_module name)
     foreach(dependency IN LISTS arg_DEPENDS)
         target_link_libraries(${target} PUBLIC teserra_${dependency})
     endforeach()
+    target_compile_definitions(${target} PRIVATE ${optional_definitions})
 endfunction()
 
 function(teserra_link_third_party name visibility)

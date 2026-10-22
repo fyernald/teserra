@@ -6,7 +6,10 @@
 #include <teserra/platform/window.hpp>
 
 #include "gl_debug.hpp"
+#include "gl_format.hpp"
+#include "gl_swapchain.hpp"
 
+#include <algorithm>
 #include <string_view>
 
 namespace teserra::rhi::opengl {
@@ -36,7 +39,7 @@ Result<std::unique_ptr<Device>> GlDevice::create(const DeviceDesc& desc, platfor
     }
 
     auto device = std::make_unique<GlDevice>(*context);
-    TESERRA_TRY(device->initialize(desc));
+    TESERRA_TRY(device->initialize(desc, *window));
     return device;
 }
 
@@ -44,7 +47,21 @@ GlDevice::GlDevice(platform::OpenGlContext& context)
     : m_context(context), m_thread(std::this_thread::get_id()) {
 }
 
-Result<void> GlDevice::initialize(const DeviceDesc& desc) {
+GlDevice::~GlDevice() {
+    if (m_gl.DeleteFramebuffers == nullptr) {
+        return; // initialization failed before any object was created
+    }
+    requireContextThread();
+    m_context.makeCurrent();
+    m_swapchain.reset();
+    for (const CachedFramebuffer& framebuffer : m_framebuffers) {
+        m_gl.DeleteFramebuffers(1, &framebuffer.name);
+    }
+    m_textures.forEach(
+        [&](TextureHandle /*handle*/, const GlTexture& texture) { m_gl.DeleteTextures(1, &texture.name); });
+}
+
+Result<void> GlDevice::initialize(const DeviceDesc& desc, platform::Window& window) {
     m_context.makeCurrent();
     const int version = gladLoadGLContextUserPtr(&m_gl, &loadFunction, &m_context);
     if (version == 0) {
@@ -64,9 +81,17 @@ Result<void> GlDevice::initialize(const DeviceDesc& desc) {
         m_gl.Enable(GL_DEBUG_OUTPUT);
         m_gl.Enable(GL_DEBUG_OUTPUT_SYNCHRONOUS);
         m_gl.DebugMessageCallback(&logDebugMessage, nullptr);
+        // Drivers echo every debug group the command lists push and pop; those are markers, not messages.
+        for (const GLenum type : {GL_DEBUG_TYPE_PUSH_GROUP, GL_DEBUG_TYPE_POP_GROUP}) {
+            m_gl.DebugMessageControl(GL_DONT_CARE, type, GL_DONT_CARE, 0, nullptr, GL_FALSE);
+        }
     }
     // The RHI's clip-space and framebuffer conventions (ADR-0024): depth [0, 1], row 0 at the top.
     m_gl.ClipControl(GL_UPPER_LEFT, GL_ZERO_TO_ONE);
+    // Shaders and clear colors work in linear values; writes to sRGB textures encode them.
+    m_gl.Enable(GL_FRAMEBUFFER_SRGB);
+
+    m_swapchain = std::make_unique<GlSwapchain>(*this, m_context, desc.swapchain, window.framebufferSize());
 
     TESERRA_LOG_INFO(LogCategory::Rhi, "OpenGL device: {} ({}), OpenGL {}", glString(m_gl, GL_RENDERER),
                      glString(m_gl, GL_VENDOR), glString(m_gl, GL_VERSION));
@@ -214,13 +239,195 @@ CommandList& GlDevice::acquireCommandList() {
 void GlDevice::submit(CommandList& commands) {
     requireContextThread();
     commands.finish();
-    // TODO(#28): replay the commands; until then, none may be recorded, so none are dropped silently
-    TESERRA_ASSERT(commands.empty(), "The OpenGL backend cannot replay commands yet: {}",
-                   commandTypeName((*commands.commands().begin()).type()));
+    replay(commands);
 }
 
 Swapchain* GlDevice::swapchain() noexcept {
-    return nullptr; // TODO(#28): the swapchain of the window
+    return m_swapchain.get();
+}
+
+// ---------------------------------------------------------------------------------------------------------
+// Replay
+
+void GlDevice::replay(const CommandList& commands) {
+    for (const Command command : commands.commands()) {
+        switch (command.type()) {
+            case CommandType::BeginRenderPass:
+                beginRenderPass(command.as<BeginRenderPassCommand>().pass);
+                break;
+            case CommandType::EndRenderPass:
+                endRenderPass();
+                break;
+            case CommandType::SetViewport: {
+                // With GL_UPPER_LEFT clip control, window y counts from row 0, the top: no flip.
+                const Viewport& viewport = command.as<SetViewportCommand>().viewport;
+                m_gl.ViewportIndexedf(0, viewport.x, viewport.y, viewport.width, viewport.height);
+                m_gl.DepthRangef(viewport.minDepth, viewport.maxDepth);
+                break;
+            }
+            case CommandType::SetScissor: {
+                const ScissorRect& scissor = command.as<SetScissorCommand>().scissor;
+                m_gl.Enable(GL_SCISSOR_TEST);
+                m_gl.Scissor(static_cast<GLint>(scissor.x), static_cast<GLint>(scissor.y),
+                             static_cast<GLsizei>(scissor.width), static_cast<GLsizei>(scissor.height));
+                break;
+            }
+            case CommandType::PushDebugGroup: {
+                const std::string_view label = command.debugLabel();
+                m_gl.PushDebugGroup(GL_DEBUG_SOURCE_APPLICATION, 0, static_cast<GLsizei>(label.size()),
+                                    label.data());
+                break;
+            }
+            case CommandType::PopDebugGroup:
+                m_gl.PopDebugGroup();
+                break;
+            default:
+                // Pipelines, buffers and bind groups cannot be created yet (#32 to #35, #42), so these
+                // commands can only carry handles this device never gave out.
+                TESERRA_ASSERT(false, "The OpenGL backend cannot replay {} commands yet",
+                               commandTypeName(command.type()));
+                break;
+        }
+    }
+}
+
+void GlDevice::beginRenderPass(const RenderPassDesc& pass) {
+    // TODO(#49): depth-stencil attachments, once depth textures can be created
+    TESERRA_ASSERT(pass.depthStencil.texture.isNull(),
+                   "The OpenGL backend has no depth-stencil attachments yet");
+
+    FramebufferKey key;
+    UVec2 renderArea{};
+    for (u32 i = 0; i < kMaxColorAttachments; ++i) {
+        const ColorAttachment& attachment = pass.colorAttachments[i];
+        if (attachment.texture.isNull()) {
+            break;
+        }
+        const GlTexture* texture = m_textures.tryGet(attachment.texture);
+        TESERRA_ASSERT(texture != nullptr, "Color attachment {} uses texture {}, which is not alive", i,
+                       attachment.texture);
+        if (texture == nullptr) {
+            return;
+        }
+        key.color[i] = {.texture = attachment.texture,
+                        .mipLevel = attachment.mipLevel,
+                        .arrayLayer = attachment.arrayLayer};
+        if (i == 0) {
+            renderArea = {std::max(texture->size.x >> attachment.mipLevel, 1U),
+                          std::max(texture->size.y >> attachment.mipLevel, 1U)};
+        }
+    }
+
+    m_passFramebuffer = framebuffer(key);
+    m_gl.BindFramebuffer(GL_DRAW_FRAMEBUFFER, m_passFramebuffer);
+    // A pass covers its whole render area until the commands say otherwise.
+    m_gl.Disable(GL_SCISSOR_TEST);
+    m_gl.ViewportIndexedf(0, 0.0F, 0.0F, static_cast<f32>(renderArea.x), static_cast<f32>(renderArea.y));
+    m_gl.DepthRangef(0.0F, 1.0F);
+
+    // TODO(#34): restore color write masks before clearing once pipelines can change them
+    std::array<GLenum, kMaxColorAttachments> undefined{};
+    u32 undefinedCount = 0;
+    m_passDiscardCount = 0;
+    for (u32 i = 0; i < kMaxColorAttachments && !pass.colorAttachments[i].texture.isNull(); ++i) {
+        const ColorAttachment& attachment = pass.colorAttachments[i];
+        if (attachment.loadOp == LoadOp::Clear) {
+            const std::array color{attachment.clearColor.x, attachment.clearColor.y, attachment.clearColor.z,
+                                   attachment.clearColor.w};
+            m_gl.ClearNamedFramebufferfv(m_passFramebuffer, GL_COLOR, static_cast<GLint>(i), color.data());
+        } else if (attachment.loadOp == LoadOp::DontCare) {
+            undefined[undefinedCount++] = GL_COLOR_ATTACHMENT0 + i;
+        }
+        if (attachment.storeOp == StoreOp::DontCare) {
+            m_passDiscards[m_passDiscardCount++] = GL_COLOR_ATTACHMENT0 + i;
+        }
+    }
+    if (undefinedCount > 0) {
+        m_gl.InvalidateNamedFramebufferData(m_passFramebuffer, static_cast<GLsizei>(undefinedCount),
+                                            undefined.data());
+    }
+}
+
+void GlDevice::endRenderPass() {
+    if (m_passDiscardCount > 0) {
+        m_gl.InvalidateNamedFramebufferData(m_passFramebuffer, static_cast<GLsizei>(m_passDiscardCount),
+                                            m_passDiscards.data());
+    }
+    m_gl.Disable(GL_SCISSOR_TEST);
+    m_passFramebuffer = 0;
+    m_passDiscardCount = 0;
+}
+
+// ---------------------------------------------------------------------------------------------------------
+// Textures and framebuffers
+
+TextureHandle GlDevice::createTexture2D(Format format, UVec2 size, std::string_view label) {
+    GLuint name = 0;
+    m_gl.CreateTextures(GL_TEXTURE_2D, 1, &name);
+    m_gl.TextureStorage2D(name, 1, glInternalFormat(format), static_cast<GLsizei>(size.x),
+                          static_cast<GLsizei>(size.y));
+    m_gl.ObjectLabel(GL_TEXTURE, name, static_cast<GLsizei>(label.size()), label.data());
+    return m_textures.create(GlTexture{.name = name, .format = format, .size = size});
+}
+
+void GlDevice::releaseTexture(TextureHandle handle) {
+    const GlTexture* texture = m_textures.tryGet(handle);
+    TESERRA_ASSERT(texture != nullptr, "Releasing texture {}, which is not alive", handle);
+    if (texture == nullptr) {
+        return;
+    }
+    const auto usesTexture = [&](const CachedFramebuffer& framebuffer) {
+        return std::ranges::any_of(framebuffer.key.color, [&](const FramebufferKey::Attachment& attachment) {
+            return attachment.texture == handle;
+        });
+    };
+    for (const CachedFramebuffer& framebuffer : m_framebuffers) {
+        if (usesTexture(framebuffer)) {
+            m_gl.DeleteFramebuffers(1, &framebuffer.name);
+        }
+    }
+    std::erase_if(m_framebuffers, usesTexture);
+    m_gl.DeleteTextures(1, &texture->name);
+    m_textures.destroy(handle);
+}
+
+GLuint GlDevice::colorFramebuffer(TextureHandle texture) {
+    FramebufferKey key;
+    key.color[0].texture = texture;
+    return framebuffer(key);
+}
+
+GLuint GlDevice::framebuffer(const FramebufferKey& key) {
+    const auto cached = std::ranges::find(m_framebuffers, key, &CachedFramebuffer::key);
+    if (cached != m_framebuffers.end()) {
+        return cached->name;
+    }
+
+    GLuint name = 0;
+    m_gl.CreateFramebuffers(1, &name);
+    std::array<GLenum, kMaxColorAttachments> drawBuffers{};
+    GLsizei drawBufferCount = 0;
+    for (const FramebufferKey::Attachment& attachment : key.color) {
+        if (attachment.texture.isNull()) {
+            break;
+        }
+        const GLenum point = GL_COLOR_ATTACHMENT0 + static_cast<GLenum>(drawBufferCount);
+        const GlTexture& texture = m_textures.get(attachment.texture);
+        if (attachment.arrayLayer == 0) {
+            m_gl.NamedFramebufferTexture(name, point, texture.name, static_cast<GLint>(attachment.mipLevel));
+        } else {
+            m_gl.NamedFramebufferTextureLayer(name, point, texture.name,
+                                              static_cast<GLint>(attachment.mipLevel),
+                                              static_cast<GLint>(attachment.arrayLayer));
+        }
+        drawBuffers[static_cast<usize>(drawBufferCount++)] = point;
+    }
+    m_gl.NamedFramebufferDrawBuffers(name, drawBufferCount, drawBuffers.data());
+    const GLenum status = m_gl.CheckNamedFramebufferStatus(name, GL_DRAW_FRAMEBUFFER);
+    TESERRA_ASSERT(status == GL_FRAMEBUFFER_COMPLETE, "Framebuffer of texture {} is incomplete (0x{:X})",
+                   key.color[0].texture, status);
+    m_framebuffers.push_back({.key = key, .name = name});
+    return name;
 }
 
 void GlDevice::waitIdle() {

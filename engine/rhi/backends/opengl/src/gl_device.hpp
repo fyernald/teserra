@@ -4,6 +4,8 @@
 // the device's own glad function table (MX mode, ADR-0009), on the thread that created the device, with the
 // window's context current.
 
+#include <teserra/core/handle_pool.hpp>
+#include <teserra/core/math.hpp>
 #include <teserra/core/result.hpp>
 #include <teserra/core/types.hpp>
 #include <teserra/rhi/command_list.hpp>
@@ -15,7 +17,9 @@
 #include <array>
 #include <deque>
 #include <memory>
+#include <string_view>
 #include <thread>
+#include <vector>
 
 namespace teserra::platform {
 class OpenGlContext;
@@ -24,6 +28,30 @@ class Window;
 
 namespace teserra::rhi::opengl {
 
+class GlSwapchain;
+
+/// A texture of the device.
+struct GlTexture {
+    GLuint name = 0;
+    Format format = Format::Undefined;
+    UVec2 size{};
+};
+
+/// The attachments a framebuffer object is made of; framebuffers are cached by it.
+struct FramebufferKey {
+    struct Attachment {
+        TextureHandle texture{};
+        u32 mipLevel = 0;
+        u32 arrayLayer = 0;
+
+        friend bool operator==(const Attachment&, const Attachment&) = default;
+    };
+
+    std::array<Attachment, kMaxColorAttachments> color{};
+
+    friend bool operator==(const FramebufferKey&, const FramebufferKey&) = default;
+};
+
 class GlDevice final : public Device {
 public:
     /// The BackendFactory::create of the OpenGL backend.
@@ -31,6 +59,13 @@ public:
                                                                 platform::Window* window);
 
     explicit GlDevice(platform::OpenGlContext& context);
+    /// Deletes the device's GL objects; the window's context must still exist.
+    ~GlDevice() override;
+
+    GlDevice(const GlDevice&) = delete;
+    GlDevice& operator=(const GlDevice&) = delete;
+    GlDevice(GlDevice&&) = delete;
+    GlDevice& operator=(GlDevice&&) = delete;
 
     [[nodiscard]] Backend backend() const noexcept override { return Backend::OpenGL; }
     [[nodiscard]] const DeviceLimits& limits() const noexcept override { return m_limits; }
@@ -58,17 +93,51 @@ public:
 
     void waitIdle() override;
 
+    // For the swapchain and tests within the backend.
+
+    [[nodiscard]] const GladGLContext& gl() const noexcept { return m_gl; }
+    /// Creates a 2D texture with one mip level, labeled `label` for graphics debuggers.
+    [[nodiscard]] TextureHandle createTexture2D(Format format, UVec2 size, std::string_view label);
+    /// Deletes a texture and the framebuffers that use it.
+    void releaseTexture(TextureHandle handle);
+    /// The texture behind `handle`, or nullptr if the handle is not live.
+    [[nodiscard]] const GlTexture* texture(TextureHandle handle) const noexcept {
+        return m_textures.tryGet(handle);
+    }
+    /// The framebuffer object with `texture` as its only color attachment.
+    [[nodiscard]] GLuint colorFramebuffer(TextureHandle texture);
+
 private:
-    // Loads GL, checks the version and limits, and sets up debug output and clip conventions.
-    [[nodiscard]] Result<void> initialize(const DeviceDesc& desc);
+    struct CachedFramebuffer {
+        FramebufferKey key;
+        GLuint name = 0;
+    };
+
+    // Loads GL, checks the version and limits, and sets up debug output, conventions and the swapchain.
+    [[nodiscard]] Result<void> initialize(const DeviceDesc& desc, platform::Window& window);
     [[nodiscard]] Result<void> queryLimits();
     [[nodiscard]] i32 getInteger(GLenum name) const;
     void requireContextThread() const;
+
+    [[nodiscard]] GLuint framebuffer(const FramebufferKey& key);
+    // Replays the commands of a list (docs/architecture/rhi.md#opengl-backend-mapping).
+    void replay(const CommandList& commands);
+    void beginRenderPass(const RenderPassDesc& pass);
+    void endRenderPass();
 
     platform::OpenGlContext& m_context;
     GladGLContext m_gl{};
     DeviceLimits m_limits{};
     std::thread::id m_thread;
+
+    HandlePool<GlTexture, TextureTag> m_textures;
+    std::vector<CachedFramebuffer> m_framebuffers;
+    std::unique_ptr<GlSwapchain> m_swapchain;
+
+    // Replay state: the open render pass's framebuffer and its attachments that are discarded at its end.
+    GLuint m_passFramebuffer = 0;
+    std::array<GLenum, kMaxColorAttachments> m_passDiscards{};
+    u32 m_passDiscardCount = 0;
 
     u64 m_frame = 0;
     bool m_inFrame = false;
