@@ -14,6 +14,7 @@ teserra_add_module(rhi_opengl LAYER 3
         src/gl_debug.cpp
         src/gl_device.cpp
         src/gl_format.cpp
+        src/gl_pipeline_state.cpp
         src/gl_swapchain.cpp
         src/opengl_backend.cpp
 )

@@ -4,6 +4,7 @@ teserra_add_test(rhi_opengl
         opengl_buffer_test.cpp
         opengl_device_test.cpp
         opengl_gpu_test.cpp
+        opengl_pipeline_test.cpp
         opengl_shader_test.cpp
         opengl_swapchain_test.cpp
     DEPENDS rhi_opengl platform

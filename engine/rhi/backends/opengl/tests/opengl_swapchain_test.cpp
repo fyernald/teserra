@@ -60,13 +60,16 @@ TEST_CASE("OpenGL swapchain: an sRGB image of the framebuffer size", "[rhi_openg
     CHECK(swapchain.size() == UVec2{320, 200});
     CHECK(swapchain.format() == Format::Rgba8Srgb);
     CHECK_FALSE(swapchain.acquireNextImage().isNull());
-    CHECK(window.context.state.calls == Calls{
-                                            "Enable(GL_FRAMEBUFFER_SRGB)",
-                                            "SwapInterval(1)",
-                                            "CreateTextures(GL_TEXTURE_2D) = 1",
-                                            "TextureStorage2D(1, 1, GL_SRGB8_ALPHA8, 320x200)",
-                                            "ObjectLabel(GL_TEXTURE, 1, Swapchain image)",
-                                        });
+    // The device's setup comes first; the swapchain's calls end it.
+    const Calls& calls = window.context.state.calls;
+    CHECK(window.context.state.enabled.contains(GL_FRAMEBUFFER_SRGB));
+    REQUIRE(calls.size() >= 4);
+    CHECK(Calls(calls.end() - 4, calls.end()) == Calls{
+                                                     "SwapInterval(1)",
+                                                     "CreateTextures(GL_TEXTURE_2D) = 1",
+                                                     "TextureStorage2D(1, 1, GL_SRGB8_ALPHA8, 320x200)",
+                                                     "ObjectLabel(GL_TEXTURE, 1, Swapchain image)",
+                                                 });
 }
 
 TEST_CASE("OpenGL swapchain: formats and present modes", "[rhi_opengl][swapchain]") {
