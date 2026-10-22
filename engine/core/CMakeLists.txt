@@ -3,6 +3,7 @@ teserra_add_module(core LAYER 0
         include/teserra/core/assert.hpp
         include/teserra/core/config.hpp
         include/teserra/core/log.hpp
+        include/teserra/core/math.hpp
         include/teserra/core/profile.hpp
         include/teserra/core/result.hpp
         include/teserra/core/types.hpp
@@ -16,6 +17,13 @@ teserra_add_module(core LAYER 0
 # users of teserra_core. The header check in tests/ verifies it.
 find_package(spdlog CONFIG REQUIRED)
 teserra_link_third_party(core PRIVATE spdlog::spdlog)
+
+# glm is PUBLIC: engine headers use its types through <teserra/core/math.hpp> (ADR-0008). Its
+# configuration is fixed here, once, as PUBLIC definitions; nothing else may define GLM_* macros, because
+# translation units compiled with different glm settings would violate the ODR.
+find_package(glm CONFIG REQUIRED)
+teserra_link_third_party(core PUBLIC glm::glm-header-only)
+target_compile_definitions(teserra_core PUBLIC GLM_FORCE_DEPTH_ZERO_TO_ONE GLM_FORCE_RADIANS)
 
 # tl-expected is PUBLIC: Result<T> is tl::expected in engine signatures (ADR-0016). Header-only.
 find_package(tl-expected CONFIG REQUIRED)

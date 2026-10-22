@@ -5,6 +5,7 @@ teserra_add_test(core
         config_test.cpp
         log_level_min_test.cpp
         log_test.cpp
+        math_test.cpp
         profile_test.cpp
         result_test.cpp
         version_test.cpp
