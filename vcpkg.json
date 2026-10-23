@@ -8,6 +8,7 @@
   "dependencies": [
     "glfw3",
     "glm",
+    "glslang",
     "spdlog",
     "tl-expected"
   ],
@@ -16,6 +17,12 @@
       "description": "Unit, integration and GPU tests (TESERRA_BUILD_TESTS)",
       "dependencies": [
         "catch2"
+      ]
+    },
+    "shader-validation": {
+      "description": "SPIR-V validation of teserra_shaderc's output in tests (TESERRA_SHADER_VALIDATION)",
+      "dependencies": [
+        "spirv-tools"
       ]
     }
   }
