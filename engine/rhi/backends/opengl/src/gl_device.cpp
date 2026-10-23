@@ -40,10 +40,41 @@ public:
         const GlTexture* texture = m_device.texture(handle);
         return texture != nullptr ? std::optional(texture->desc()) : std::nullopt;
     }
+    [[nodiscard]] std::optional<SamplerDesc> sampler(SamplerHandle /*handle*/) const override {
+        return std::nullopt; // no samplers yet (#50)
+    }
+    [[nodiscard]] std::optional<ShaderModuleInfo> shaderModule(ShaderModuleHandle handle) const override {
+        const GlShaderModule* shader = m_device.shaderModule(handle);
+        if (shader == nullptr) {
+            return std::nullopt;
+        }
+        return ShaderModuleInfo{.stage = shader->stage,
+                                .reflection = shader->reflection ? &*shader->reflection : nullptr,
+                                .debugName = shader->debugName};
+    }
+    [[nodiscard]] std::optional<BindGroupLayoutDesc>
+    bindGroupLayout(BindGroupLayoutHandle handle) const override {
+        const StoredBindGroupLayout* layout = m_device.bindGroupLayout(handle);
+        return layout != nullptr ? std::optional(layout->desc()) : std::nullopt;
+    }
+    [[nodiscard]] std::optional<PipelineLayoutInfo>
+    pipelineLayout(PipelineLayoutHandle handle) const override {
+        const StoredPipelineLayout* layout = m_device.pipelineLayout(handle);
+        return layout != nullptr ? std::optional(layout->info()) : std::nullopt;
+    }
+    [[nodiscard]] std::optional<BindGroupInfo> bindGroup(BindGroupHandle handle) const override {
+        const StoredBindGroup* group = m_device.bindGroup(handle);
+        return group != nullptr ? std::optional(group->info()) : std::nullopt;
+    }
     [[nodiscard]] std::optional<GraphicsPipelineDesc>
     graphicsPipeline(GraphicsPipelineHandle handle) const override {
         const GlPipeline* pipeline = m_device.pipeline(handle);
         return pipeline != nullptr ? std::optional(pipeline->desc()) : std::nullopt;
+    }
+    [[nodiscard]] std::optional<PipelineLayoutInfo>
+    graphicsPipelineLayout(GraphicsPipelineHandle handle) const override {
+        const GlPipeline* pipeline = m_device.pipeline(handle);
+        return pipeline != nullptr ? std::optional(pipeline->layout.info()) : std::nullopt;
     }
 
 private:
@@ -336,6 +367,7 @@ Result<ShaderModuleHandle> GlDevice::createShaderModule(const ShaderModuleDesc& 
     // The GLSL for OpenGL in the .tshader blob; it points into desc.blob, which lives for this call.
     // TODO(#44): remove the temporary GLSL blobs of the first triangle
     std::optional<std::string_view> source = temporaryGlslSource(desc.blob);
+    std::optional<ShaderReflection> reflection;
     if (!source) {
         Result<ShaderBlobContents> contents = readShaderBlob(desc.blob);
         if (!contents) {
@@ -352,6 +384,7 @@ Result<ShaderModuleHandle> GlDevice::createShaderModule(const ShaderModuleDesc& 
                         "Shader module '{}': the blob has no GLSL for OpenGL", desc.debugName);
         }
         source = contents->glsl;
+        reflection = std::move(contents->reflection);
     }
     if (desc.entryPoint != "main") {
         return fail(ErrorCode::Unsupported, Module::Rhi,
@@ -381,8 +414,10 @@ Result<ShaderModuleHandle> GlDevice::createShaderModule(const ShaderModuleDesc& 
         m_gl.ObjectLabel(GL_SHADER, shader, static_cast<GLsizei>(desc.debugName.size()),
                          desc.debugName.data());
     }
-    return m_shaderModules.create(
-        GlShaderModule{.shader = shader, .stage = desc.stage, .debugName = std::string(desc.debugName)});
+    return m_shaderModules.create(GlShaderModule{.shader = shader,
+                                                 .stage = desc.stage,
+                                                 .reflection = std::move(reflection),
+                                                 .debugName = std::string(desc.debugName)});
 }
 
 void GlDevice::destroy(ShaderModuleHandle handle) {
@@ -400,12 +435,68 @@ void GlDevice::destroy(ShaderModuleHandle handle) {
 }
 
 // ---------------------------------------------------------------------------------------------------------
+// Bind group layouts, pipeline layouts and bind groups: descriptors only, for validation, until #43 binds
+// groups with glBindBufferRange.
+
+Result<BindGroupLayoutHandle> GlDevice::createBindGroupLayout(const BindGroupLayoutDesc& desc) {
+    requireContextThread();
+    if (m_validate) {
+        validateBindGroupLayoutDesc(desc);
+    }
+    return m_bindGroupLayouts.create(StoredBindGroupLayout::from(desc));
+}
+
+Result<PipelineLayoutHandle> GlDevice::createPipelineLayout(const PipelineLayoutDesc& desc) {
+    requireContextThread();
+    if (m_validate) {
+        validatePipelineLayoutDesc(desc, GlLookup(*this));
+    }
+    std::array<const StoredBindGroupLayout*, kMaxBindGroups> layouts{};
+    for (usize set = 0; set < desc.groups.size() && set < kMaxBindGroups; ++set) {
+        layouts[set] = m_bindGroupLayouts.tryGet(desc.groups[set]);
+    }
+    return m_pipelineLayouts.create(StoredPipelineLayout::from(desc.debugName, layouts));
+}
+
+Result<BindGroupHandle> GlDevice::createBindGroup(const BindGroupDesc& desc) {
+    requireContextThread();
+    if (m_validate) {
+        validateBindGroupDesc(desc, GlLookup(*this));
+    }
+    return m_bindGroups.create(StoredBindGroup::from(desc, m_bindGroupLayouts.tryGet(desc.layout)));
+}
+
+void GlDevice::destroy(BindGroupLayoutHandle handle) {
+    if (!handle.isNull()) {
+        TESERRA_ASSERT(m_bindGroupLayouts.contains(handle),
+                       "Destroying bind group layout {}, which is not alive", handle);
+        m_bindGroupLayouts.destroy(handle);
+    }
+}
+
+void GlDevice::destroy(PipelineLayoutHandle handle) {
+    if (!handle.isNull()) {
+        TESERRA_ASSERT(m_pipelineLayouts.contains(handle),
+                       "Destroying pipeline layout {}, which is not alive", handle);
+        m_pipelineLayouts.destroy(handle);
+    }
+}
+
+void GlDevice::destroy(BindGroupHandle handle) {
+    if (!handle.isNull()) {
+        TESERRA_ASSERT(m_bindGroups.contains(handle), "Destroying bind group {}, which is not alive", handle);
+        m_bindGroups.destroy(handle);
+    }
+}
+
+// ---------------------------------------------------------------------------------------------------------
 // Graphics pipelines: a shared program, a vertex array per pipeline and captured fixed-function state.
 
 Result<GraphicsPipelineHandle> GlDevice::createGraphicsPipeline(const GraphicsPipelineDesc& desc) {
     requireContextThread();
     if (m_validate) {
         validateGraphicsPipelineDesc(desc);
+        validateGraphicsPipelineResources(desc, GlLookup(*this));
     }
     const GlShaderModule* vertex = m_shaderModules.tryGet(desc.vertexShader);
     const GlShaderModule* fragment =
@@ -466,6 +557,9 @@ Result<GraphicsPipelineHandle> GlDevice::createGraphicsPipeline(const GraphicsPi
     pipeline.stored.vertexBuffers = {};
     pipeline.stored.vertexAttributes = {};
     pipeline.stored.debugName = {};
+    if (const StoredPipelineLayout* layout = m_pipelineLayouts.tryGet(desc.layout)) {
+        pipeline.layout = *layout;
+    }
     return m_pipelines.create(std::move(pipeline));
 }
 
@@ -661,7 +755,7 @@ void GlDevice::replay(const CommandList& commands) {
                 copyBuffer(command.as<CopyBufferCommand>().copy);
                 break;
             default:
-                // Bind groups follow with #42 and texture copies with textures (#49).
+                // Bind groups follow with #43 and texture copies with textures (#49).
                 TESERRA_ASSERT(false, "The OpenGL backend cannot replay {} commands yet",
                                commandTypeName(command.type()));
                 break;

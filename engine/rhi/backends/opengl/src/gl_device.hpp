@@ -11,6 +11,8 @@
 #include <teserra/rhi/command_list.hpp>
 #include <teserra/rhi/device.hpp>
 #include <teserra/rhi/limits.hpp>
+#include <teserra/rhi/shader_blob.hpp>
+#include <teserra/rhi/validation.hpp>
 
 #include "gl_pipeline_state.hpp"
 #include <glad/gl.h>
@@ -19,6 +21,7 @@
 #include <cstddef>
 #include <deque>
 #include <memory>
+#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
@@ -55,6 +58,8 @@ struct GlBuffer {
 struct GlShaderModule {
     GLuint shader = 0;
     ShaderStage stage = ShaderStage::Vertex;
+    // Of a .tshader blob, for validation; none for the temporary GLSL blobs (#44).
+    std::optional<ShaderReflection> reflection;
     std::string debugName;
 };
 
@@ -70,6 +75,8 @@ struct GlPipeline {
     u32 vertexBufferCount = 0;
     /// The descriptor without its views (vertex layouts, attributes, name), for validation; see desc().
     GraphicsPipelineDesc stored{};
+    // The groups of the layout the pipeline was created with, for validation.
+    StoredPipelineLayout layout;
     std::string debugName;
 
     /// The descriptor the pipeline was created with, with its vertex buffer layouts but not its attributes.
@@ -134,6 +141,12 @@ public:
     [[nodiscard]] Result<TextureHandle> createTexture(const TextureDesc& desc) override;
     [[nodiscard]] Result<SamplerHandle> createSampler(const SamplerDesc& desc) override;
     [[nodiscard]] Result<ShaderModuleHandle> createShaderModule(const ShaderModuleDesc& desc) override;
+    /// Bind group layouts, pipeline layouts and bind groups keep their descriptors, for validation; the GL
+    /// binding of groups follows with #43.
+    [[nodiscard]] Result<BindGroupLayoutHandle>
+    createBindGroupLayout(const BindGroupLayoutDesc& desc) override;
+    [[nodiscard]] Result<PipelineLayoutHandle> createPipelineLayout(const PipelineLayoutDesc& desc) override;
+    [[nodiscard]] Result<BindGroupHandle> createBindGroup(const BindGroupDesc& desc) override;
     [[nodiscard]] Result<GraphicsPipelineHandle>
     createGraphicsPipeline(const GraphicsPipelineDesc& desc) override;
 
@@ -141,6 +154,9 @@ public:
     void destroy(TextureHandle handle) override;
     void destroy(SamplerHandle handle) override;
     void destroy(ShaderModuleHandle handle) override;
+    void destroy(BindGroupLayoutHandle handle) override;
+    void destroy(PipelineLayoutHandle handle) override;
+    void destroy(BindGroupHandle handle) override;
     void destroy(GraphicsPipelineHandle handle) override;
 
     void writeBuffer(BufferHandle buffer, u64 offset, std::span<const std::byte> data) override;
@@ -179,6 +195,18 @@ public:
     /// The buffer behind `handle`, or nullptr if the handle is not live.
     [[nodiscard]] const GlBuffer* buffer(BufferHandle handle) const noexcept {
         return m_buffers.tryGet(handle);
+    }
+    /// The bind group layout behind `handle`, or nullptr if the handle is not live.
+    [[nodiscard]] const StoredBindGroupLayout* bindGroupLayout(BindGroupLayoutHandle handle) const noexcept {
+        return m_bindGroupLayouts.tryGet(handle);
+    }
+    /// The pipeline layout behind `handle`, or nullptr if the handle is not live.
+    [[nodiscard]] const StoredPipelineLayout* pipelineLayout(PipelineLayoutHandle handle) const noexcept {
+        return m_pipelineLayouts.tryGet(handle);
+    }
+    /// The bind group behind `handle`, or nullptr if the handle is not live.
+    [[nodiscard]] const StoredBindGroup* bindGroup(BindGroupHandle handle) const noexcept {
+        return m_bindGroups.tryGet(handle);
     }
     /// The framebuffer object with `texture` as its only color attachment.
     [[nodiscard]] GLuint colorFramebuffer(TextureHandle texture);
@@ -229,6 +257,9 @@ private:
 
     HandlePool<GlBuffer, BufferTag> m_buffers;
     HandlePool<GlShaderModule, ShaderModuleTag> m_shaderModules;
+    HandlePool<StoredBindGroupLayout, BindGroupLayoutTag> m_bindGroupLayouts;
+    HandlePool<StoredPipelineLayout, PipelineLayoutTag> m_pipelineLayouts;
+    HandlePool<StoredBindGroup, BindGroupTag> m_bindGroups;
     HandlePool<GlPipeline, GraphicsPipelineTag> m_pipelines;
     std::vector<CachedProgram> m_programs;
     GlStateCache m_stateCache{m_gl};

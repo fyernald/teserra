@@ -4,6 +4,7 @@
 
 #include <teserra/rhi/device.hpp>
 #include <teserra/rhi/shader.hpp>
+#include <teserra/rhi/shader_blob.hpp>
 #include <teserra/rhi_opengl/opengl_backend.hpp>
 #include <teserra/test/assert.hpp>
 #include <teserra/test/log_capture.hpp>
@@ -392,6 +393,64 @@ TEST_CASE("OpenGL backend: pipeline misuse is caught", "[rhi_opengl][pipeline][v
     device->destroy(mismatch);
     CHECK(failureOf([&] { device->destroy(mismatch); }) ==
           std::format("Destroying graphics pipeline {}, which is not alive", mismatch));
+}
+
+TEST_CASE("OpenGL backend: bind groups and shader reflection go through the shared validation",
+          "[rhi_opengl][pipeline][validation]") {
+    test::FakeGlWindow window;
+    const auto device = requireOpenGl(window);
+    const auto failureOf = [](auto&& call) { return test::requireAssert(call).message(); };
+    CHECK(device->limits().maxBindGroups == kMaxBindGroups);
+    CHECK(device->limits().maxBindingsPerGroup == kMaxBindingsPerGroup);
+
+    constexpr std::array<u32, 6> kSpirvWords{0x07230203, 0x00010500, 0x0008000B, 42, 0, 0x00020011};
+    const std::vector<std::byte> blob = writeShaderBlob({
+        .stage = ShaderStage::Vertex,
+        .spirv = std::as_bytes(std::span(kSpirvWords)),
+        .glsl = kVertexSource,
+        .reflection = {.bindings = {{.type = BindingType::UniformBuffer, .size = 64, .name = "Frame"}}},
+    });
+    const ShaderModuleHandle vertex =
+        *device->createShaderModule({.stage = ShaderStage::Vertex, .blob = blob, .debugName = "VS"});
+    const auto pipelineDesc = [&](PipelineLayoutHandle layout) {
+        return GraphicsPipelineDesc{.vertexShader = vertex,
+                                    .layout = layout,
+                                    .targets = {.colorFormats = {Format::Rgba8Srgb}},
+                                    .debugName = "Sprites"};
+    };
+    CHECK(failureOf([&] { static_cast<void>(device->createGraphicsPipeline(pipelineDesc({}))); }) ==
+          "Graphics pipeline 'Sprites': vertex shader 'VS' uses uniform buffer 'Frame' at (group 0, binding "
+          "0), "
+          "but the pipeline has no layout");
+
+    constexpr std::array kEntries{BindGroupLayoutEntry{.type = BindingType::UniformBuffer}};
+    const BindGroupLayoutHandle frame = *device->createBindGroupLayout({.entries = kEntries});
+    const PipelineLayoutHandle layout = *device->createPipelineLayout({.groups = std::array{frame}});
+    const GraphicsPipelineHandle pipeline = *device->createGraphicsPipeline(pipelineDesc(layout));
+    const BufferHandle uniforms = *device->createBuffer({.sizeInBytes = 256, .usage = BufferUsage::Uniform});
+    const std::array resources{BindGroupEntry{.buffer = {.buffer = uniforms}}};
+    const BindGroupHandle group = *device->createBindGroup({.layout = frame, .entries = resources});
+    CHECK(failureOf([&] {
+              static_cast<void>(device->createBindGroup({.layout = frame, .debugName = "Empty"}));
+          }) == "Bind group 'Empty' has 0 entries for the 1 binding(s) of layout ''");
+
+    // The pipeline keeps its layout's groups, so draws still need set 0 once the layouts are gone.
+    device->destroy(layout);
+    device->destroy(frame);
+    const TextureHandle image = device->swapchain()->acquireNextImage();
+    device->beginFrame();
+    CommandList& cmd = device->acquireCommandList();
+    cmd.beginRenderPass({.colorAttachments = {{.texture = image}}});
+    cmd.bindPipeline(pipeline);
+    cmd.draw({.vertexCount = 3});
+    cmd.endRenderPass();
+    CHECK(failureOf([&] { device->submit(cmd); }) ==
+          "draw needs a bind group at set 0 for pipeline 'Sprites', and none is bound");
+    device->endFrame();
+
+    device->destroy(group);
+    CHECK(failureOf([&] { device->destroy(group); }) ==
+          std::format("Destroying bind group {}, which is not alive", group));
 }
 
 TEST_CASE("OpenGL backend: without validation, replay still catches stale pipelines",
