@@ -6,10 +6,12 @@
 #include <teserra/rhi/validation.hpp>
 
 #include <algorithm>
+#include <array>
 #include <cstddef>
 #include <optional>
 #include <string_view>
 #include <type_traits>
+#include <utility>
 
 namespace teserra::rhi::null {
 
@@ -38,15 +40,46 @@ public:
     [[nodiscard]] std::optional<TextureDesc> texture(TextureHandle handle) const override {
         return copy(m_device.texture(handle));
     }
+    [[nodiscard]] std::optional<SamplerDesc> sampler(SamplerHandle handle) const override {
+        return copy(m_device.sampler(handle));
+    }
+    [[nodiscard]] std::optional<ShaderModuleInfo> shaderModule(ShaderModuleHandle handle) const override {
+        const ShaderModuleDesc* desc = m_device.shaderModule(handle);
+        if (desc == nullptr) {
+            return std::nullopt;
+        }
+        return ShaderModuleInfo{.stage = desc->stage,
+                                .reflection = m_device.shaderReflection(handle),
+                                .debugName = desc->debugName};
+    }
+    [[nodiscard]] std::optional<BindGroupLayoutDesc>
+    bindGroupLayout(BindGroupLayoutHandle handle) const override {
+        return copy(m_device.bindGroupLayout(handle));
+    }
+    [[nodiscard]] std::optional<PipelineLayoutInfo>
+    pipelineLayout(PipelineLayoutHandle handle) const override {
+        return info(m_device.storedPipelineLayout(handle));
+    }
+    [[nodiscard]] std::optional<BindGroupInfo> bindGroup(BindGroupHandle handle) const override {
+        return info(m_device.storedBindGroup(handle));
+    }
     [[nodiscard]] std::optional<GraphicsPipelineDesc>
     graphicsPipeline(GraphicsPipelineHandle handle) const override {
         return copy(m_device.graphicsPipeline(handle));
+    }
+    [[nodiscard]] std::optional<PipelineLayoutInfo>
+    graphicsPipelineLayout(GraphicsPipelineHandle handle) const override {
+        return info(m_device.storedGraphicsPipelineLayout(handle));
     }
 
 private:
     template <typename Desc>
     static std::optional<Desc> copy(const Desc* desc) {
         return desc != nullptr ? std::optional<Desc>(*desc) : std::nullopt;
+    }
+    template <typename Stored>
+    static auto info(const Stored* stored) -> std::optional<decltype(stored->info())> {
+        return stored != nullptr ? std::optional(stored->info()) : std::nullopt;
     }
 
     const NullDevice& m_device;
@@ -165,7 +198,48 @@ Result<ShaderModuleHandle> NullDevice::createShaderModule(const ShaderModuleDesc
     if (m_validate) {
         validateShaderModuleDesc(desc);
     }
-    return m_shaderModules.create(store(desc));
+    Object<ShaderModuleDesc> object = store(desc);
+    if (Result<ShaderBlobContents> contents = readShaderBlob(desc.blob)) {
+        object->reflection = std::move(contents->reflection);
+    }
+    return m_shaderModules.create(std::move(object));
+}
+
+Result<BindGroupLayoutHandle> NullDevice::createBindGroupLayout(const BindGroupLayoutDesc& desc) {
+    if (m_validate) {
+        validateBindGroupLayoutDesc(desc);
+    }
+    Object<BindGroupLayoutDesc> object = store(desc);
+    object->layout = StoredBindGroupLayout::from(desc);
+    object->desc.entries = object->layout.entries;
+    return m_bindGroupLayouts.create(std::move(object));
+}
+
+Result<PipelineLayoutHandle> NullDevice::createPipelineLayout(const PipelineLayoutDesc& desc) {
+    if (m_validate) {
+        validatePipelineLayoutDesc(desc, NullLookup(*this));
+    }
+    Object<PipelineLayoutDesc> object = store(desc);
+    std::array<const StoredBindGroupLayout*, kMaxBindGroups> layouts{};
+    for (usize set = 0; set < desc.groups.size() && set < kMaxBindGroups; ++set) {
+        const Object<BindGroupLayoutDesc>* layout = m_bindGroupLayouts.tryGet(desc.groups[set]);
+        layouts[set] = layout != nullptr ? &(*layout)->layout : nullptr;
+    }
+    object->pipelineLayout = StoredPipelineLayout::from(desc.debugName, layouts);
+    object->groupLayouts.assign(desc.groups.begin(), desc.groups.end());
+    object->desc.groups = object->groupLayouts;
+    return m_pipelineLayouts.create(std::move(object));
+}
+
+Result<BindGroupHandle> NullDevice::createBindGroup(const BindGroupDesc& desc) {
+    if (m_validate) {
+        validateBindGroupDesc(desc, NullLookup(*this));
+    }
+    Object<BindGroupDesc> object = store(desc);
+    const Object<BindGroupLayoutDesc>* layout = m_bindGroupLayouts.tryGet(desc.layout);
+    object->group = StoredBindGroup::from(desc, layout != nullptr ? &(*layout)->layout : nullptr);
+    object->desc.entries = object->group.entries;
+    return m_bindGroups.create(std::move(object));
 }
 
 Result<GraphicsPipelineHandle> NullDevice::createGraphicsPipeline(const GraphicsPipelineDesc& desc) {
@@ -177,8 +251,13 @@ Result<GraphicsPipelineHandle> NullDevice::createGraphicsPipeline(const Graphics
         TESERRA_ASSERT(desc.fragmentShader.isNull() || m_shaderModules.contains(desc.fragmentShader),
                        "Graphics pipeline '{}': fragment shader {} is not alive", desc.debugName,
                        desc.fragmentShader);
+        validateGraphicsPipelineResources(desc, NullLookup(*this));
     }
-    return m_pipelines.create(store(desc));
+    Object<GraphicsPipelineDesc> object = store(desc);
+    if (const StoredPipelineLayout* layout = storedPipelineLayout(desc.layout)) {
+        object->pipelineLayout = *layout;
+    }
+    return m_pipelines.create(std::move(object));
 }
 
 TextureHandle NullDevice::createSwapchainImage(Format format, UVec2 size) {
@@ -212,6 +291,24 @@ void NullDevice::destroy(SamplerHandle handle) {
 void NullDevice::destroy(ShaderModuleHandle handle) {
     if (!handle.isNull()) {
         m_shaderModules.destroy(handle);
+    }
+}
+
+void NullDevice::destroy(BindGroupLayoutHandle handle) {
+    if (!handle.isNull()) {
+        m_bindGroupLayouts.destroy(handle);
+    }
+}
+
+void NullDevice::destroy(PipelineLayoutHandle handle) {
+    if (!handle.isNull()) {
+        m_pipelineLayouts.destroy(handle);
+    }
+}
+
+void NullDevice::destroy(BindGroupHandle handle) {
+    if (!handle.isNull()) {
+        m_bindGroups.destroy(handle);
     }
 }
 
@@ -287,6 +384,9 @@ usize NullDevice::liveObjectCount() const noexcept {
     m_textures.forEach(add);
     m_samplers.forEach(add);
     m_shaderModules.forEach(add);
+    m_bindGroupLayouts.forEach(add);
+    m_pipelineLayouts.forEach(add);
+    m_bindGroups.forEach(add);
     m_pipelines.forEach(add);
     return count;
 }
@@ -307,8 +407,41 @@ const ShaderModuleDesc* NullDevice::shaderModule(ShaderModuleHandle handle) cons
     return find(m_shaderModules, handle);
 }
 
+const BindGroupLayoutDesc* NullDevice::bindGroupLayout(BindGroupLayoutHandle handle) const noexcept {
+    return find(m_bindGroupLayouts, handle);
+}
+
+const PipelineLayoutDesc* NullDevice::pipelineLayout(PipelineLayoutHandle handle) const noexcept {
+    return find(m_pipelineLayouts, handle);
+}
+
+const BindGroupDesc* NullDevice::bindGroup(BindGroupHandle handle) const noexcept {
+    return find(m_bindGroups, handle);
+}
+
 const GraphicsPipelineDesc* NullDevice::graphicsPipeline(GraphicsPipelineHandle handle) const noexcept {
     return find(m_pipelines, handle);
+}
+
+const ShaderReflection* NullDevice::shaderReflection(ShaderModuleHandle handle) const noexcept {
+    const Object<ShaderModuleDesc>* object = m_shaderModules.tryGet(handle);
+    return object != nullptr && (*object)->reflection ? &*(*object)->reflection : nullptr;
+}
+
+const StoredPipelineLayout* NullDevice::storedPipelineLayout(PipelineLayoutHandle handle) const noexcept {
+    const Object<PipelineLayoutDesc>* object = m_pipelineLayouts.tryGet(handle);
+    return object != nullptr ? &(*object)->pipelineLayout : nullptr;
+}
+
+const StoredBindGroup* NullDevice::storedBindGroup(BindGroupHandle handle) const noexcept {
+    const Object<BindGroupDesc>* object = m_bindGroups.tryGet(handle);
+    return object != nullptr ? &(*object)->group : nullptr;
+}
+
+const StoredPipelineLayout*
+NullDevice::storedGraphicsPipelineLayout(GraphicsPipelineHandle handle) const noexcept {
+    const Object<GraphicsPipelineDesc>* object = m_pipelines.tryGet(handle);
+    return object != nullptr ? &(*object)->pipelineLayout : nullptr;
 }
 
 std::span<const std::byte> NullDevice::bufferData(BufferHandle handle) const noexcept {

@@ -9,7 +9,9 @@
 #include <algorithm>
 #include <array>
 #include <optional>
+#include <span>
 #include <string_view>
+#include <utility>
 
 namespace teserra::rhi {
 
@@ -60,9 +62,12 @@ void validateCommands(const CommandList& commands, const ResourceLookup& objects
     // Formats of the open render pass's attachments, which a bound pipeline must declare.
     std::array<Format, kMaxColorAttachments> passColorFormats{};
     Format passDepthFormat = Format::Undefined;
-    // The pass's bound pipeline and vertex buffer slots (bit per slot), which draws need.
+    // The pass's bound pipeline with its layout, its vertex buffer slots (bit per slot) and its bind groups
+    // by set, which draws need.
     std::optional<GraphicsPipelineDesc> passPipeline;
+    std::optional<PipelineLayoutInfo> passPipelineLayout;
     u32 boundVertexSlots = 0;
+    std::array<std::optional<BindGroupInfo>, kMaxBindGroups> boundGroups{};
 
     const auto liveBuffer = [&](BufferHandle handle, [[maybe_unused]] std::string_view use,
                                 BufferUsage usage) {
@@ -110,7 +115,9 @@ void validateCommands(const CommandList& commands, const ResourceLookup& objects
                 passColorFormats.fill(Format::Undefined);
                 passDepthFormat = Format::Undefined;
                 passPipeline.reset();
+                passPipelineLayout.reset();
                 boundVertexSlots = 0;
+                boundGroups.fill(std::nullopt);
                 for (u32 i = 0; i < kMaxColorAttachments && !pass.colorAttachments[i].texture.isNull(); ++i) {
                     if (const std::optional<TextureDesc> desc =
                             liveTexture(pass.colorAttachments[i].texture, "A color attachment",
@@ -132,6 +139,7 @@ void validateCommands(const CommandList& commands, const ResourceLookup& objects
                 const std::optional<GraphicsPipelineDesc> desc = objects.graphicsPipeline(handle);
                 TESERRA_ASSERT(desc.has_value(), "bindPipeline uses pipeline {}, which is not alive", handle);
                 passPipeline = desc;
+                passPipelineLayout = objects.graphicsPipelineLayout(handle);
                 if (!desc) {
                     break;
                 }
@@ -174,7 +182,58 @@ void validateCommands(const CommandList& commands, const ResourceLookup& objects
                                        slot, passPipeline->debugName);
                     }
                 }
+                if (passPipeline && passPipelineLayout) {
+                    // Groups whose layout has no bindings need nothing bound.
+                    for (u32 set = 0; set < kMaxBindGroups; ++set) {
+                        const std::span<const BindGroupLayoutEntry> needed = passPipelineLayout->groups[set];
+                        if (needed.empty()) {
+                            continue;
+                        }
+                        const std::optional<BindGroupInfo>& bound = boundGroups[set];
+                        TESERRA_ASSERT(
+                            bound.has_value(),
+                            "draw needs a bind group at set {} for pipeline '{}', and none is bound", set,
+                            passPipeline->debugName);
+                        TESERRA_ASSERT(!bound || std::ranges::equal(bound->layoutEntries, needed),
+                                       "draw with bind group '{}' at set {}, whose layout differs from that "
+                                       "set of pipeline '{}' (layout '{}')",
+                                       bound->debugName, set, passPipeline->debugName,
+                                       passPipelineLayout->debugName);
+                    }
+                }
                 break;
+            case CommandType::BindGroup: {
+                const auto& bind = command.as<BindGroupCommand>();
+                std::optional<BindGroupInfo> group = objects.bindGroup(bind.group);
+                TESERRA_ASSERT(group.has_value(), "bindGroup uses bind group {}, which is not alive",
+                               bind.group);
+                if (bind.index < kMaxBindGroups) {
+                    boundGroups[bind.index] = group;
+                }
+                if (!group) {
+                    break;
+                }
+                [[maybe_unused]] const auto dynamicBindings =
+                    std::ranges::count(group->layoutEntries, true, &BindGroupLayoutEntry::hasDynamicOffset);
+                TESERRA_ASSERT(
+                    std::cmp_equal(command.dynamicOffsets().size(), dynamicBindings),
+                    "bindGroup '{}' at set {} has {} dynamic offsets for the {} dynamic binding(s) of "
+                    "its layout",
+                    group->debugName, bind.index, command.dynamicOffsets().size(), dynamicBindings);
+                for (const BindGroupEntry& entry : group->entries) {
+                    TESERRA_ASSERT(entry.buffer.buffer.isNull() ||
+                                       objects.buffer(entry.buffer.buffer).has_value(),
+                                   "bindGroup '{}' uses buffer {} at binding {}, which is not alive",
+                                   group->debugName, entry.buffer.buffer, entry.binding);
+                    TESERRA_ASSERT(entry.texture.isNull() || objects.texture(entry.texture).has_value(),
+                                   "bindGroup '{}' uses texture {} at binding {}, which is not alive",
+                                   group->debugName, entry.texture, entry.binding);
+                    TESERRA_ASSERT(entry.sampler.isNull() || objects.sampler(entry.sampler).has_value(),
+                                   "bindGroup '{}' uses sampler {} at binding {}, which is not alive",
+                                   group->debugName, entry.sampler, entry.binding);
+                }
+                break;
+            }
             case CommandType::BindIndexBuffer: {
                 const auto& bind = command.as<BindIndexBufferCommand>();
                 if (const std::optional<BufferDesc> desc =
@@ -207,7 +266,6 @@ void validateCommands(const CommandList& commands, const ResourceLookup& objects
                 checkTextureCopy(command.as<CopyTextureToBufferCommand>().copy, "copyTextureToBuffer", false);
                 break;
             default:
-                // TODO(#42): bind group liveness and compatibility with the pipeline layout
                 break;
         }
     }

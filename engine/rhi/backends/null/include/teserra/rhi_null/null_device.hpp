@@ -18,10 +18,13 @@
 #include <teserra/rhi/command_list.hpp>
 #include <teserra/rhi/device.hpp>
 #include <teserra/rhi/limits.hpp>
+#include <teserra/rhi/shader_blob.hpp>
+#include <teserra/rhi/validation.hpp>
 
 #include <array>
 #include <deque>
 #include <memory>
+#include <optional>
 #include <span>
 #include <string>
 #include <vector>
@@ -87,7 +90,12 @@ public:
     [[nodiscard]] Result<BufferHandle> createBuffer(const BufferDesc& desc) override;
     [[nodiscard]] Result<TextureHandle> createTexture(const TextureDesc& desc) override;
     [[nodiscard]] Result<SamplerHandle> createSampler(const SamplerDesc& desc) override;
+    /// Keeps the reflection of a .tshader blob for validation; any other blob is kept without it.
     [[nodiscard]] Result<ShaderModuleHandle> createShaderModule(const ShaderModuleDesc& desc) override;
+    [[nodiscard]] Result<BindGroupLayoutHandle>
+    createBindGroupLayout(const BindGroupLayoutDesc& desc) override;
+    [[nodiscard]] Result<PipelineLayoutHandle> createPipelineLayout(const PipelineLayoutDesc& desc) override;
+    [[nodiscard]] Result<BindGroupHandle> createBindGroup(const BindGroupDesc& desc) override;
     /// Asserts that the shaders are alive.
     [[nodiscard]] Result<GraphicsPipelineHandle>
     createGraphicsPipeline(const GraphicsPipelineDesc& desc) override;
@@ -97,6 +105,9 @@ public:
     void destroy(TextureHandle handle) override;
     void destroy(SamplerHandle handle) override;
     void destroy(ShaderModuleHandle handle) override;
+    void destroy(BindGroupLayoutHandle handle) override;
+    void destroy(PipelineLayoutHandle handle) override;
+    void destroy(BindGroupHandle handle) override;
     void destroy(GraphicsPipelineHandle handle) override;
 
     /// Copies into the buffer's CPU memory (bufferData()).
@@ -128,12 +139,25 @@ public:
     [[nodiscard]] usize liveObjectCount() const noexcept;
 
     /// The descriptor an object was created with, or nullptr if the handle is not alive. Its views (debug
-    /// name, shader code, vertex layouts) point into copies the device owns, valid while the object lives.
+    /// name, shader code, vertex layouts, entries) point into copies the device owns, valid while the object
+    /// lives. The entries of bind group layouts and bind groups are sorted by binding.
     [[nodiscard]] const BufferDesc* buffer(BufferHandle handle) const noexcept;
     [[nodiscard]] const TextureDesc* texture(TextureHandle handle) const noexcept;
     [[nodiscard]] const SamplerDesc* sampler(SamplerHandle handle) const noexcept;
     [[nodiscard]] const ShaderModuleDesc* shaderModule(ShaderModuleHandle handle) const noexcept;
+    [[nodiscard]] const BindGroupLayoutDesc* bindGroupLayout(BindGroupLayoutHandle handle) const noexcept;
+    [[nodiscard]] const PipelineLayoutDesc* pipelineLayout(PipelineLayoutHandle handle) const noexcept;
+    [[nodiscard]] const BindGroupDesc* bindGroup(BindGroupHandle handle) const noexcept;
     [[nodiscard]] const GraphicsPipelineDesc* graphicsPipeline(GraphicsPipelineHandle handle) const noexcept;
+    /// The reflection of a shader module made from a .tshader blob; nullptr for other blobs and dead handles.
+    [[nodiscard]] const ShaderReflection* shaderReflection(ShaderModuleHandle handle) const noexcept;
+    /// What validation keeps of a pipeline layout, a bind group, or the layout of a pipeline; nullptr if the
+    /// handle is not alive.
+    [[nodiscard]] const StoredPipelineLayout*
+    storedPipelineLayout(PipelineLayoutHandle handle) const noexcept;
+    [[nodiscard]] const StoredBindGroup* storedBindGroup(BindGroupHandle handle) const noexcept;
+    [[nodiscard]] const StoredPipelineLayout*
+    storedGraphicsPipelineLayout(GraphicsPipelineHandle handle) const noexcept;
     /// The memory of a buffer, zero-initialized at creation and written by writeBuffer() and through map();
     /// empty if the handle is not alive.
     [[nodiscard]] std::span<const std::byte> bufferData(BufferHandle handle) const noexcept;
@@ -152,6 +176,11 @@ private:
         std::vector<std::byte> data; // a buffer's memory
         std::vector<VertexBufferLayout> vertexBuffers;
         std::vector<VertexAttribute> vertexAttributes;
+        std::optional<ShaderReflection> reflection;      // a shader module's, from a .tshader blob
+        StoredBindGroupLayout layout;                    // a bind group layout's entries
+        std::vector<BindGroupLayoutHandle> groupLayouts; // a pipeline layout's handles
+        StoredPipelineLayout pipelineLayout; // a pipeline layout's groups, or a pipeline's layout's
+        StoredBindGroup group;               // a bind group's entries and its layout's
     };
     template <typename Desc>
     using Object = std::unique_ptr<Stored<Desc>>;
@@ -167,6 +196,9 @@ private:
     HandlePool<Object<TextureDesc>, TextureTag> m_textures;
     HandlePool<Object<SamplerDesc>, SamplerTag> m_samplers;
     HandlePool<Object<ShaderModuleDesc>, ShaderModuleTag> m_shaderModules;
+    HandlePool<Object<BindGroupLayoutDesc>, BindGroupLayoutTag> m_bindGroupLayouts;
+    HandlePool<Object<PipelineLayoutDesc>, PipelineLayoutTag> m_pipelineLayouts;
+    HandlePool<Object<BindGroupDesc>, BindGroupTag> m_bindGroups;
     HandlePool<Object<GraphicsPipelineDesc>, GraphicsPipelineTag> m_pipelines;
     std::unique_ptr<NullSwapchain> m_swapchain;
 

@@ -201,25 +201,45 @@ Shaders declare resources as `layout(set = S, binding = B)`. The RHI mirrors thi
   v1 types: `UniformBuffer` (optionally with dynamic offset), `StorageBuffer` (read-only), `SampledTexture` (a **combined** texture + sampler).
 - A `PipelineLayout` is an ordered list of up to **4** bind group layouts (`kMaxBindGroups`), plus a push-constant range (future; size 0 in v1).
 - A `BindGroup` binds concrete resources (buffer ranges, texture + sampler pairs) to a layout. Bind groups are immutable and cheap to create; create new ones instead of mutating.
-- `cmd.bindGroup(index, group, dynamicOffsets)` binds a group at a set index.
+- `cmd.bindGroup(index, group, dynamicOffsets)` binds a group at a set index, with one offset per binding that has a dynamic offset, in binding order.
 
-**Frequency convention** (used by the renderer and all engine shaders):
+```cpp
+struct BindGroupLayoutEntry {
+    u32 binding = 0;                                                     // < kMaxBindingsPerGroup
+    BindingType type = BindingType::UniformBuffer;
+    ShaderStage visibility = ShaderStage::Vertex | ShaderStage::Fragment;
+    bool hasDynamicOffset = false;                                       // uniform buffers only
+};
+struct BindGroupLayoutDesc { std::span<const BindGroupLayoutEntry> entries{}; std::string_view debugName{}; };
+struct PipelineLayoutDesc  { std::span<const BindGroupLayoutHandle> groups{}; std::string_view debugName{}; };  // by set; null = empty
 
-| Set | Frequency | Typical content |
-|---|---|---|
-| 0 | Per frame / per view | Camera matrices, time, viewport size |
-| 1 | Per pass | Pass-specific inputs (e.g. previous pass output) |
-| 2 | Per material | Textures, material parameter buffer |
-| 3 | Per draw | Per-object data via dynamic offset into a ring buffer |
+struct BufferBinding  { BufferHandle buffer{}; u64 offset = 0; u64 size = 0; };  // size 0 = to the end
+struct BindGroupEntry { u32 binding = 0; BufferBinding buffer{}; TextureHandle texture{}; SamplerHandle sampler{}; };
+struct BindGroupDesc  { BindGroupLayoutHandle layout{}; std::span<const BindGroupEntry> entries{}; std::string_view debugName{}; };
+```
 
-v1 limits (validated, also exposed through `DeviceLimits`): 4 groups, 8 bindings per group, binding numbers `0..7`. Combined texture+sampler is the only texture binding type in v1 because it maps directly onto every target API; separate samplers are a future extension.
+- **Empty sets.** A null handle in `PipelineLayoutDesc::groups` leaves its set empty, so a pipeline can use sets 0 and 2 without 1. A Vulkan backend substitutes an empty set layout.
+- **Lifetime.** Creation copies what it needs from the layouts it names, as Vulkan does: a bind group layout may be destroyed while pipeline layouts, pipelines and bind groups made from it live. Bind groups do not keep their resources alive; destroying a buffer while a group that uses it is still bound is a bug that validation reports.
+- **Compatibility.** A bind group fits a set of a pipeline when its layout's entries equal those of the pipeline layout's group at that set, not when the handles are the same (Vulkan's "identically defined"). Bound groups stay bound when the pipeline changes within a render pass and are unbound at `beginRenderPass`.
+- **Dynamic offsets** move a binding's window (`BufferBinding::size`, which such bindings must set) through its buffer; their alignment to `DeviceLimits::uniformBufferOffsetAlignment` is validated with the OpenGL binding (#43).
+
+**Frequency convention** (used by the renderer and all engine shaders; `kFrameGroup` … `kDrawGroup` in `<teserra/rhi/binding.hpp>`):
+
+| Set | Constant | Frequency | Typical content |
+|---|---|---|---|
+| 0 | `kFrameGroup` | Per frame / per view | Camera matrices, time, viewport size |
+| 1 | `kPassGroup` | Per pass | Pass-specific inputs (e.g. previous pass output) |
+| 2 | `kMaterialGroup` | Per material | Textures, material parameter buffer |
+| 3 | `kDrawGroup` | Per draw | Per-object data via dynamic offset into a ring buffer |
+
+v1 limits (validated, also exposed through `DeviceLimits::maxBindGroups` and `maxBindingsPerGroup`, which every v1 device reports as exactly these values): 4 groups, 8 bindings per group, binding numbers `0..7`. Combined texture+sampler is the only texture binding type in v1 because it maps directly onto every target API; separate samplers are a future extension.
 
 ## Shaders
 
 - Authored once in GLSL 450 (Vulkan dialect). Compiled at build time by `teserra_shaderc` into `.tshader` blobs that contain SPIR-V, backend-specific translations, and reflection data ([ADR-0017](../adr/0017-shader-pipeline.md)).
 - Source conventions: one file per stage, named by its extension (`.vert`, `.frag`, `.comp`). `#include "x"` is looked up next to the including file, then in the include directories, and `#include <x>` only in the include directories; no `#extension` line is needed. Every shader sees `TESERRA_SHADER` and one of `TESERRA_STAGE_VERTEX`, `TESERRA_STAGE_FRAGMENT` or `TESERRA_STAGE_COMPUTE` defined to 1. Errors fail the build as `file(line): error: message` lines ([build and CI](../guides/build-and-ci.md#shader-compiler)).
 - `ShaderModuleDesc { ShaderStage stage; std::span<const std::byte> blob; std::string_view entryPoint = "main"; std::string_view debugName; }`.
-- In debug builds the device validates a `GraphicsPipelineDesc` against reflection: every resource the shaders use must be present in the pipeline layout with a compatible type, and vertex inputs must match the vertex layout.
+- With validation, the device checks a `GraphicsPipelineDesc` against the reflection of its `.tshader` modules (`validateGraphicsPipelineResources`): every resource a shader uses must be in the pipeline layout at its `(group, binding)`, with the same type, visible to that stage. Temporary GLSL blobs have no reflection and are not checked. Matching vertex inputs against the vertex layout is still to come (#188).
 - **Temporary, removed by #44:** `rhi::temporaryGlslBlob(source)` wraps GLSL 450 core source, without `set` qualifiers, in a blob that `ShaderModuleDesc::blob` accepts. `temporaryGlslSource(blob)` reads it back. The OpenGL backend compiles it, and the null backend stores it like any blob. The source is kept unchanged, so compile errors name the author's line numbers.
 - A shader that does not compile is content, not a bug: `createShaderModule` returns `ErrorCode::CompilationFailed` with the debug name, the stage and the compiler's log, and logs the same message at Error.
 - `ShaderStage::Compute` is the stage of compute shader blobs. There are no compute pipelines yet, so `validateShaderModuleDesc` rejects compute modules.
@@ -367,8 +387,8 @@ Violations log an error with the object's `debugName` and trigger `TESERRA_ASSER
 Where it is implemented:
 
 - **Recording rules** (render pass nesting, draws need a pipeline, copies outside passes, limits): `CommandList`, at the call that breaks them.
-- **Descriptor sanity**: `<teserra/rhi/validation.hpp>` (`validateBufferDesc`, `validateTextureDesc`, `validateSamplerDesc`, `validateShaderModuleDesc`, `validateGraphicsPipelineDesc`), which every backend calls at the start of `create*`, and the checks of uploads and mappings (`validateWriteBuffer`: `CopyDst`, `GpuOnly`, range inside the buffer; `validateMapBuffer`: not `GpuOnly`). Checks that need the device's objects, such as whether a handle or a pipeline's shaders are alive, are the device's.
-- **Streams against objects** (handle liveness; `RenderTarget`/`DepthStencil`/`Vertex`/`Index`/`CopySrc`/`CopyDst` usage; pipeline target formats against the render pass; every vertex buffer slot of the pipeline bound in the pass before a draw; copy ranges inside buffers and textures): `validateCommands(list, objects)` in `<teserra/rhi/validation.hpp>`, which every backend calls at the start of `submit()`, before replaying or translating anything. `objects` is a `ResourceLookup`, the backend's view of its objects: `buffer()`, `texture()` and `graphicsPipeline()` return the descriptor of a live object by value, or `std::nullopt`. A new backend gets stream validation by implementing these three functions. Bind group checks follow with bind groups (#42).
+- **Descriptor sanity**: `<teserra/rhi/validation.hpp>` (`validateBufferDesc`, `validateTextureDesc`, `validateSamplerDesc`, `validateShaderModuleDesc`, `validateBindGroupLayoutDesc`, `validateGraphicsPipelineDesc`), which every backend calls at the start of `create*`, and the checks of uploads and mappings (`validateWriteBuffer`: `CopyDst`, `GpuOnly`, range inside the buffer; `validateMapBuffer`: not `GpuOnly`). Checks that need the device's objects take its `ResourceLookup` (below): `validatePipelineLayoutDesc` (live group layouts), `validateBindGroupDesc` (one live resource of the right type, usage and range per layout binding) and `validateGraphicsPipelineResources` (live layout, shader reflection against it). Whether a pipeline's shaders are alive and of the right stage is still the device's check.
+- **Streams against objects** (handle liveness; `RenderTarget`/`DepthStencil`/`Vertex`/`Index`/`CopySrc`/`CopyDst` usage; pipeline target formats against the render pass; every vertex buffer slot of the pipeline bound in the pass before a draw; a bind group with an equal layout at every set of the pipeline's layout before a draw; one dynamic offset per dynamic binding; live resources in bound groups; copy ranges inside buffers and textures): `validateCommands(list, objects)` in `<teserra/rhi/validation.hpp>`, which every backend calls at the start of `submit()`, before replaying or translating anything. `objects` is a `ResourceLookup`, the backend's view of its objects: `buffer()`, `texture()`, `sampler()`, `bindGroupLayout()` and `graphicsPipeline()` return the descriptor of a live object by value, `shaderModule()` its stage and reflection, and `pipelineLayout()`, `bindGroup()` and `graphicsPipelineLayout()` the layout entries the object copied at creation; all return `std::nullopt` for a dead handle. `StoredBindGroupLayout`, `StoredPipelineLayout` and `StoredBindGroup` are the copies a backend keeps. A new backend gets all shared validation by implementing these functions.
 
 ## What must not leak out of the RHI
 
@@ -397,7 +417,7 @@ CHECK(device->graphicsPipeline(pipeline)->targets.colorFormats[0] == rhi::Format
 ```
 
 - It is always built (no option) and is offered by `rhi::null::backendFactory()`. Without a window it has no swapchain. With a window (`createDevice(desc, window, ...)`), it has a `NullSwapchain` of the window's framebuffer size, so an `engine::App` with `AppConfig::backend = Backend::Null` runs, records and "presents" on the headless platform.
-- `submitted()` lists the command lists of the frame since the last `beginFrame()`; they stay valid until their frame slot is reused. `buffer(handle)`, `texture(handle)`, ... return the stored descriptor (with copies of names, shader code and vertex layouts), or `nullptr` for a dead handle; `bufferData(handle)` returns a buffer's memory; `liveObjectCount()` checks for leaks.
+- `submitted()` lists the command lists of the frame since the last `beginFrame()`; they stay valid until their frame slot is reused. `buffer(handle)`, `texture(handle)`, `bindGroup(handle)`, ... return the stored descriptor (with copies of names, shader code, vertex layouts and entries, which are sorted by binding), or `nullptr` for a dead handle; `shaderReflection(handle)` returns the reflection of a `.tshader` module; `bufferData(handle)` returns a buffer's memory; `liveObjectCount()` checks for leaks.
 - Copy commands are validated but not executed: a `Readback` buffer keeps what the CPU wrote.
 - `destroy()` frees at once: there is no GPU work to wait for.
 - With `enableValidation` it checks descriptors, uploads and every submitted stream with `<teserra/rhi/validation.hpp>` (see [Validation layer](#validation-layer)), like every backend.

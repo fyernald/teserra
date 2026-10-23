@@ -7,6 +7,7 @@
 #include <teserra/core/config.hpp>
 #include <teserra/core/result.hpp>
 #include <teserra/core/types.hpp>
+#include <teserra/rhi/binding.hpp>
 #include <teserra/rhi/buffer.hpp>
 #include <teserra/rhi/command_list.hpp>
 #include <teserra/rhi/handles.hpp>
@@ -71,6 +72,13 @@ public:
     [[nodiscard]] virtual Result<SamplerHandle> createSampler(const SamplerDesc& desc) = 0;
     /// Fails with ErrorCode::CompilationFailed if the backend cannot compile the shader.
     [[nodiscard]] virtual Result<ShaderModuleHandle> createShaderModule(const ShaderModuleDesc& desc) = 0;
+    [[nodiscard]] virtual Result<BindGroupLayoutHandle>
+    createBindGroupLayout(const BindGroupLayoutDesc& desc) = 0;
+    [[nodiscard]] virtual Result<PipelineLayoutHandle>
+    createPipelineLayout(const PipelineLayoutDesc& desc) = 0;
+    /// The resources are not kept alive by the group: destroying one while a group that uses it may still be
+    /// bound is a bug that validation reports.
+    [[nodiscard]] virtual Result<BindGroupHandle> createBindGroup(const BindGroupDesc& desc) = 0;
     [[nodiscard]] virtual Result<GraphicsPipelineHandle>
     createGraphicsPipeline(const GraphicsPipelineDesc& desc) = 0;
 
@@ -80,6 +88,9 @@ public:
     virtual void destroy(TextureHandle handle) = 0;
     virtual void destroy(SamplerHandle handle) = 0;
     virtual void destroy(ShaderModuleHandle handle) = 0;
+    virtual void destroy(BindGroupLayoutHandle handle) = 0;
+    virtual void destroy(PipelineLayoutHandle handle) = 0;
+    virtual void destroy(BindGroupHandle handle) = 0;
     virtual void destroy(GraphicsPipelineHandle handle) = 0;
 
     /// Copies `data` into `buffer` from byte `offset` on. The bytes are copied before the call returns, so

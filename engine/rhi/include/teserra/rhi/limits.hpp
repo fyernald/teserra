@@ -39,6 +39,10 @@ struct DeviceLimits {
     u32 maxUniformBufferRange = 16384;
     /// Highest SamplerDesc::maxAnisotropy that has an effect; 1 means no anisotropic filtering.
     f32 maxSamplerAnisotropy = 1.0F;
+    /// Bind groups of a pipeline layout. Every v1 device reports kMaxBindGroups.
+    u32 maxBindGroups = kMaxBindGroups;
+    /// Bindings of a bind group. Every v1 device reports kMaxBindingsPerGroup.
+    u32 maxBindingsPerGroup = kMaxBindingsPerGroup;
 };
 
 } // namespace teserra::rhi

@@ -58,6 +58,17 @@ public:
     [[nodiscard]] Result<ShaderModuleHandle> createShaderModule(const ShaderModuleDesc& desc) override {
         return fail(ErrorCode::CompilationFailed, Module::Rhi, "Cannot compile '{}'", desc.debugName);
     }
+    [[nodiscard]] Result<BindGroupLayoutHandle>
+    createBindGroupLayout(const BindGroupLayoutDesc& /*desc*/) override {
+        return BindGroupLayoutHandle{0, 1};
+    }
+    [[nodiscard]] Result<PipelineLayoutHandle>
+    createPipelineLayout(const PipelineLayoutDesc& /*desc*/) override {
+        return PipelineLayoutHandle{0, 1};
+    }
+    [[nodiscard]] Result<BindGroupHandle> createBindGroup(const BindGroupDesc& /*desc*/) override {
+        return BindGroupHandle{0, 1};
+    }
     [[nodiscard]] Result<GraphicsPipelineHandle>
     createGraphicsPipeline(const GraphicsPipelineDesc& /*desc*/) override {
         return GraphicsPipelineHandle{0, 1};
@@ -66,6 +77,9 @@ public:
     void destroy(TextureHandle /*handle*/) override {}
     void destroy(SamplerHandle /*handle*/) override {}
     void destroy(ShaderModuleHandle /*handle*/) override {}
+    void destroy(BindGroupLayoutHandle /*handle*/) override {}
+    void destroy(PipelineLayoutHandle /*handle*/) override {}
+    void destroy(BindGroupHandle /*handle*/) override {}
     void destroy(GraphicsPipelineHandle /*handle*/) override {}
     void writeBuffer(BufferHandle /*buffer*/, u64 /*offset*/, std::span<const std::byte> /*data*/) override {}
     [[nodiscard]] std::span<std::byte> map(BufferHandle /*buffer*/) override { return {}; }
