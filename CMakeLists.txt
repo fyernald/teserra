@@ -6,6 +6,9 @@ cmake_minimum_required(VERSION 3.28)
 if(NOT DEFINED TESERRA_BUILD_TESTS OR TESERRA_BUILD_TESTS)
     list(APPEND VCPKG_MANIFEST_FEATURES "tests")
 endif()
+if(TESERRA_SHADER_VALIDATION)
+    list(APPEND VCPKG_MANIFEST_FEATURES "shader-validation")
+endif()
 
 project(Teserra
     VERSION 0.0.1
@@ -35,11 +38,16 @@ set(TESERRA_ENABLE_ASSERTS "DEFAULT" CACHE STRING
     "Check TESERRA_ASSERT: DEFAULT (Debug and RelWithDebInfo builds), ON or OFF")
 set_property(CACHE TESERRA_ENABLE_ASSERTS PROPERTY STRINGS DEFAULT ON OFF)
 option(TESERRA_RHI_OPENGL "Build the OpenGL 4.5 RHI backend (teserra_rhi_opengl)" ON)
+option(TESERRA_SHADER_VALIDATION
+    "Validate the SPIR-V of teserra_shaderc in its tests with SPIRV-Tools (slow to build; on in CI)" OFF)
 
 if(TESERRA_BUILD_TESTS)
     enable_testing()
     include(TeserraTesting)
 endif()
+
+# Host tools that the build runs: the shader compiler (ADR-0017).
+add_subdirectory(tools/shaderc)
 
 # Engine modules, in layer order (docs/architecture/overview.md#layers). A module can only depend on
 # modules that were added before it.

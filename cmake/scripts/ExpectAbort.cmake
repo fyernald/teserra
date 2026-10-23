@@ -1,10 +1,11 @@
-# Runs TESERRA_PROGRAM and fails unless it ends abnormally and its output matches the regex
-# TESERRA_EXPECT. Used by teserra_add_abort_test() in cmake/TeserraTesting.cmake.
+# Runs TESERRA_PROGRAM and fails unless it ends abnormally (a non-zero exit code or a crash) and its output
+# matches the regex TESERRA_EXPECT. Used by teserra_add_abort_test() in cmake/TeserraTesting.cmake and by
+# tests of command-line tools, which pass the program's arguments as the list TESERRA_ARGS.
 #
-#   cmake -DTESERRA_PROGRAM=<exe> -DTESERRA_EXPECT=<regex> -P ExpectAbort.cmake
+#   cmake -DTESERRA_PROGRAM=<exe> [-DTESERRA_ARGS=<arg>;...] -DTESERRA_EXPECT=<regex> -P ExpectAbort.cmake
 
 execute_process(
-    COMMAND "${TESERRA_PROGRAM}"
+    COMMAND "${TESERRA_PROGRAM}" ${TESERRA_ARGS}
     RESULT_VARIABLE result
     OUTPUT_VARIABLE output
     ERROR_VARIABLE output

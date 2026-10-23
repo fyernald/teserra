@@ -92,10 +92,11 @@
     {
       "name": "ci-windows",
       "displayName": "CI Windows (MSVC)",
-      "description": "GitHub Actions: MSVC Debug with warnings as errors",
+      "description": "GitHub Actions: MSVC Debug with warnings as errors and SPIR-V validation",
       "inherits": "windows-msvc-debug",
       "cacheVariables": {
-        "TESERRA_WARNINGS_AS_ERRORS": "ON"
+        "TESERRA_WARNINGS_AS_ERRORS": "ON",
+        "TESERRA_SHADER_VALIDATION": "ON"
       }
     },
     {
