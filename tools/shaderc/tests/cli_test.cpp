@@ -2,10 +2,14 @@
 
 #include "cli.hpp"
 
+#include <teserra/rhi/shader_blob.hpp>
+
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
 
+#include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <initializer_list>
@@ -14,6 +18,7 @@
 #include <string_view>
 #include <vector>
 
+using namespace teserra;
 using namespace teserra::shaderc;
 using Catch::Matchers::ContainsSubstring;
 using Catch::Matchers::StartsWith;
@@ -47,31 +52,52 @@ fs::path outputPath(std::string_view name) {
     return path;
 }
 
-std::vector<std::uint32_t> readWords(const fs::path& path) {
+std::vector<std::byte> readBytes(const fs::path& path) {
     std::ifstream file(path, std::ios::binary);
-    std::vector<std::uint32_t> words(static_cast<std::size_t>(fs::file_size(path)) / sizeof(std::uint32_t));
-    file.read(reinterpret_cast<char*>(words.data()), static_cast<std::streamsize>(words.size() * 4));
-    return words;
+    std::vector<std::byte> bytes(static_cast<std::size_t>(fs::file_size(path)));
+    file.read(reinterpret_cast<char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+    return bytes;
 }
 
 } // namespace
 
-TEST_CASE("shaderc CLI: compiles a shader into the -o file", "[shaderc][cli]") {
-    const fs::path output = outputPath("compiles/nested/dir/triangle.vert.spv");
+TEST_CASE("shaderc CLI: compiles a shader into a .tshader blob", "[shaderc][cli]") {
+    const fs::path output = outputPath("compiles/nested/dir/triangle.vert.tshader");
 
     const Run result = runShaderc({fixture("triangle.vert"), "-o", output.string()});
 
     CHECK(result.exitCode == kExitSuccess);
     CHECK(result.err.empty());
     REQUIRE(fs::is_regular_file(output)); // the directories are created
-    CHECK(fs::file_size(output) % 4 == 0);
-    const std::vector<std::uint32_t> words = readWords(output);
-    REQUIRE_FALSE(words.empty());
-    CHECK(words[0] == 0x07230203);
+    const std::vector<std::byte> blob = readBytes(output);
+    const Result<rhi::ShaderBlobContents> contents = rhi::readShaderBlob(blob);
+    REQUIRE(contents.has_value());
+    CHECK(contents->stage == rhi::ShaderStage::Vertex);
+    std::uint32_t magic = 0;
+    REQUIRE(contents->spirv.size() >= sizeof(magic));
+    std::memcpy(&magic, contents->spirv.data(), sizeof(magic));
+    CHECK(magic == 0x07230203);
+    CHECK(contents->glsl.starts_with("#version 450"));
+    REQUIRE(contents->reflection.bindings.size() == 1);
+    CHECK(contents->reflection.bindings[0].name == "Frame");
+    CHECK(contents->reflection.vertexInputs.size() == 2);
+}
+
+TEST_CASE("shaderc CLI: binding errors exit with 1 and leave no output", "[shaderc][cli]") {
+    const fs::path output = outputPath("binding_error/out.tshader");
+
+    const Run result = runShaderc(
+        {fixture("unsupported/set_out_of_range.frag"), "-o", output.string(), "--diagnostics", "gcc"});
+
+    CHECK(result.exitCode == kExitShaderErrors);
+    CHECK_FALSE(fs::exists(output));
+    const std::string file = fs::path(fixture("unsupported/set_out_of_range.frag")).make_preferred().string();
+    CHECK(result.err ==
+          file + ": error: 'Extra' is at set 4, binding 0; sets are 0 to 3 and bindings 0 to 7\n");
 }
 
 TEST_CASE("shaderc CLI: -I and -D, attached or separate", "[shaderc][cli]") {
-    const fs::path output = outputPath("options/out.spv");
+    const fs::path output = outputPath("options/out.tshader");
     const std::string includeDir = fixture("include_dir");
 
     CHECK(runShaderc({fixture("triangle.frag"), "-o", output.string(), "-I", includeDir}).exitCode ==
@@ -85,7 +111,7 @@ TEST_CASE("shaderc CLI: -I and -D, attached or separate", "[shaderc][cli]") {
 }
 
 TEST_CASE("shaderc CLI: shader errors exit with 1 and remove the stale output", "[shaderc][cli]") {
-    const fs::path output = outputPath("errors/syntax_error.frag.spv");
+    const fs::path output = outputPath("errors/syntax_error.frag.tshader");
     fs::create_directories(output.parent_path());
     std::ofstream(output) << "stale";
 
@@ -104,7 +130,7 @@ TEST_CASE("shaderc CLI: shader errors exit with 1 and remove the stale output", 
 }
 
 TEST_CASE("shaderc CLI: usage errors exit with 2", "[shaderc][cli]") {
-    const std::string output = outputPath("usage/out.spv").string();
+    const std::string output = outputPath("usage/out.tshader").string();
     const std::string input = fixture("triangle.vert");
 
     const auto expectUsageError = [](const Run& result, std::string_view message) {

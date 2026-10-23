@@ -16,6 +16,9 @@ enum class ShaderStage : u8 {
     None = 0,
     Vertex = 1U << 0U,
     Fragment = 1U << 1U,
+    /// The stage of compute shader blobs (teserra_shaderc compiles .comp files). There are no compute
+    /// pipelines yet, so shader modules cannot be created from them.
+    Compute = 1U << 2U,
 };
 TESERRA_FLAGS(ShaderStage)
 

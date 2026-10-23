@@ -108,7 +108,8 @@ private:
     std::vector<std::unique_ptr<IncludeResult>> m_results;
 };
 
-EShLanguage glslangStage(ShaderStage stage) {
+// The glslang stage of a single ShaderStage bit.
+std::optional<EShLanguage> glslangStage(ShaderStage stage) {
     switch (stage) {
         case ShaderStage::Vertex:
             return EShLangVertex;
@@ -116,8 +117,9 @@ EShLanguage glslangStage(ShaderStage stage) {
             return EShLangFragment;
         case ShaderStage::Compute:
             return EShLangCompute;
+        default:
+            return std::nullopt;
     }
-    return EShLangVertex;
 }
 
 std::string_view stageMacro(ShaderStage stage) {
@@ -126,10 +128,9 @@ std::string_view stageMacro(ShaderStage stage) {
             return "TESERRA_STAGE_VERTEX";
         case ShaderStage::Fragment:
             return "TESERRA_STAGE_FRAGMENT";
-        case ShaderStage::Compute:
+        default:
             return "TESERRA_STAGE_COMPUTE";
     }
-    return {};
 }
 
 // Text glslang reads before the source. It does not count for the source's line numbers.
@@ -207,6 +208,13 @@ CompileResult compileGlsl(const std::filesystem::path& input, ShaderStage stage,
     initializeGlslang();
     CompileResult result;
     const fs::path path = absoluteNormal(input);
+    const std::optional<EShLanguage> glslangLanguage = glslangStage(stage);
+    if (!glslangLanguage) {
+        result.diagnostics.push_back({.severity = Severity::Error,
+                                      .file = path,
+                                      .message = "the stage must be one of vertex, fragment or compute"});
+        return result;
+    }
     const std::optional<std::string> source = readFile(path);
     if (!source) {
         result.diagnostics.push_back(
@@ -214,7 +222,7 @@ CompileResult compileGlsl(const std::filesystem::path& input, ShaderStage stage,
         return result;
     }
 
-    const EShLanguage language = glslangStage(stage);
+    const EShLanguage language = *glslangLanguage;
     const std::string name = toUtf8(path);
     const std::string preambleText = preamble(stage, options.defines);
     const char* text = source->c_str();

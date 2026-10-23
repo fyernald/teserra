@@ -46,7 +46,8 @@ if(TESERRA_BUILD_TESTS)
     include(TeserraTesting)
 endif()
 
-# Host tools that the build runs: the shader compiler (ADR-0017).
+# Host tools that the build runs: the shader compiler (ADR-0017). It links teserra_rhi, defined below, for
+# the .tshader format.
 add_subdirectory(tools/shaderc)
 
 # Engine modules, in layer order (docs/architecture/overview.md#layers). A module can only depend on

@@ -10,6 +10,7 @@
     "glm",
     "glslang",
     "spdlog",
+    "spirv-cross",
     "tl-expected"
   ],
   "features": {

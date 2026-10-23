@@ -1,6 +1,7 @@
 teserra_add_module(rhi LAYER 2
     DEPENDS core platform
     PUBLIC_HEADERS
+        include/teserra/rhi/binding.hpp
         include/teserra/rhi/buffer.hpp
         include/teserra/rhi/command_list.hpp
         include/teserra/rhi/commands.hpp
@@ -12,6 +13,7 @@ teserra_add_module(rhi LAYER 2
         include/teserra/rhi/render_pass.hpp
         include/teserra/rhi/sampler.hpp
         include/teserra/rhi/shader.hpp
+        include/teserra/rhi/shader_blob.hpp
         include/teserra/rhi/swapchain.hpp
         include/teserra/rhi/texture.hpp
         include/teserra/rhi/validation.hpp
@@ -21,6 +23,7 @@ teserra_add_module(rhi LAYER 2
         src/device.cpp
         src/format.cpp
         src/shader.cpp
+        src/shader_blob.cpp
         src/validation.cpp
 )
 
