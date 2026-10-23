@@ -19,13 +19,14 @@ namespace {
 
 namespace fs = std::filesystem;
 
-constexpr std::string_view kUsage = "usage: teserra_shaderc <input.vert|.frag|.comp> -o <output.tshader> [-I "
-                                    "<dir>]... [-D <name>[=<value>]]...\n"
-                                    "                       [--diagnostics msvc|gcc]\n";
+constexpr std::string_view kUsage = "usage: teserra_shaderc <input.vert|.frag|.comp> -o <output.tshader>\n"
+                                    "                       [-I <dir>]... [-D <name>[=<value>]]... "
+                                    "[--depfile <file>] [--diagnostics msvc|gcc]\n";
 
 struct Arguments {
     std::optional<fs::path> input;
     std::optional<fs::path> output;
+    std::optional<fs::path> depfile;
     CompileOptions options;
     DiagnosticFormat format = nativeDiagnosticFormat();
     bool help = false;
@@ -78,6 +79,12 @@ std::optional<std::string> parse(std::span<const std::string_view> args, Argumen
             parsed.options.defines.emplace_back(
                 std::string(define->substr(0, equals)),
                 equals == std::string_view::npos ? std::string() : std::string(define->substr(equals + 1)));
+        } else if (arg == "--depfile" || arg.starts_with("--depfile=")) {
+            const std::optional<std::string_view> path = value(arg == "--depfile" ? arg : "--depfile=");
+            if (!path || path->empty()) {
+                return "--depfile needs a file";
+            }
+            parsed.depfile = pathFromArgument(*path);
         } else if (arg == "--diagnostics" || arg.starts_with("--diagnostics=")) {
             const std::optional<std::string_view> format =
                 value(arg == "--diagnostics" ? arg : "--diagnostics=");
@@ -108,6 +115,32 @@ std::optional<std::string> parse(std::span<const std::string_view> args, Argumen
     return std::nullopt;
 }
 
+// A path in Make syntax, as Ninja and CMake read depfiles: absolute, forward slashes, and spaces, '#' and
+// '$' escaped.
+std::string makePath(const fs::path& path) {
+    const std::u8string generic = fs::absolute(path).lexically_normal().generic_u8string();
+    std::string escaped;
+    for (const char8_t c : generic) {
+        if (c == u8' ' || c == u8'#') {
+            escaped += '\\';
+        } else if (c == u8'$') {
+            escaped += '$';
+        }
+        escaped += static_cast<char>(c);
+    }
+    return escaped;
+}
+
+// `<output>: <input> <included files>`, so the build reruns the tool when any of them changes.
+std::string depfileText(const fs::path& output, const fs::path& input,
+                        const std::vector<fs::path>& included) {
+    std::string text = makePath(output) + ": " + makePath(input);
+    for (const fs::path& file : included) {
+        text += " \\\n  " + makePath(file);
+    }
+    return text + '\n';
+}
+
 int usageError(std::ostream& err, std::string_view message) {
     err << "teserra_shaderc: error: " << message << '\n' << kUsage;
     return kExitUsageError;
@@ -136,7 +169,10 @@ int runChecked(std::span<const std::string_view> args, std::ostream& out, std::o
 
     const fs::path& output = *arguments.output;
     std::error_code ignored;
-    fs::remove(output, ignored); // from here on, every failure leaves no output
+    fs::remove(output, ignored); // from here on, every failure leaves no output and no depfile
+    if (arguments.depfile) {
+        fs::remove(*arguments.depfile, ignored);
+    }
 
     const std::optional<ShaderStage> stage = stageFromPath(*arguments.input);
     if (!stage) {
@@ -170,6 +206,15 @@ int runChecked(std::span<const std::string_view> args, std::ostream& out, std::o
         fs::remove(output, ignored);
         err << "teserra_shaderc: error: cannot write '" << pathText(output) << "'\n";
         return kExitUsageError;
+    }
+    if (arguments.depfile) {
+        const std::string text = depfileText(output, *arguments.input, compiled.includedFiles);
+        if (!writeFile(*arguments.depfile, std::as_bytes(std::span(text)))) {
+            fs::remove(output, ignored);
+            fs::remove(*arguments.depfile, ignored);
+            err << "teserra_shaderc: error: cannot write '" << pathText(*arguments.depfile) << "'\n";
+            return kExitUsageError;
+        }
     }
     return kExitSuccess;
 }

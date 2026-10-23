@@ -3,7 +3,7 @@
 // The command line of teserra_shaderc:
 //
 //   teserra_shaderc <input.vert|.frag|.comp> -o <output.tshader> [-I <dir>]... [-D <name>[=<value>]]...
-//                   [--diagnostics msvc|gcc]
+//                   [--depfile <file>] [--diagnostics msvc|gcc]
 
 #include <iosfwd>
 #include <span>

@@ -18,34 +18,14 @@
 #include <teserra/rhi/render_pass.hpp>
 #include <teserra/rhi/shader.hpp>
 
+#include <rhi_triangle/shaders.hpp>
+
 #include <array>
 #include <span>
-#include <string_view>
 
 using namespace teserra;
 
 namespace {
-
-// TEMPORARY (#44): GLSL until teserra_shaderc compiles shader files into .tshader blobs.
-constexpr std::string_view kVertexShader = R"(#version 450 core
-layout(location = 0) in vec3 position;
-layout(location = 1) in vec4 color;
-layout(location = 0) out vec4 vColor;
-
-void main() {
-    vColor = color;
-    gl_Position = vec4(position, 1.0);
-}
-)";
-
-constexpr std::string_view kFragmentShader = R"(#version 450 core
-layout(location = 0) in vec4 vColor;
-layout(location = 0) out vec4 fragColor;
-
-void main() {
-    fragColor = vColor;
-}
-)";
 
 struct Vertex {
     f32 position[3]; // NOLINT(modernize-avoid-c-arrays): plain vertex data, laid out as the GPU reads it
@@ -95,12 +75,12 @@ public:
 
         TESERRA_TRY_ASSIGN(m_vertexShader, m_device.createShaderModule({
                                                .stage = rhi::ShaderStage::Vertex,
-                                               .blob = rhi::temporaryGlslBlob(kVertexShader),
+                                               .blob = examples::shaders::kTriangleVert,
                                                .debugName = "Triangle vertex",
                                            }));
         TESERRA_TRY_ASSIGN(m_fragmentShader, m_device.createShaderModule({
                                                  .stage = rhi::ShaderStage::Fragment,
-                                                 .blob = rhi::temporaryGlslBlob(kFragmentShader),
+                                                 .blob = examples::shaders::kTriangleFrag,
                                                  .debugName = "Triangle fragment",
                                              }));
 

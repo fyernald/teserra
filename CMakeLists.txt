@@ -27,6 +27,7 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
 include(TeserraWarnings)
 include(TeserraModule)
+include(TeserraShaders)
 
 # Options (docs/guides/build-and-ci.md#options). Each option is added together with the feature it
 # controls. Tests and examples are only built by default when Teserra is the top-level project, not

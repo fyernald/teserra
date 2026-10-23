@@ -4,6 +4,7 @@
 #include <teserra/core/log.hpp>
 #include <teserra/platform/opengl_context.hpp>
 #include <teserra/platform/window.hpp>
+#include <teserra/rhi/shader_blob.hpp>
 #include <teserra/rhi/validation.hpp>
 
 #include "gl_debug.hpp"
@@ -64,7 +65,16 @@ std::string infoLog(GLuint object, PFNGLGETSHADERIVPROC getParameter, PFNGLGETSH
 }
 
 std::string_view stageName(ShaderStage stage) noexcept {
-    return stage == ShaderStage::Fragment ? "fragment" : "vertex";
+    switch (stage) {
+        case ShaderStage::Vertex:
+            return "vertex";
+        case ShaderStage::Fragment:
+            return "fragment";
+        case ShaderStage::Compute:
+            return "compute";
+        default:
+            return "multi-stage";
+    }
 }
 
 std::string_view glString(const GladGLContext& gl, GLenum name) {
@@ -323,13 +333,25 @@ Result<ShaderModuleHandle> GlDevice::createShaderModule(const ShaderModuleDesc& 
     if (m_validate) {
         validateShaderModuleDesc(desc);
     }
-    // TODO(#44): take the GL GLSL of a .tshader blob instead
-    const std::optional<std::string_view> source = temporaryGlslSource(desc.blob);
+    // The GLSL for OpenGL in the .tshader blob; it points into desc.blob, which lives for this call.
+    // TODO(#44): remove the temporary GLSL blobs of the first triangle
+    std::optional<std::string_view> source = temporaryGlslSource(desc.blob);
     if (!source) {
-        return fail(ErrorCode::Unsupported, Module::Rhi,
-                    "The OpenGL backend reads only temporary GLSL blobs until .tshader blobs exist (#44) "
-                    "('{}')",
-                    desc.debugName);
+        Result<ShaderBlobContents> contents = readShaderBlob(desc.blob);
+        if (!contents) {
+            return fail(contents.error().code, Module::Rhi, "Shader module '{}': {}", desc.debugName,
+                        contents.error().message);
+        }
+        if (contents->stage != desc.stage) {
+            return fail(ErrorCode::InvalidArgument, Module::Rhi,
+                        "Shader module '{}' is a {} shader, but its blob holds a {} shader", desc.debugName,
+                        stageName(desc.stage), stageName(contents->stage));
+        }
+        if (contents->glsl.empty()) {
+            return fail(ErrorCode::Unsupported, Module::Rhi,
+                        "Shader module '{}': the blob has no GLSL for OpenGL", desc.debugName);
+        }
+        source = contents->glsl;
     }
     if (desc.entryPoint != "main") {
         return fail(ErrorCode::Unsupported, Module::Rhi,
