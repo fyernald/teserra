@@ -127,7 +127,7 @@ Personal tweaks go in `CMakeUserPresets.json` next to `CMakePresets.json`. It is
 
 ### vcpkg
 
-- `vcpkg.json` lists dependencies; optional ones are features mapped to CMake options before `project()` (`tests` → catch2 when `TESERRA_BUILD_TESTS` is on, `shader-validation` → spirv-tools when `TESERRA_SHADER_VALIDATION` is on; later `profiling` → tracy). The shader compiler's glslang is always needed.
+- `vcpkg.json` lists dependencies; optional ones are features mapped to CMake options before `project()` (`tests` → catch2 when `TESERRA_BUILD_TESTS` is on, `shader-validation` → spirv-tools when `TESERRA_SHADER_VALIDATION` is on; later `profiling` → tracy). The shader compiler's glslang and SPIRV-Cross are always needed.
 - `vcpkg-configuration.json` pins the baseline: the default registry is the `microsoft/vcpkg` git repository at a fixed commit, so every machine resolves the same port versions whether it uses the Visual Studio copy of vcpkg or a standalone clone of any age. Updating it is a separate PR titled `build: bump vcpkg baseline` with a full CI run.
 - Presets reach vcpkg through `cmake/TeserraToolchain.cmake`, which checks `VCPKG_ROOT` and then includes `$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake`.
 - Never add a dependency without an ADR ([ADR index](../adr/README.md#when-an-adr-is-required)).
@@ -143,23 +143,25 @@ Pinned baseline: [`9e593bb`](https://github.com/microsoft/vcpkg/commit/9e593bb18
 | `glfw3` | 3.4#1 | platform (windows, OpenGL context, iteration 3) | - |
 | `catch2` | 3.15.3 | tests | `tests` |
 | `glslang` | 16.4.0 | `teserra_shaderc` (GLSL to SPIR-V, iteration 6) | - |
+| `spirv-cross` | 1.4.350.1 | `teserra_shaderc` (reflection, GLSL for OpenGL, iteration 6) | - |
 | `spirv-tools` | 1.4.350.1 | `teserra_shaderc` tests (SPIR-V validation) | `shader-validation` |
 | `spirv-headers` | 1.4.350.1 | transitively through spirv-tools | `shader-validation` |
 
 ## Shader compiler
 
-`teserra_shaderc` (`tools/shaderc/`) compiles shaders at build time ([ADR-0017](../adr/0017-shader-pipeline.md)). It is a host tool built with the engine; games do not link it. Today it compiles GLSL 450 (Vulkan dialect) to SPIR-V with glslang; `teserra_add_shaders()` will run it from CMake (#41).
+`teserra_shaderc` (`tools/shaderc/`) compiles shaders at build time ([ADR-0017](../adr/0017-shader-pipeline.md)). It is a host tool built with the engine; games do not link it. It compiles GLSL 450 (Vulkan dialect) to SPIR-V with glslang, reflects it and emits GLSL for OpenGL with SPIRV-Cross, and writes one [`.tshader` blob](../architecture/rhi.md#tshader-blobs) per shader. `teserra_add_shaders()` will run it from CMake (#41). The tool links `teserra_rhi` for the blob format, so `teserra_rhi` itself cannot compile shaders with it.
 
 ```text
-teserra_shaderc <input.vert|.frag|.comp> -o <output.spv> [-I <dir>]... [-D <name>[=<value>]]...
+teserra_shaderc <input.vert|.frag|.comp> -o <output.tshader> [-I <dir>]... [-D <name>[=<value>]]...
                 [--diagnostics msvc|gcc]
 ```
 
 - The stage comes from the extension. `#include "x"` is resolved next to the including file, then in the `-I` directories; `#include <x>` only in the `-I` directories. Shaders need no `#extension` line for it.
 - Every shader sees `TESERRA_SHADER` and its stage macro (`TESERRA_STAGE_VERTEX`, `_FRAGMENT`, `_COMPUTE`) defined to 1, plus the `-D` macros.
 - Errors and warnings go to stderr with absolute paths, as `file(line): error: message` on Windows (Visual Studio) and `file:line: error: message` elsewhere; `--diagnostics` picks one. Errors in an included file name that file.
+- Resources the RHI cannot bind are errors that name the resource, without a line (SPIR-V has no line numbers): sets above 3 or bindings above 7, two resources at one binding, resource arrays, separate textures and samplers (use `sampler2D`), storage images, push constants (#135), and vertex inputs that are matrices or not 32-bit floats or integers.
 - Exit codes: 0 on success, 1 when the shader has errors, 2 for usage and I/O errors. On failure the output file is removed, so the build never sees a stale one.
-- The output is SPIR-V 1.5 for Vulkan 1.2. With `TESERRA_SHADER_VALIDATION`, the tests (`teserra_shaderc_tests`, CTest label `shaderc`) check it with SPIRV-Tools' validator, the checks of `spirv-val`; without it those tests are skipped.
+- The blob's SPIR-V is SPIR-V 1.5 for Vulkan 1.2. With `TESERRA_SHADER_VALIDATION`, the tests (`teserra_shaderc_tests`, CTest label `shaderc`) check it with SPIRV-Tools' validator, the checks of `spirv-val`; without it those tests are skipped.
 
 ## Layer and leak checks
 

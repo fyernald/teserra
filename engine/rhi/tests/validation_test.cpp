@@ -92,6 +92,9 @@ TEST_CASE("validateSamplerDesc and validateShaderModuleDesc", "[rhi][validation]
               validateShaderModuleDesc(
                   {.stage = ShaderStage::Vertex | ShaderStage::Fragment, .blob = kCode, .debugName = "Both"});
           }) == "Shader module 'Both' must have exactly one stage");
+    CHECK(failureOf([] {
+              validateShaderModuleDesc({.stage = ShaderStage::Compute, .blob = kCode, .debugName = "Cull"});
+          }) == "Shader module 'Cull' is a compute shader; the RHI has no compute pipelines yet");
 }
 
 TEST_CASE("validateGraphicsPipelineDesc", "[rhi][validation]") {

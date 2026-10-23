@@ -88,6 +88,9 @@ void validateSamplerDesc(const SamplerDesc& desc) {
 void validateShaderModuleDesc(const ShaderModuleDesc& desc) {
     TESERRA_ASSERT(!desc.blob.empty(), "Shader module '{}' has no code", desc.debugName);
     TESERRA_ASSERT(!desc.entryPoint.empty(), "Shader module '{}' has no entry point", desc.debugName);
+    TESERRA_ASSERT(desc.stage != ShaderStage::Compute,
+                   "Shader module '{}' is a compute shader; the RHI has no compute pipelines yet",
+                   desc.debugName);
     TESERRA_ASSERT(desc.stage == ShaderStage::Vertex || desc.stage == ShaderStage::Fragment,
                    "Shader module '{}' must have exactly one stage", desc.debugName);
 }

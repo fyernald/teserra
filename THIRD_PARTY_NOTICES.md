@@ -7,9 +7,9 @@ named here; follow the link for the full license text. This file ships in every 
 upgrades a dependency.
 
 Software used only to build or test Teserra (CMake, vcpkg, Catch2, clang-format, clang-tidy, the glad
-generator, and glslang and SPIRV-Tools in the build-time shader compiler `teserra_shaderc` and its tests) is
-not part of the packages and is not listed. glslang is added here when a package ships the shader compiler
-(the SDK package, #122).
+generator, and glslang, SPIRV-Cross and SPIRV-Tools in the build-time shader compiler `teserra_shaderc` and its
+tests) is not part of the packages and is not listed. glslang and SPIRV-Cross are added here when a package
+ships the shader compiler (the SDK package, #122).
 
 | Component | Version | License | Copyright | License text |
 |---|---|---|---|---|

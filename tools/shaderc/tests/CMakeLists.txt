@@ -6,6 +6,7 @@ teserra_add_test(shaderc
         compiler_test.cpp
         spirv_validation.cpp
         spirv_validation.hpp
+        translator_test.cpp
     LIBRARIES teserra_shaderc_compiler
 )
 target_compile_definitions(teserra_shaderc_tests PRIVATE
@@ -25,12 +26,12 @@ endif()
 
 # The executable itself, the way a build runs it: exit codes and a clickable error.
 add_test(NAME shaderc.cli.compiles
-    COMMAND teserra_shaderc "${fixtures}/triangle.vert" -o "${CMAKE_CURRENT_BINARY_DIR}/cli/triangle.vert.spv"
+    COMMAND teserra_shaderc "${fixtures}/triangle.vert" -o "${CMAKE_CURRENT_BINARY_DIR}/cli/triangle.vert.tshader"
 )
 add_test(NAME shaderc.cli.reports_errors
     COMMAND "${CMAKE_COMMAND}"
         "-DTESERRA_PROGRAM=$<TARGET_FILE:teserra_shaderc>"
-        "-DTESERRA_ARGS=${fixtures}/errors/syntax_error.frag$<SEMICOLON>-o$<SEMICOLON>${CMAKE_CURRENT_BINARY_DIR}/cli/syntax_error.frag.spv$<SEMICOLON>--diagnostics$<SEMICOLON>msvc"
+        "-DTESERRA_ARGS=${fixtures}/errors/syntax_error.frag$<SEMICOLON>-o$<SEMICOLON>${CMAKE_CURRENT_BINARY_DIR}/cli/syntax_error.frag.tshader$<SEMICOLON>--diagnostics$<SEMICOLON>msvc"
         "-DTESERRA_EXPECT=syntax_error\\.frag\\(7\\): error: 'undeclaredColor' : undeclared identifier"
         -P "${PROJECT_SOURCE_DIR}/cmake/scripts/ExpectAbort.cmake"
 )

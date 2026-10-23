@@ -4,6 +4,7 @@ teserra_add_test(rhi
         create_device_test.cpp
         descriptor_test.cpp
         format_test.cpp
+        shader_blob_test.cpp
         shader_test.cpp
         validation_test.cpp
     DEPENDS rhi

@@ -3,6 +3,8 @@
 // The GLSL to SPIR-V compiler of teserra_shaderc (ADR-0017, step 1). Shaders are GLSL 450 in the Vulkan
 // dialect, one file per stage; glslang compiles them for Vulkan 1.2 (SPIR-V 1.5).
 
+#include <teserra/rhi/shader.hpp>
+
 #include <cstdint>
 #include <filesystem>
 #include <optional>
@@ -12,11 +14,8 @@
 
 namespace teserra::shaderc {
 
-enum class ShaderStage : std::uint8_t {
-    Vertex,
-    Fragment,
-    Compute
-};
+/// Vertex, Fragment or Compute: one stage per shader file.
+using ShaderStage = rhi::ShaderStage;
 
 /// The stage of a shader file from its extension: `.vert`, `.frag` or `.comp`; `std::nullopt` otherwise.
 [[nodiscard]] std::optional<ShaderStage> stageFromPath(const std::filesystem::path& path);

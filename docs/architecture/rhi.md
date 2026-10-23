@@ -222,6 +222,38 @@ v1 limits (validated, also exposed through `DeviceLimits`): 4 groups, 8 bindings
 - In debug builds the device validates a `GraphicsPipelineDesc` against reflection: every resource the shaders use must be present in the pipeline layout with a compatible type, and vertex inputs must match the vertex layout.
 - **Temporary, until `.tshader` blobs exist (removed by #44):** `rhi::temporaryGlslBlob(source)` wraps GLSL 450 core source, without `set` qualifiers, in a blob that `ShaderModuleDesc::blob` accepts. `temporaryGlslSource(blob)` reads it back. The OpenGL backend compiles it, and the null backend stores it like any blob. The source is kept unchanged, so compile errors name the author's line numbers.
 - A shader that does not compile is content, not a bug: `createShaderModule` returns `ErrorCode::CompilationFailed` with the debug name, the stage and the compiler's log, and logs the same message at Error.
+- `ShaderStage::Compute` is the stage of compute shader blobs. There are no compute pipelines yet, so `validateShaderModuleDesc` rejects compute modules.
+
+### .tshader blobs
+
+`<teserra/rhi/shader_blob.hpp>` is the only implementation of the format: `teserra_shaderc` writes blobs with `writeShaderBlob()`, and backends read them with `readShaderBlob()`, which returns views into the blob. A blob holds one stage:
+
+- **SPIR-V** for Vulkan 1.2, as glslang produced it, with its `DescriptorSet` and `Binding` decorations.
+- **GLSL 450 core** for OpenGL, emitted by SPIRV-Cross with `layout(binding = flatBinding(set, binding))` and no `set` qualifiers. Names of blocks, members and inputs are kept, so the code stays readable in graphics debuggers. Clip space is not changed, because the OpenGL backend uses `glClipControl(GL_UPPER_LEFT, GL_ZERO_TO_ONE)`. `gl_InstanceIndex` becomes `gl_InstanceID + gl_BaseInstanceARB` where the driver has `GL_ARB_shader_draw_parameters`; elsewhere it is only right for draws whose first instance is 0 (#185).
+- **Reflection** (`ShaderReflection`):
+  - **Bindings**, sorted by `(group, binding)`: group, binding, `BindingType` and name. For uniform buffers the size is the std140 size rounded up to 16 bytes, the smallest range that can be bound; for storage buffers it is the size without a runtime-sized array.
+  - **Vertex inputs**, sorted by location: location, scalar type, components and name.
+  - **Push-constant size:** 0 in v1.
+
+`rhi::flatBinding(group, binding) = group * kMaxBindingsPerGroup + binding` is the binding index of backends without bind groups. The emitted GLSL and the OpenGL backend both use it, so they always agree.
+
+Format version 1 (`kShaderBlobVersion`), all values little-endian `u32`, every part 4-byte aligned:
+
+| Offset | Content |
+|---|---|
+| 0 | Magic `TSHB` |
+| 4 | Format version |
+| 8 | Stage (the `ShaderStage` bit) |
+| 12 | Section count |
+| 16 | Section table: `{type, offset, size}` per section, offsets from the start of the blob |
+
+Sections: 1 = SPIR-V, 2 = GLSL, 3 = reflection. The reflection section has three counts (bindings, vertex inputs, push-constant size), 24-byte binding records `{group, binding, type, size, name offset, name length}`, 20-byte input records `{location, scalar type, components, name offset, name length}`, and then the names. The reader:
+
+- **skips** sections of unknown types, so a later section (e.g. MSL) does not need a new version;
+- fails with `ErrorCode::Unsupported` for another version;
+- fails with `ErrorCode::InvalidData` for anything malformed: missing SPIR-V or reflection, duplicate sections, offsets, sizes, counts or names outside the blob, and enum values or limits out of range. It never reads outside the blob.
+
+Because `teserra_shaderc` links `teserra_rhi` for the format, `teserra_rhi` itself cannot compile shaders with the tool (a build cycle); built-in shaders belong in backends or the renderer.
 
 ## Command recording and submission
 
@@ -400,7 +432,7 @@ This is the **only** section of the engine documentation where OpenGL specifics 
 | ShaderModule | GL GLSL payload of the `.tshader` blob (until #44: the source of a `temporaryGlslBlob`; other blobs → `Unsupported`), compiled with `glCreateShader`/`glShaderSource`/`glCompileShader` and labeled with `glObjectLabel(GL_SHADER)`. The entry point must be `main`. A failed compile deletes the shader and returns `CompilationFailed` with the info log, which keeps the driver's line numbers (`0(12)` on NVIDIA, `0:12:` on Intel, AMD and Mesa). Pipelines link programs from the shader objects (#34) |
 | GraphicsPipeline | Linked program, cached by shader pair and shared by the pipelines that use it (deleted with the last one; shaders are detached after linking; a link failure → `CompilationFailed` with the info log, logged at Error) + a VAO per pipeline built with `glCreateVertexArrays`, `glVertexArrayAttribFormat` (`…IFormat` for integer formats), `glVertexArrayAttribBinding`, `glVertexArrayBindingDivisor`, with the buffer strides kept for binding vertex buffers + a captured `GlPipelineState` (raster, depth, blend per target, as GL values). `depthWrite` without `depthTest` enables the test with `GL_ALWAYS`, since GL writes no depth with the test off. `DepthBias::clamp` needs GL 4.6 and is ignored with a warning. `FrontFace::CounterClockwise` → `GL_CCW` under the upper-left clip origin, in one function (`glWinding`), checked by the winding test of #35 |
 | Pipeline binding | `GlStateCache` is the only code that changes pipeline state. It is reset to known defaults when the device is created, then diffs each bound pipeline against what it last set and issues only the changed calls: binding the same pipeline twice issues none. Program and VAO deletion unbind them first. Clears restore the color masks of their targets through the cache, because GL masks clears too |
-| Binding model | Flat GL binding = `setIndex * 8 + binding` for uniform buffers (`glBindBufferRange`) and combined textures (`glBindTextureUnit` + `glBindSampler`). The same function is used by `teserra_shaderc` when emitting GL GLSL, so shaders and backend always agree. Device creation verifies `GL_MAX_UNIFORM_BUFFER_BINDINGS` and `GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS` are ≥ 32 |
+| Binding model | Flat GL binding = `setIndex * 8 + binding` for uniform buffers (`glBindBufferRange`) and combined textures (`glBindTextureUnit` + `glBindSampler`). It is `rhi::flatBinding()`, which `teserra_shaderc` also uses when emitting GL GLSL, so shaders and backend always agree ([.tshader blobs](#tshader-blobs)). Device creation verifies `GL_MAX_UNIFORM_BUFFER_BINDINGS` and `GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS` are ≥ 32 |
 | Dynamic offsets | `glBindBufferRange` with the dynamic offset applied; offsets validated against `GL_UNIFORM_BUFFER_OFFSET_ALIGNMENT` (exposed as `DeviceLimits::uniformBufferOffsetAlignment`) |
 | Push constants (future) | Emulated by a reserved uniform buffer binding (above the flat range) updated from a ring buffer |
 | Render pass | Framebuffer objects cached by attachment set (texture handle, mip, layer; `glCreateFramebuffers`, `glNamedFramebufferTexture`), deleted with their textures; every attachment handle is looked up at submit and a stale one asserts. At the start of a pass: bind the framebuffer, scissor test off, viewport and depth range = the render area (the first attachment's size). `LoadOp::Clear` → `glClearNamedFramebuffer*` with the linear clear color (`GL_FRAMEBUFFER_SRGB` is enabled once, so sRGB targets get it encoded); `LoadOp::DontCare` / `StoreOp::DontCare` → `glInvalidateNamedFramebufferData` at the start / end. Depth-stencil attachments follow with depth textures (#49) |

@@ -1,6 +1,9 @@
 #include "cli.hpp"
 
+#include <teserra/rhi/shader_blob.hpp>
+
 #include "compiler.hpp"
+#include "translator.hpp"
 
 #include <exception>
 #include <filesystem>
@@ -16,9 +19,9 @@ namespace {
 
 namespace fs = std::filesystem;
 
-constexpr std::string_view kUsage =
-    "usage: teserra_shaderc <input.vert|.frag|.comp> -o <output.spv> [-I <dir>]... [-D <name>[=<value>]]...\n"
-    "                       [--diagnostics msvc|gcc]\n";
+constexpr std::string_view kUsage = "usage: teserra_shaderc <input.vert|.frag|.comp> -o <output.tshader> [-I "
+                                    "<dir>]... [-D <name>[=<value>]]...\n"
+                                    "                       [--diagnostics msvc|gcc]\n";
 
 struct Arguments {
     std::optional<fs::path> input;
@@ -110,14 +113,13 @@ int usageError(std::ostream& err, std::string_view message) {
     return kExitUsageError;
 }
 
-bool writeSpirv(const fs::path& path, const std::vector<std::uint32_t>& spirv) {
+bool writeFile(const fs::path& path, std::span<const std::byte> bytes) {
     std::error_code error;
     if (path.has_parent_path()) {
         fs::create_directories(path.parent_path(), error);
     }
     std::ofstream file(path, std::ios::binary | std::ios::trunc);
-    file.write(reinterpret_cast<const char*>(spirv.data()),
-               static_cast<std::streamsize>(spirv.size() * sizeof(std::uint32_t)));
+    file.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
     file.close();
     return !file.fail();
 }
@@ -142,14 +144,29 @@ int runChecked(std::span<const std::string_view> args, std::ostream& out, std::o
                                    "': the extension must be .vert, .frag or .comp");
     }
 
-    const CompileResult result = compileGlsl(*arguments.input, *stage, arguments.options);
-    for (const Diagnostic& diagnostic : result.diagnostics) {
-        err << formatDiagnostic(diagnostic, arguments.format) << '\n';
-    }
-    if (!result.succeeded()) {
+    const auto print = [&](const std::vector<Diagnostic>& diagnostics) {
+        for (const Diagnostic& diagnostic : diagnostics) {
+            err << formatDiagnostic(diagnostic, arguments.format) << '\n';
+        }
+    };
+    const CompileResult compiled = compileGlsl(*arguments.input, *stage, arguments.options);
+    print(compiled.diagnostics);
+    if (!compiled.succeeded()) {
         return kExitShaderErrors;
     }
-    if (!writeSpirv(output, result.spirv)) {
+    const Translation translation =
+        translateForOpenGl(compiled.spirv, *stage, fs::absolute(*arguments.input).lexically_normal());
+    print(translation.diagnostics);
+    if (!translation.succeeded()) {
+        return kExitShaderErrors;
+    }
+
+    const std::vector<std::byte> blob =
+        rhi::writeShaderBlob({.stage = *stage,
+                              .spirv = std::as_bytes(std::span(compiled.spirv)),
+                              .glsl = translation.glsl,
+                              .reflection = translation.reflection});
+    if (!writeFile(output, blob)) {
         fs::remove(output, ignored);
         err << "teserra_shaderc: error: cannot write '" << pathText(output) << "'\n";
         return kExitUsageError;

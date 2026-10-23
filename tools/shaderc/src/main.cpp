@@ -1,4 +1,4 @@
-// teserra_shaderc: compiles a GLSL 450 shader to SPIR-V at build time (ADR-0017). See cli.hpp.
+// teserra_shaderc: compiles a GLSL 450 shader into a .tshader blob at build time (ADR-0017). See cli.hpp.
 
 #include "cli.hpp"
 
