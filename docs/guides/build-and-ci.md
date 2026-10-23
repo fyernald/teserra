@@ -149,19 +149,48 @@ Pinned baseline: [`9e593bb`](https://github.com/microsoft/vcpkg/commit/9e593bb18
 
 ## Shader compiler
 
-`teserra_shaderc` (`tools/shaderc/`) compiles shaders at build time ([ADR-0017](../adr/0017-shader-pipeline.md)). It is a host tool built with the engine; games do not link it. It compiles GLSL 450 (Vulkan dialect) to SPIR-V with glslang, reflects it and emits GLSL for OpenGL with SPIRV-Cross, and writes one [`.tshader` blob](../architecture/rhi.md#tshader-blobs) per shader. `teserra_add_shaders()` will run it from CMake (#41). The tool links `teserra_rhi` for the blob format, so `teserra_rhi` itself cannot compile shaders with it.
+`teserra_shaderc` (`tools/shaderc/`) compiles shaders at build time ([ADR-0017](../adr/0017-shader-pipeline.md)). It is a host tool built with the engine; games do not link it. It compiles GLSL 450 (Vulkan dialect) to SPIR-V with glslang, reflects it and emits GLSL for OpenGL with SPIRV-Cross, and writes one [`.tshader` blob](../architecture/rhi.md#tshader-blobs) per shader. [`teserra_add_shaders()`](#shaders-in-cmake) runs it from CMake. The tool links `teserra_rhi` for the blob format, so `teserra_rhi` itself cannot compile shaders with it.
 
 ```text
 teserra_shaderc <input.vert|.frag|.comp> -o <output.tshader> [-I <dir>]... [-D <name>[=<value>]]...
-                [--diagnostics msvc|gcc]
+                [--depfile <file>] [--diagnostics msvc|gcc]
 ```
 
 - The stage comes from the extension. `#include "x"` is resolved next to the including file, then in the `-I` directories; `#include <x>` only in the `-I` directories. Shaders need no `#extension` line for it.
 - Every shader sees `TESERRA_SHADER` and its stage macro (`TESERRA_STAGE_VERTEX`, `_FRAGMENT`, `_COMPUTE`) defined to 1, plus the `-D` macros.
 - Errors and warnings go to stderr with absolute paths, as `file(line): error: message` on Windows (Visual Studio) and `file:line: error: message` elsewhere; `--diagnostics` picks one. Errors in an included file name that file.
 - Resources the RHI cannot bind are errors that name the resource, without a line (SPIR-V has no line numbers): sets above 3 or bindings above 7, two resources at one binding, resource arrays, separate textures and samplers (use `sampler2D`), storage images, push constants (#135), and vertex inputs that are matrices or not 32-bit floats or integers.
-- Exit codes: 0 on success, 1 when the shader has errors, 2 for usage and I/O errors. On failure the output file is removed, so the build never sees a stale one.
+- `--depfile` writes a Makefile-style depfile (the input and every included file) after a successful compile, for build dependency tracking.
+- Exit codes: 0 on success, 1 when the shader has errors, 2 for usage and I/O errors. On failure the output file and the depfile are removed, so the build never sees stale ones.
 - The blob's SPIR-V is SPIR-V 1.5 for Vulkan 1.2. With `TESERRA_SHADER_VALIDATION`, the tests (`teserra_shaderc_tests`, CTest label `shaderc`) check it with SPIRV-Tools' validator, the checks of `spirv-val`; without it those tests are skipped.
+
+### Shaders in CMake
+
+`cmake/TeserraShaders.cmake` (included by the root `CMakeLists.txt`, so a game that adds Teserra with `add_subdirectory()` can call it too):
+
+```cmake
+teserra_add_shaders(<target>
+    SOURCES <file.vert|.frag|.comp>...
+    [EMBED [NAMESPACE <namespace>] [HEADER <path>]]
+    [OUTPUT_DIRECTORY <dir>]
+    [INCLUDE_DIRECTORIES <dir>...]
+    [DEFINES <name>[=<value>]...])
+```
+
+- Each source becomes a `.tshader` blob when `<target>` is built. It is recompiled when the source, a file it includes (tracked through the tool's depfile) or the tool changes; otherwise a build does no shader work. A shader error fails the build with the tool's `file(line): error:` line.
+- **Files** (default): blobs go to `<OUTPUT_DIRECTORY>/<source path>.tshader` (default `${CMAKE_CURRENT_BINARY_DIR}/shaders`), for a game to load.
+- **`EMBED`**: the blobs are compiled into `<target>`. The generated header `<HEADER>` (default `<target>/shaders.hpp`) declares one constant per shader in `<NAMESPACE>` (default `shaders`), named after the file: `triangle.vert` → `kTriangleVert`.
+  - Each constant is an `extern const std::span<const std::byte>` whose data is 4-byte aligned, so SPIR-V can be used in place.
+  - Every shader is its own generated translation unit, so editing one recompiles only that one.
+  - Two shaders with the same file name in one call are a configure error.
+- `INCLUDE_DIRECTORIES` (relative to the current source directory) and `DEFINES` become the tool's `-I` and `-D`. Call the function in the directory that defines `<target>`.
+- `teserra_rhi` cannot use it: the tool links `teserra_rhi`.
+
+`examples/rhi_triangle` embeds its two shaders this way. The build-system test `cmake.shaders.incremental` (labels `cmake`, `shaderc`) checks a scratch copy of the fixture in `tests/cmake/shaders/project/`:
+
+- full, no-op and incremental builds after touching an include and after touching a shader;
+- a shader error failing the build;
+- duplicate names failing configuration.
 
 ## Layer and leak checks
 

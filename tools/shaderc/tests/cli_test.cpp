@@ -146,10 +146,35 @@ TEST_CASE("shaderc CLI: usage errors exit with 2", "[shaderc][cli]") {
     expectUsageError(runShaderc({input, "-o", output, "-D=1"}), "-D needs a macro name");
     expectUsageError(runShaderc({input, "-o", output, "--diagnostics", "vs"}),
                      "--diagnostics is msvc or gcc");
+    expectUsageError(runShaderc({input, "-o", output, "--depfile"}), "--depfile needs a file");
     expectUsageError(runShaderc({input, "-o", output, "--optimize"}), "unknown option '--optimize'");
     expectUsageError(runShaderc({input, input, "-o", output}), "more than one input file");
     expectUsageError(runShaderc({fixture("errors/unknown_stage.glsl"), "-o", output}),
                      "cannot tell the shader stage of");
+    CHECK_FALSE(fs::exists(output));
+}
+
+TEST_CASE("shaderc CLI: --depfile names the input and every included file", "[shaderc][cli]") {
+    const fs::path output = outputPath("depfile/triangle.vert.tshader");
+    const fs::path depfile = output.parent_path() / "triangle.vert.tshader.d";
+    const auto generic = [](const std::string& path) { return fs::path(path).generic_string(); };
+
+    const Run result =
+        runShaderc({fixture("triangle.vert"), "-o", output.string(), "--depfile", depfile.string()});
+
+    REQUIRE(result.exitCode == kExitSuccess);
+    REQUIRE(fs::is_regular_file(depfile));
+    const std::vector<std::byte> bytes = readBytes(depfile);
+    const std::string text(reinterpret_cast<const char*>(bytes.data()), bytes.size());
+    CHECK(text == fs::absolute(output).lexically_normal().generic_string() + ": " +
+                      generic(fixture("triangle.vert")) + " \\\n  " + generic(fixture("common/frame.glsl")) +
+                      " \\\n  " + generic(fixture("common/constants.glsl")) + "\n");
+
+    // A failed compile leaves no depfile, not even the one of an earlier run.
+    const Run failed = runShaderc(
+        {fixture("errors/syntax_error.frag"), "-o", output.string(), "--depfile=" + depfile.string()});
+    CHECK(failed.exitCode == kExitShaderErrors);
+    CHECK_FALSE(fs::exists(depfile));
     CHECK_FALSE(fs::exists(output));
 }
 

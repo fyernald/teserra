@@ -1,8 +1,10 @@
-// OpenGL shader modules against the fake driver of fake_gl.hpp: the GL calls of a compile, failures as
-// errors, and blobs the backend cannot read. opengl_gpu_test.cpp compiles real shaders.
+// OpenGL shader modules against the fake driver of fake_gl.hpp: the GL calls of a compile, the GLSL of
+// .tshader blobs, failures as errors, and blobs the backend cannot read. opengl_gpu_test.cpp compiles real
+// shaders.
 
 #include <teserra/rhi/device.hpp>
 #include <teserra/rhi/shader.hpp>
+#include <teserra/rhi/shader_blob.hpp>
 #include <teserra/rhi_opengl/opengl_backend.hpp>
 #include <teserra/test/assert.hpp>
 #include <teserra/test/log_capture.hpp>
@@ -14,6 +16,7 @@
 #include <cstddef>
 #include <format>
 #include <memory>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -32,6 +35,9 @@ constexpr std::string_view kFragmentSource = R"(#version 450 core
 layout(location = 0) out vec4 color;
 void main() { color = vec4(1.0); }
 )";
+
+// The backend only reads the GLSL of a .tshader blob; the SPIR-V just has to be whole words.
+constexpr std::array<u32, 2> kSpirvWords{0x07230203, 0x00010500};
 
 std::unique_ptr<Device> requireOpenGl(test::FakeGlWindow& window) {
     Result<std::unique_ptr<Device>> device =
@@ -114,18 +120,56 @@ TEST_CASE("OpenGL backend: a compile failure is an error with the driver's log",
     CHECK(log.records()[0].message == message);
 }
 
-TEST_CASE("OpenGL backend: blobs and entry points GLSL cannot take are unsupported", "[rhi_opengl][shader]") {
+TEST_CASE("OpenGL backend: shader modules compile the GLSL of a .tshader blob", "[rhi_opengl][shader]") {
+    test::FakeGlWindow window;
+    const auto device = requireOpenGl(window);
+    test::FakeGlState& gl = window.context.state;
+    const GLuint name = gl.lastName + 1;
+    gl.calls.clear();
+
+    const std::vector<std::byte> blob = writeShaderBlob({.stage = ShaderStage::Fragment,
+                                                         .spirv = std::as_bytes(std::span(kSpirvWords)),
+                                                         .glsl = kFragmentSource});
+    const auto shader = device->createShaderModule({.stage = ShaderStage::Fragment, .blob = blob});
+
+    REQUIRE(shader.has_value());
+    CHECK(gl.calls ==
+          std::vector<std::string>{std::format("CreateShader(GL_FRAGMENT_SHADER) = {}", name),
+                                   std::format("ShaderSource({}, {} bytes)", name, kFragmentSource.size()),
+                                   std::format("CompileShader({})", name)});
+    CHECK(gl.shaders.at(name) == kFragmentSource);
+}
+
+TEST_CASE("OpenGL backend: blobs and entry points GLSL cannot take are errors", "[rhi_opengl][shader]") {
     test::FakeGlWindow window;
     const auto device = requireOpenGl(window);
     test::FakeGlState& gl = window.context.state;
     gl.calls.clear();
 
     constexpr std::array<std::byte, 4> kOpaque{std::byte{1}, std::byte{2}, std::byte{3}, std::byte{4}};
-    const auto opaque = device->createShaderModule({.blob = kOpaque, .debugName = "SPIR-V"});
+    const auto opaque = device->createShaderModule({.blob = kOpaque, .debugName = "Opaque"});
     REQUIRE_FALSE(opaque.has_value());
-    CHECK(opaque.error().code == ErrorCode::Unsupported);
+    CHECK(opaque.error().code == ErrorCode::InvalidData);
     CHECK(opaque.error().message ==
-          "The OpenGL backend reads only temporary GLSL blobs until .tshader blobs exist (#44) ('SPIR-V')");
+          "Shader module 'Opaque': The shader blob is 4 bytes, too short for a .tshader blob");
+
+    const std::vector<std::byte> fragmentBlob =
+        writeShaderBlob({.stage = ShaderStage::Fragment,
+                         .spirv = std::as_bytes(std::span(kSpirvWords)),
+                         .glsl = kFragmentSource});
+    const auto mismatch = device->createShaderModule(
+        {.stage = ShaderStage::Vertex, .blob = fragmentBlob, .debugName = "Swapped"});
+    REQUIRE_FALSE(mismatch.has_value());
+    CHECK(mismatch.error().code == ErrorCode::InvalidArgument);
+    CHECK(mismatch.error().message ==
+          "Shader module 'Swapped' is a vertex shader, but its blob holds a fragment shader");
+
+    const std::vector<std::byte> spirvOnly =
+        writeShaderBlob({.stage = ShaderStage::Vertex, .spirv = std::as_bytes(std::span(kSpirvWords))});
+    const auto noGlsl = device->createShaderModule({.blob = spirvOnly, .debugName = "Vulkan only"});
+    REQUIRE_FALSE(noGlsl.has_value());
+    CHECK(noGlsl.error().code == ErrorCode::Unsupported);
+    CHECK(noGlsl.error().message == "Shader module 'Vulkan only': the blob has no GLSL for OpenGL");
 
     const auto named = device->createShaderModule(
         {.blob = temporaryGlslBlob(kVertexSource), .entryPoint = "vertexMain", .debugName = "Named"});

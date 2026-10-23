@@ -61,3 +61,17 @@ add_test(NAME cmake.glm_configured_only_by_core
         -P "${PROJECT_SOURCE_DIR}/cmake/scripts/CheckGlmConfig.cmake"
 )
 set_tests_properties(cmake.glm_configured_only_by_core PROPERTIES LABELS "cmake")
+
+# teserra_add_shaders(): full, no-op and incremental builds, shader errors and name clashes in a scratch copy of
+# the fixture in shaders/project/.
+add_test(NAME cmake.shaders.incremental
+    COMMAND "${CMAKE_COMMAND}"
+        "-DTESERRA_SOURCE_DIR=${PROJECT_SOURCE_DIR}"
+        "-DTESERRA_SHADERC=$<TARGET_FILE:teserra_shaderc>"
+        "-DTESERRA_WORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/shaders"
+        "-DTESERRA_GENERATOR=${CMAKE_GENERATOR}"
+        "-DTESERRA_MAKE_PROGRAM=${CMAKE_MAKE_PROGRAM}"
+        "-DTESERRA_CXX_COMPILER=${CMAKE_CXX_COMPILER}"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/shaders/TestShaderBuild.cmake"
+)
+set_tests_properties(cmake.shaders.incremental PROPERTIES LABELS "cmake;shaderc")
