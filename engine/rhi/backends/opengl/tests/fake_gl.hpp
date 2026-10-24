@@ -80,6 +80,10 @@ struct FakeGlState {
     std::string linkLog{};
     std::set<GLuint> livePrograms{};
     std::set<GLuint> liveVertexArrays{};
+    /// The buffer bound to GL_PIXEL_UNPACK_BUFFER.
+    GLuint unpackBuffer = 0;
+    /// The data pointer of the last texture upload.
+    const void* lastPixels = nullptr;
 };
 
 namespace fake_gl {
@@ -91,6 +95,24 @@ inline thread_local FakeGlState* current = nullptr;
 inline std::string name(GLenum value) {
     static const std::map<GLenum, std::string_view> kNames{
         {GL_TEXTURE_2D, "GL_TEXTURE_2D"},
+        {GL_TEXTURE_2D_ARRAY, "GL_TEXTURE_2D_ARRAY"},
+        {GL_UNPACK_ALIGNMENT, "GL_UNPACK_ALIGNMENT"},
+        {GL_UNPACK_ROW_LENGTH, "GL_UNPACK_ROW_LENGTH"},
+        {GL_PIXEL_UNPACK_BUFFER, "GL_PIXEL_UNPACK_BUFFER"},
+        {GL_RED, "GL_RED"},
+        {GL_RGBA, "GL_RGBA"},
+        {GL_BGRA, "GL_BGRA"},
+        {GL_HALF_FLOAT, "GL_HALF_FLOAT"},
+        {GL_R8, "GL_R8"},
+        {GL_R16F, "GL_R16F"},
+        {GL_DEPTH_COMPONENT32F, "GL_DEPTH_COMPONENT32F"},
+        {GL_DEPTH32F_STENCIL8, "GL_DEPTH32F_STENCIL8"},
+        {GL_DEPTH, "GL_DEPTH"},
+        {GL_STENCIL, "GL_STENCIL"},
+        {GL_DEPTH_STENCIL, "GL_DEPTH_STENCIL"},
+        {GL_DEPTH_ATTACHMENT, "GL_DEPTH_ATTACHMENT"},
+        {GL_STENCIL_ATTACHMENT, "GL_STENCIL_ATTACHMENT"},
+        {GL_DEPTH_STENCIL_ATTACHMENT, "GL_DEPTH_STENCIL_ATTACHMENT"},
         {GL_TEXTURE, "GL_TEXTURE"},
         {GL_BUFFER, "GL_BUFFER"},
         {GL_SHADER, "GL_SHADER"},
@@ -304,6 +326,49 @@ inline void GLAD_API_PTR createTextures(GLenum target, GLsizei count, GLuint* te
 inline void GLAD_API_PTR textureStorage2D(GLuint texture, GLsizei levels, GLenum format, GLsizei width,
                                           GLsizei height) {
     log(std::format("TextureStorage2D({}, {}, {}, {}x{})", texture, levels, name(format), width, height));
+}
+
+inline void GLAD_API_PTR bindBuffer(GLenum target, GLuint buffer) {
+    if (target == GL_PIXEL_UNPACK_BUFFER) {
+        current->unpackBuffer = buffer;
+    }
+    log(std::format("BindBuffer({}, {})", name(target), buffer));
+}
+
+inline void GLAD_API_PTR textureStorage3D(GLuint texture, GLsizei levels, GLenum format, GLsizei width,
+                                          GLsizei height, GLsizei depth) {
+    log(std::format("TextureStorage3D({}, {}, {}, {}x{}x{})", texture, levels, name(format), width, height,
+                    depth));
+}
+
+inline void GLAD_API_PTR pixelStorei(GLenum parameter, GLint value) {
+    log(std::format("PixelStorei({}, {})", name(parameter), value));
+}
+
+// Where texel data comes from: client memory, or an offset into the bound pixel unpack buffer.
+inline std::string pixelSource(const void* pixels) {
+    current->lastPixels = pixels;
+    if (current->unpackBuffer != 0) {
+        return std::format("buffer {} + {}", current->unpackBuffer, reinterpret_cast<std::uintptr_t>(pixels));
+    }
+    return "client memory";
+}
+
+inline void GLAD_API_PTR textureSubImage2D(GLuint texture, GLint level, GLint x, GLint y, GLsizei width,
+                                           GLsizei height, GLenum format, GLenum type, const void* pixels) {
+    log(std::format("TextureSubImage2D({}, {}, {} {}, {}x{}, {}, {}, {})", texture, level, x, y, width,
+                    height, name(format), name(type), pixelSource(pixels)));
+}
+
+inline void GLAD_API_PTR textureSubImage3D(GLuint texture, GLint level, GLint x, GLint y, GLint z,
+                                           GLsizei width, GLsizei height, GLsizei depth, GLenum format,
+                                           GLenum type, const void* pixels) {
+    log(std::format("TextureSubImage3D({}, {}, {} {} {}, {}x{}x{}, {}, {}, {})", texture, level, x, y, z,
+                    width, height, depth, name(format), name(type), pixelSource(pixels)));
+}
+
+inline void GLAD_API_PTR generateTextureMipmap(GLuint texture) {
+    log(std::format("GenerateTextureMipmap({})", texture));
 }
 
 inline void GLAD_API_PTR objectLabel(GLenum identifier, GLuint object, GLsizei length, const GLchar* label) {
@@ -594,6 +659,12 @@ inline void GLAD_API_PTR namedFramebufferTexture(GLuint framebuffer, GLenum atta
                     level));
 }
 
+inline void GLAD_API_PTR namedFramebufferTextureLayer(GLuint framebuffer, GLenum attachment, GLuint texture,
+                                                      GLint level, GLint layer) {
+    log(std::format("NamedFramebufferTextureLayer({}, {}, {}, {}, {})", framebuffer, name(attachment),
+                    texture, level, layer));
+}
+
 inline void GLAD_API_PTR namedFramebufferDrawBuffers(GLuint framebuffer, GLsizei count,
                                                      const GLenum* buffers) {
     log(std::format("NamedFramebufferDrawBuffers({}, {})", framebuffer,
@@ -619,6 +690,18 @@ inline void GLAD_API_PTR clearNamedFramebufferfv(GLuint framebuffer, GLenum buff
                                                  const GLfloat* value) {
     log(std::format("ClearNamedFramebufferfv({}, {}, {}, {})", framebuffer, name(buffer), drawBuffer,
                     join(std::span(value, 4))));
+}
+
+inline void GLAD_API_PTR clearNamedFramebufferiv(GLuint framebuffer, GLenum buffer, GLint drawBuffer,
+                                                 const GLint* value) {
+    log(std::format("ClearNamedFramebufferiv({}, {}, {}, {})", framebuffer, name(buffer), drawBuffer,
+                    *value));
+}
+
+inline void GLAD_API_PTR clearNamedFramebufferfi(GLuint framebuffer, GLenum buffer, GLint drawBuffer,
+                                                 GLfloat depth, GLint stencil) {
+    log(std::format("ClearNamedFramebufferfi({}, {}, {}, {}, {})", framebuffer, name(buffer), drawBuffer,
+                    depth, stencil));
 }
 
 inline void GLAD_API_PTR invalidateNamedFramebufferData(GLuint framebuffer, GLsizei count,
@@ -667,6 +750,12 @@ public:
             {"glPopDebugGroup", reinterpret_cast<platform::GlProc>(&fake_gl::popDebugGroup)},
             {"glCreateTextures", reinterpret_cast<platform::GlProc>(&fake_gl::createTextures)},
             {"glTextureStorage2D", reinterpret_cast<platform::GlProc>(&fake_gl::textureStorage2D)},
+            {"glTextureStorage3D", reinterpret_cast<platform::GlProc>(&fake_gl::textureStorage3D)},
+            {"glPixelStorei", reinterpret_cast<platform::GlProc>(&fake_gl::pixelStorei)},
+            {"glTextureSubImage2D", reinterpret_cast<platform::GlProc>(&fake_gl::textureSubImage2D)},
+            {"glTextureSubImage3D", reinterpret_cast<platform::GlProc>(&fake_gl::textureSubImage3D)},
+            {"glGenerateTextureMipmap", reinterpret_cast<platform::GlProc>(&fake_gl::generateTextureMipmap)},
+            {"glBindBuffer", reinterpret_cast<platform::GlProc>(&fake_gl::bindBuffer)},
             {"glObjectLabel", reinterpret_cast<platform::GlProc>(&fake_gl::objectLabel)},
             {"glDeleteTextures", reinterpret_cast<platform::GlProc>(&fake_gl::deleteTextures)},
             {"glCreateBuffers", reinterpret_cast<platform::GlProc>(&fake_gl::createBuffers)},
@@ -727,6 +816,12 @@ public:
             {"glCreateFramebuffers", reinterpret_cast<platform::GlProc>(&fake_gl::createFramebuffers)},
             {"glNamedFramebufferTexture",
              reinterpret_cast<platform::GlProc>(&fake_gl::namedFramebufferTexture)},
+            {"glNamedFramebufferTextureLayer",
+             reinterpret_cast<platform::GlProc>(&fake_gl::namedFramebufferTextureLayer)},
+            {"glClearNamedFramebufferiv",
+             reinterpret_cast<platform::GlProc>(&fake_gl::clearNamedFramebufferiv)},
+            {"glClearNamedFramebufferfi",
+             reinterpret_cast<platform::GlProc>(&fake_gl::clearNamedFramebufferfi)},
             {"glNamedFramebufferDrawBuffers",
              reinterpret_cast<platform::GlProc>(&fake_gl::namedFramebufferDrawBuffers)},
             {"glCheckNamedFramebufferStatus",

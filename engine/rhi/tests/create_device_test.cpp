@@ -82,6 +82,9 @@ public:
     void destroy(BindGroupHandle /*handle*/) override {}
     void destroy(GraphicsPipelineHandle /*handle*/) override {}
     void writeBuffer(BufferHandle /*buffer*/, u64 /*offset*/, std::span<const std::byte> /*data*/) override {}
+    void writeTexture(TextureHandle /*texture*/, const TextureRegion& /*region*/,
+                      std::span<const std::byte> /*data*/, u32 /*bytesPerRow*/) override {}
+    void generateMipmaps(TextureHandle /*texture*/) override {}
     [[nodiscard]] std::span<std::byte> map(BufferHandle /*buffer*/) override { return {}; }
 
     void beginFrame() override {}

@@ -164,6 +164,8 @@ NullDevice::Object<Desc> NullDevice::store(const Desc& desc) {
         object->desc.entryPoint = object->entryPoint;
     } else if constexpr (std::is_same_v<Desc, BufferDesc>) {
         object->data.resize(desc.sizeInBytes);
+    } else if constexpr (std::is_same_v<Desc, TextureDesc>) {
+        object->mips.resize(mipLevelCount(desc));
     } else if constexpr (std::is_same_v<Desc, GraphicsPipelineDesc>) {
         object->vertexBuffers.assign(desc.vertexBuffers.begin(), desc.vertexBuffers.end());
         object->vertexAttributes.assign(desc.vertexAttributes.begin(), desc.vertexAttributes.end());
@@ -334,6 +336,53 @@ void NullDevice::writeBuffer(BufferHandle buffer, u64 offset, std::span<const st
     }
 }
 
+void NullDevice::writeTexture(TextureHandle texture, const TextureRegion& region,
+                              std::span<const std::byte> data, u32 bytesPerRow) {
+    Object<TextureDesc>* object = m_textures.tryGet(texture);
+    TESERRA_ASSERT(object != nullptr, "writeTexture to texture {}, which is not alive", texture);
+    if (object == nullptr) {
+        return;
+    }
+    const TextureDesc& desc = (*object)->desc;
+    if (m_validate) {
+        validateWriteTexture(desc, region, data.size(), bytesPerRow);
+    }
+    // Without validation, a region the texture cannot hold is dropped rather than written out of bounds.
+    const u64 mipWidth = std::max(desc.width >> std::min(region.mipLevel, 31U), 1U);
+    const u64 mipHeight = std::max(desc.height >> std::min(region.mipLevel, 31U), 1U);
+    const u64 texelSize = formatInfo(desc.format).bytesPerTexel;
+    const u64 rowBytes = region.width * texelSize;
+    const u64 pitch = bytesPerRow != 0 ? bytesPerRow : rowBytes;
+    if (region.mipLevel >= (*object)->mips.size() || u64{region.x} + region.width > mipWidth ||
+        u64{region.y} + region.height > mipHeight ||
+        u64{region.arrayLayer} + region.layerCount > desc.depthOrLayers || pitch < rowBytes ||
+        data.size() < textureDataSize(desc.format, region, bytesPerRow)) {
+        return;
+    }
+
+    std::vector<std::byte>& mip = (*object)->mips[region.mipLevel];
+    mip.resize(mipWidth * mipHeight * desc.depthOrLayers * texelSize);
+    const u64 rowsPerLayer = mipHeight;
+    for (u64 layer = 0; layer < region.layerCount; ++layer) {
+        for (u64 row = 0; row < region.height; ++row) {
+            const u64 source = ((layer * region.height) + row) * pitch;
+            const u64 destination =
+                ((((region.arrayLayer + layer) * rowsPerLayer) + region.y + row) * mipWidth + region.x) *
+                texelSize;
+            std::copy_n(data.begin() + static_cast<std::ptrdiff_t>(source), rowBytes,
+                        mip.begin() + static_cast<std::ptrdiff_t>(destination));
+        }
+    }
+}
+
+void NullDevice::generateMipmaps(TextureHandle texture) {
+    const Object<TextureDesc>* object = m_textures.tryGet(texture);
+    TESERRA_ASSERT(object != nullptr, "generateMipmaps of texture {}, which is not alive", texture);
+    if (object != nullptr && m_validate) {
+        validateGenerateMipmaps((*object)->desc);
+    }
+}
+
 std::span<std::byte> NullDevice::map(BufferHandle buffer) {
     Object<BufferDesc>* object = m_buffers.tryGet(buffer);
     TESERRA_ASSERT(object != nullptr, "map() of buffer {}, which is not alive", buffer);
@@ -449,6 +498,14 @@ NullDevice::storedGraphicsPipelineLayout(GraphicsPipelineHandle handle) const no
 std::span<const std::byte> NullDevice::bufferData(BufferHandle handle) const noexcept {
     const Object<BufferDesc>* object = m_buffers.tryGet(handle);
     return object != nullptr ? std::span<const std::byte>((*object)->data) : std::span<const std::byte>();
+}
+
+std::span<const std::byte> NullDevice::textureData(TextureHandle handle, u32 mipLevel) const noexcept {
+    const Object<TextureDesc>* object = m_textures.tryGet(handle);
+    if (object == nullptr || mipLevel >= (*object)->mips.size()) {
+        return {};
+    }
+    return (*object)->mips[mipLevel];
 }
 
 } // namespace teserra::rhi::null

@@ -12,6 +12,16 @@ namespace teserra::rhi::opengl {
 /// share the RGBA internal format: GL has no BGRA storage, only BGRA uploads. Asserts on Undefined.
 [[nodiscard]] GLenum glInternalFormat(Format format);
 
+/// How texel data of a color format is laid out for glTextureSubImage*(): its components and their type.
+struct GlPixelFormat {
+    GLenum format = GL_RGBA;
+    GLenum type = GL_UNSIGNED_BYTE;
+};
+
+/// The client layout of texels of the color format `format`, e.g. GL_BGRA / GL_UNSIGNED_BYTE for Bgra8Srgb,
+/// whose texels GL converts into its RGBA storage. Asserts on Undefined and depth formats.
+[[nodiscard]] GlPixelFormat glPixelFormat(Format format);
+
 /// The format the swapchain uses when `preferred` is asked for: the same where the swapchain supports it,
 /// the RGBA format of the same encoding for BGRA, and Rgba8Srgb for anything else.
 [[nodiscard]] Format swapchainFormat(Format preferred) noexcept;

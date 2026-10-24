@@ -4,22 +4,17 @@
 #include <teserra/rhi/format.hpp>
 
 #include <algorithm>
-#include <bit>
+#include <array>
 #include <optional>
 #include <span>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace teserra::rhi {
 
 namespace {
-
-// Mip levels of a full chain down to 1x1 for the largest dimension. Only the checks use it, which builds
-// without assertions compile out.
-[[maybe_unused]] u32 fullMipChain(u32 largestDimension) noexcept {
-    return static_cast<u32>(std::bit_width(largestDimension));
-}
 
 // For the messages, like the checks.
 [[maybe_unused]] std::string_view bindingTypeName(BindingType type) noexcept {
@@ -36,6 +31,21 @@ namespace {
 
 [[maybe_unused]] std::string_view stageName(ShaderStage stage) noexcept {
     return stage == ShaderStage::Vertex ? "vertex" : "fragment";
+}
+
+[[maybe_unused]] std::string_view textureUsageName(TextureUsage usage) noexcept {
+    switch (usage) {
+        case TextureUsage::Sampled:
+            return "Sampled";
+        case TextureUsage::RenderTarget:
+            return "RenderTarget";
+        case TextureUsage::DepthStencil:
+            return "DepthStencil";
+        case TextureUsage::Storage:
+            return "Storage";
+        default:
+            return "(several)";
+    }
 }
 
 // The entry for `binding` in entries sorted by binding, or nullptr.
@@ -180,6 +190,68 @@ void validateTextureDesc(const TextureDesc& desc, const DeviceLimits& limits) {
         desc.debugName, formatInfo(desc.format).name);
     TESERRA_ASSERT(!depth || !hasAny(desc.usage, TextureUsage::RenderTarget | TextureUsage::Storage),
                    "Depth texture '{}' cannot be a color render target or storage texture", desc.debugName);
+
+    // The format support table: each usage needs its capability.
+    constexpr std::array<std::pair<TextureUsage, FormatCapabilities>, 4> kNeeds{{
+        {TextureUsage::Sampled, FormatCapabilities::Sampled},
+        {TextureUsage::RenderTarget, FormatCapabilities::RenderTarget},
+        {TextureUsage::DepthStencil, FormatCapabilities::DepthStencil},
+        {TextureUsage::Storage, FormatCapabilities::Storage},
+    }};
+    for ([[maybe_unused]] const auto& [usage, capability] : kNeeds) {
+        TESERRA_ASSERT(!hasAny(desc.usage, usage) || formatSupports(desc.format, capability),
+                       "Texture '{}': format {} does not support TextureUsage::{}", desc.debugName,
+                       formatInfo(desc.format).name, textureUsageName(usage));
+    }
+}
+
+void validateTextureRegion(const TextureDesc& desc, const TextureRegion& region,
+                           [[maybe_unused]] std::string_view use) {
+    TESERRA_ASSERT(region.mipLevel < mipLevelCount(desc),
+                   "{} of texture '{}' at mip {}; it has {} mip levels", use, desc.debugName, region.mipLevel,
+                   mipLevelCount(desc));
+    [[maybe_unused]] const u32 width = std::max(desc.width >> region.mipLevel, 1U);
+    [[maybe_unused]] const u32 height = std::max(desc.height >> region.mipLevel, 1U);
+    TESERRA_ASSERT(region.width > 0 && region.height > 0 && region.layerCount > 0,
+                   "{} of texture '{}' has an empty region {}x{}, {} layers", use, desc.debugName,
+                   region.width, region.height, region.layerCount);
+    TESERRA_ASSERT(
+        u64{region.x} + region.width <= width && u64{region.y} + region.height <= height &&
+            u64{region.arrayLayer} + region.layerCount <= desc.depthOrLayers,
+        "{} region ({}, {}) {}x{}, layers {}+{} is outside texture '{}' ({}x{} at mip {}, {} layers)", use,
+        region.x, region.y, region.width, region.height, region.arrayLayer, region.layerCount, desc.debugName,
+        width, height, region.mipLevel, desc.depthOrLayers);
+}
+
+void validateWriteTexture(const TextureDesc& desc, const TextureRegion& region, usize dataSize,
+                          u32 bytesPerRow) {
+    TESERRA_ASSERT(hasAll(desc.usage, TextureUsage::CopyDst),
+                   "writeTexture to texture '{}', created without TextureUsage::CopyDst", desc.debugName);
+    TESERRA_ASSERT(!isDepthStencil(desc.format),
+                   "writeTexture to depth texture '{}'; depth textures cannot be uploaded in v1",
+                   desc.debugName);
+    validateTextureRegion(desc, region, "writeTexture");
+    [[maybe_unused]] const u32 texelSize = formatInfo(desc.format).bytesPerTexel;
+    TESERRA_ASSERT(
+        bytesPerRow == 0 || (bytesPerRow >= u64{region.width} * texelSize && bytesPerRow % texelSize == 0),
+        "writeTexture to texture '{}': {} bytes per row for {} texels of {} bytes; it must hold a row "
+        "and be a multiple of the texel size",
+        desc.debugName, bytesPerRow, region.width, texelSize);
+    TESERRA_ASSERT(dataSize >= textureDataSize(desc.format, region, bytesPerRow),
+                   "writeTexture to texture '{}' needs {} bytes for {}x{}, {} layers, and got {}",
+                   desc.debugName, textureDataSize(desc.format, region, bytesPerRow), region.width,
+                   region.height, region.layerCount, dataSize);
+}
+
+void validateGenerateMipmaps(const TextureDesc& desc) {
+    TESERRA_ASSERT(mipLevelCount(desc) > 1, "generateMipmaps of texture '{}', which has one mip level",
+                   desc.debugName);
+    TESERRA_ASSERT(hasAll(desc.usage, TextureUsage::CopyDst),
+                   "generateMipmaps of texture '{}', created without TextureUsage::CopyDst", desc.debugName);
+    TESERRA_ASSERT(
+        formatSupports(desc.format, FormatCapabilities::Filterable | FormatCapabilities::RenderTarget),
+        "generateMipmaps of texture '{}': format {} is not filterable and renderable", desc.debugName,
+        formatInfo(desc.format).name);
 }
 
 void validateSamplerDesc(const SamplerDesc& desc) {
@@ -367,6 +439,12 @@ void validateGraphicsPipelineDesc(const GraphicsPipelineDesc& desc) {
         TESERRA_ASSERT(!isDepthStencil(format),
                        "Graphics pipeline '{}': color target {} has the depth format {}", desc.debugName, i,
                        formatInfo(format).name);
+        TESERRA_ASSERT(isDepthStencil(format) || formatSupports(format, FormatCapabilities::RenderTarget),
+                       "Graphics pipeline '{}': color target {} has format {}, which cannot be rendered to",
+                       desc.debugName, i, formatInfo(format).name);
+        TESERRA_ASSERT(!desc.colorBlend[i].enabled || formatSupports(format, FormatCapabilities::Blendable),
+                       "Graphics pipeline '{}': color target {} blends format {}, which cannot be blended",
+                       desc.debugName, i, formatInfo(format).name);
         anyColor = true;
     }
     TESERRA_ASSERT(targets.depthStencilFormat == Format::Undefined ||

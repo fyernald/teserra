@@ -46,6 +46,45 @@ GLenum glInternalFormat(Format format) {
     TESERRA_UNREACHABLE("No OpenGL internal format for {}", formatInfo(format).name);
 }
 
+GlPixelFormat glPixelFormat(Format format) {
+    switch (format) {
+        case Format::R8Unorm:
+            return {.format = GL_RED, .type = GL_UNSIGNED_BYTE};
+        case Format::Rg8Unorm:
+            return {.format = GL_RG, .type = GL_UNSIGNED_BYTE};
+        case Format::Rgba8Unorm:
+        case Format::Rgba8Srgb:
+            return {.format = GL_RGBA, .type = GL_UNSIGNED_BYTE};
+        case Format::Bgra8Unorm:
+        case Format::Bgra8Srgb:
+            return {.format = GL_BGRA, .type = GL_UNSIGNED_BYTE};
+        case Format::Rgb10A2Unorm:
+            // Red in the low 10 bits, alpha in the top 2, as the RHI format's memory order says.
+            return {.format = GL_RGBA, .type = GL_UNSIGNED_INT_2_10_10_10_REV};
+        case Format::R16Float:
+            return {.format = GL_RED, .type = GL_HALF_FLOAT};
+        case Format::Rg16Float:
+            return {.format = GL_RG, .type = GL_HALF_FLOAT};
+        case Format::Rgba16Float:
+            return {.format = GL_RGBA, .type = GL_HALF_FLOAT};
+        case Format::R32Float:
+            return {.format = GL_RED, .type = GL_FLOAT};
+        case Format::Rg32Float:
+            return {.format = GL_RG, .type = GL_FLOAT};
+        case Format::Rgba32Float:
+            return {.format = GL_RGBA, .type = GL_FLOAT};
+        case Format::R32Uint:
+            return {.format = GL_RED_INTEGER, .type = GL_UNSIGNED_INT};
+        case Format::Undefined:
+        case Format::Depth16Unorm:
+        case Format::Depth24UnormStencil8:
+        case Format::Depth32Float:
+        case Format::Depth32FloatStencil8:
+            break;
+    }
+    TESERRA_UNREACHABLE("No OpenGL pixel format for {}", formatInfo(format).name);
+}
+
 Format swapchainFormat(Format preferred) noexcept {
     switch (preferred) {
         case Format::Rgba8Srgb:

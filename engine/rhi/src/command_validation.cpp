@@ -48,12 +48,15 @@ namespace {
     }
 }
 
-// Bytes a copy between `copy`'s buffer and a texture of `format` reads or writes in the buffer. Only the
-// checks use it, which builds without assertions compile out.
-[[maybe_unused]] u64 bufferBytes(const BufferTextureCopy& copy, Format format) {
-    const u64 rowBytes = u64{copy.width} * formatInfo(format).bytesPerTexel;
-    const u64 pitch = copy.bytesPerRow != 0 ? copy.bytesPerRow : rowBytes;
-    return (pitch * ((u64{copy.height} * copy.layerCount) - 1)) + rowBytes;
+// The texture side of a copy.
+TextureRegion regionOf(const BufferTextureCopy& copy) noexcept {
+    return {.mipLevel = copy.mipLevel,
+            .arrayLayer = copy.arrayLayer,
+            .layerCount = copy.layerCount,
+            .x = copy.x,
+            .y = copy.y,
+            .width = copy.width,
+            .height = copy.height};
 }
 
 } // namespace
@@ -95,18 +98,22 @@ void validateCommands(const CommandList& commands, const ResourceLookup& objects
         if (!bufferDesc || !textureDesc) {
             return;
         }
-        [[maybe_unused]] const u32 width = std::max(textureDesc->width >> copy.mipLevel, 1U);
-        [[maybe_unused]] const u32 height = std::max(textureDesc->height >> copy.mipLevel, 1U);
+        const TextureRegion region = regionOf(copy);
+        validateTextureRegion(*textureDesc, region, use);
+        TESERRA_ASSERT(!toTexture || !isDepthStencil(textureDesc->format),
+                       "{} into depth texture '{}'; depth textures cannot be uploaded in v1", use,
+                       textureDesc->debugName);
+        [[maybe_unused]] const u32 texelSize = formatInfo(textureDesc->format).bytesPerTexel;
         TESERRA_ASSERT(
-            copy.x + copy.width <= width && copy.y + copy.height <= height &&
-                copy.arrayLayer + copy.layerCount <= textureDesc->depthOrLayers,
-            "{} region ({}, {}) {}x{}, layers {}+{} is outside texture '{}' ({}x{} at mip {}, {} layers)",
-            use, copy.x, copy.y, copy.width, copy.height, copy.arrayLayer, copy.layerCount,
-            textureDesc->debugName, width, height, copy.mipLevel, textureDesc->depthOrLayers);
-        TESERRA_ASSERT(copy.bufferOffset + bufferBytes(copy, textureDesc->format) <= bufferDesc->sizeInBytes,
-                       "{} needs {} bytes from offset {} of buffer '{}', which has {}", use,
-                       bufferBytes(copy, textureDesc->format), copy.bufferOffset, bufferDesc->debugName,
-                       bufferDesc->sizeInBytes);
+            copy.bytesPerRow == 0 ||
+                (copy.bytesPerRow >= u64{copy.width} * texelSize && copy.bytesPerRow % texelSize == 0),
+            "{} with texture '{}': {} bytes per row for {} texels of {} bytes; it must hold a row and be "
+            "a multiple of the texel size",
+            use, textureDesc->debugName, copy.bytesPerRow, copy.width, texelSize);
+        [[maybe_unused]] const u64 size = textureDataSize(textureDesc->format, region, copy.bytesPerRow);
+        TESERRA_ASSERT(copy.bufferOffset + size <= bufferDesc->sizeInBytes,
+                       "{} needs {} bytes from offset {} of buffer '{}', which has {}", use, size,
+                       copy.bufferOffset, bufferDesc->debugName, bufferDesc->sizeInBytes);
     };
 
     for (const Command command : commands.commands()) {

@@ -52,6 +52,34 @@ TEST_CASE("formatInfo: every format has a unique name and a size", "[rhi][format
     }
 }
 
+TEST_CASE("formatInfo: the format support table", "[rhi][format]") {
+    using enum FormatCapabilities;
+    // 8-bit, 10-bit and half-float color: everything a sprite or render target needs.
+    for (const Format format : {Format::R8Unorm, Format::Rgba8Unorm, Format::Rgba8Srgb, Format::Bgra8Srgb,
+                                Format::Rgb10A2Unorm, Format::Rgba16Float}) {
+        INFO(formatInfo(format).name);
+        CHECK(formatSupports(format, Sampled | Filterable | RenderTarget | Blendable));
+        CHECK_FALSE(formatSupports(format, DepthStencil));
+    }
+    // 32-bit floats and integers: neither filtered nor blended.
+    for (const Format format : {Format::R32Float, Format::Rgba32Float, Format::R32Uint}) {
+        INFO(formatInfo(format).name);
+        CHECK(formatSupports(format, Sampled | RenderTarget | Storage));
+        CHECK_FALSE(formatSupports(format, Filterable));
+        CHECK_FALSE(formatSupports(format, Blendable));
+    }
+    // Storage only where Vulkan requires it.
+    CHECK(formatSupports(Format::Rgba8Unorm, Storage));
+    CHECK_FALSE(formatSupports(Format::Rgba8Srgb, Storage));
+    // Depth: sampled and attached, never a color target.
+    for (const Format format : {Format::Depth16Unorm, Format::Depth32Float, Format::Depth32FloatStencil8}) {
+        INFO(formatInfo(format).name);
+        CHECK(formatSupports(format, Sampled | DepthStencil));
+        CHECK_FALSE(formatSupports(format, RenderTarget));
+    }
+    CHECK(formatInfo(Format::Undefined).capabilities == None);
+}
+
 TEST_CASE("vertexFormatInfo: sizes and components", "[rhi][format]") {
     CHECK(vertexFormatInfo(VertexFormat::Float).sizeInBytes == 4);
     CHECK(vertexFormatInfo(VertexFormat::Float3).sizeInBytes == 12);

@@ -215,10 +215,6 @@ TEST_CASE("OpenGL backend: other resources are not implemented yet", "[rhi_openg
     test::FakeGlWindow window;
     const auto device = requireOpenGl(window);
 
-    const auto texture = device->createTexture({.debugName = "Sprites"});
-    REQUIRE_FALSE(texture.has_value());
-    CHECK(texture.error().code == ErrorCode::Unsupported);
-    CHECK(texture.error().message == "The OpenGL backend cannot create textures yet ('Sprites')");
     CHECK_FALSE(device->createSampler({}).has_value());
     CHECK_FALSE(device->createShaderModule({}).has_value());
     device->destroy(TextureHandle{}); // null handles are ignored

@@ -37,6 +37,20 @@ void validateWriteBuffer(const BufferDesc& desc, u64 offset, u64 size);
 /// For Device::map(): Upload or Readback memory.
 void validateMapBuffer(const BufferDesc& desc);
 
+/// A region of `desc` that is not empty and lies inside one of its mip levels and its layers. `use` names
+/// the operation in the message, e.g. "writeTexture".
+void validateTextureRegion(const TextureDesc& desc, const TextureRegion& region, std::string_view use);
+
+/// For Device::writeTexture(): TextureUsage::CopyDst, a color format (depth textures cannot be uploaded in
+/// v1), a valid region, `bytesPerRow` 0 or at least one row and a multiple of the texel size, and at least
+/// textureDataSize() bytes of data.
+void validateWriteTexture(const TextureDesc& desc, const TextureRegion& region, usize dataSize,
+                          u32 bytesPerRow);
+
+/// For Device::generateMipmaps(): more than one mip level, TextureUsage::CopyDst, and a format that is
+/// filterable and renderable.
+void validateGenerateMipmaps(const TextureDesc& desc);
+
 /// The bind groups of a pipeline layout as a device keeps them: per set, the entries its bind group layout
 /// had when the pipeline layout was created, sorted by binding. A set without a layout has no entries.
 struct PipelineLayoutInfo {
@@ -140,7 +154,7 @@ protected:
 void validateCommands(const CommandList& commands, const ResourceLookup& objects, const DeviceLimits& limits);
 
 /// A defined format, a size from 1 to the device's limits, mip levels that fit the size, DepthStencil usage
-/// exactly for depth formats, and 6 layers for a cube.
+/// exactly for depth formats, 6 layers for a cube, and usages that the format support table allows.
 void validateTextureDesc(const TextureDesc& desc, const DeviceLimits& limits);
 
 /// Anisotropy of at least 1.
@@ -165,7 +179,8 @@ void validateBindGroupDesc(const BindGroupDesc& desc, const ResourceLookup& obje
 
 /// A vertex shader, vertex buffers and attributes within the limits, attributes that refer to declared
 /// buffers with unique locations, at least one render target, color formats used from slot 0 on without
-/// gaps, and a depth-stencil target with a depth format.
+/// gaps that can be rendered to (and blended, where blending is on), and a depth-stencil target with a depth
+/// format.
 void validateGraphicsPipelineDesc(const GraphicsPipelineDesc& desc);
 
 /// The pipeline against the device's objects: a null or live layout, and every resource that the shaders'

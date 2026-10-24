@@ -4,6 +4,8 @@
 #include <teserra/core/types.hpp>
 #include <teserra/rhi/format.hpp>
 
+#include <algorithm>
+#include <bit>
 #include <limits>
 #include <string_view>
 
@@ -54,5 +56,40 @@ struct TextureDesc {
     /// Shown by graphics debuggers and in validation messages.
     std::string_view debugName{};
 };
+
+/// Mip levels of a full chain down to 1x1 for a texture whose larger side is `largestDimension`.
+[[nodiscard]] constexpr u32 fullMipChain(u32 largestDimension) noexcept {
+    return static_cast<u32>(std::bit_width(largestDimension));
+}
+
+/// The number of mip levels of `desc`, with kAllMips resolved to the full chain.
+[[nodiscard]] constexpr u32 mipLevelCount(const TextureDesc& desc) noexcept {
+    return desc.mipLevels == kAllMips ? fullMipChain(std::max(desc.width, desc.height)) : desc.mipLevels;
+}
+
+/// A box of texels in one mip level of a texture: columns x to x + width - 1 and rows y to y + height - 1,
+/// where row 0 is the top row (docs/architecture/rhi.md#conventions), of the layers arrayLayer to
+/// arrayLayer + layerCount - 1.
+struct TextureRegion {
+    u32 mipLevel = 0;
+    /// First array layer.
+    u32 arrayLayer = 0;
+    u32 layerCount = 1;
+    /// Top-left texel of the region.
+    u32 x = 0;
+    u32 y = 0;
+    u32 width = 0;
+    u32 height = 0;
+};
+
+/// Bytes that texel data for `region` of a texture of `format` spans: `region.height` rows per layer, each
+/// `bytesPerRow` apart (0 means tightly packed), layers one after another, and the last row without
+/// padding.
+[[nodiscard]] inline u64 textureDataSize(Format format, const TextureRegion& region, u32 bytesPerRow) {
+    const u64 rowBytes = u64{region.width} * formatInfo(format).bytesPerTexel;
+    const u64 pitch = bytesPerRow != 0 ? bytesPerRow : rowBytes;
+    const u64 rows = u64{region.height} * region.layerCount;
+    return rows == 0 ? 0 : (pitch * (rows - 1)) + rowBytes;
+}
 
 } // namespace teserra::rhi

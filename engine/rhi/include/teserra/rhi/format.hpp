@@ -1,5 +1,6 @@
 #pragma once
 
+#include <teserra/core/flags.hpp>
 #include <teserra/core/types.hpp>
 
 #include <string_view>
@@ -35,6 +36,25 @@ enum class Format : u8 {
 /// Number of Format values.
 inline constexpr usize kFormatCount = static_cast<usize>(Format::Depth32FloatStencil8) + 1;
 
+/// What textures of a format can be used for on every device: what OpenGL 4.5 and core Vulkan both
+/// guarantee. Validation checks texture usages, render targets and blending against it.
+enum class FormatCapabilities : u8 {
+    None = 0,
+    /// Read in shaders (TextureUsage::Sampled).
+    Sampled = 1U << 0U,
+    /// Sampled with linear filtering; also needed to generate mipmaps.
+    Filterable = 1U << 1U,
+    /// Color render target (TextureUsage::RenderTarget); also needed to generate mipmaps.
+    RenderTarget = 1U << 2U,
+    /// Blended as a render target.
+    Blendable = 1U << 3U,
+    /// Depth-stencil attachment (TextureUsage::DepthStencil).
+    DepthStencil = 1U << 4U,
+    /// Written in shaders (TextureUsage::Storage).
+    Storage = 1U << 5U,
+};
+TESERRA_FLAGS(FormatCapabilities)
+
 /// Properties of a Format.
 struct FormatInfo {
     std::string_view name;
@@ -47,6 +67,8 @@ struct FormatInfo {
     bool hasStencil = false;
     /// Color values are sRGB-encoded in memory.
     bool isSrgb = false;
+    /// What textures of the format can be used for (the format support table).
+    FormatCapabilities capabilities = FormatCapabilities::None;
 };
 
 /// Properties of `format`. Asserts that `format` is a valid enumerator.
@@ -56,6 +78,11 @@ struct FormatInfo {
 [[nodiscard]] inline bool isDepthStencil(Format format) {
     const FormatInfo& info = formatInfo(format);
     return info.hasDepth || info.hasStencil;
+}
+
+/// True if the format support table gives `format` every capability in `capabilities`.
+[[nodiscard]] inline bool formatSupports(Format format, FormatCapabilities capabilities) {
+    return hasAll(formatInfo(format).capabilities, capabilities);
 }
 
 /// Format of one vertex attribute: component type and count. Unorm8x4 is four bytes read as 0..1 floats

@@ -80,6 +80,95 @@ TEST_CASE("validateTextureDesc", "[rhi][validation]") {
           }) == "Depth texture 'T' cannot be a color render target or storage texture");
 }
 
+TEST_CASE("validateTextureDesc checks usages against the format support table", "[rhi][validation]") {
+    const DeviceLimits limits{};
+    validateTextureDesc({.format = Format::Rgba8Unorm, .usage = TextureUsage::Storage}, limits);
+    validateTextureDesc({.format = Format::R32Float, .usage = TextureUsage::RenderTarget}, limits);
+    validateTextureDesc(
+        {.format = Format::Depth16Unorm, .usage = TextureUsage::DepthStencil | TextureUsage::Sampled},
+        limits);
+
+    CHECK(failureOf([&] {
+              validateTextureDesc(
+                  {.format = Format::Rgba8Srgb, .usage = TextureUsage::Storage, .debugName = "T"}, limits);
+          }) == "Texture 'T': format Rgba8Srgb does not support TextureUsage::Storage");
+    CHECK(failureOf([&] {
+              validateTextureDesc({.format = Format::Rg16Float,
+                                   .usage = TextureUsage::Sampled | TextureUsage::Storage,
+                                   .debugName = "T"},
+                                  limits);
+          }) == "Texture 'T': format Rg16Float does not support TextureUsage::Storage");
+}
+
+TEST_CASE("validateWriteTexture", "[rhi][validation]") {
+    const TextureDesc atlas{
+        .format = Format::Rgba8Srgb, .width = 64, .height = 32, .mipLevels = 3, .debugName = "Atlas"};
+    const TextureDesc tiles{.dimension = TextureDimension::Tex2DArray,
+                            .format = Format::R8Unorm,
+                            .width = 16,
+                            .height = 16,
+                            .depthOrLayers = 4,
+                            .debugName = "Tiles"};
+    validateWriteTexture(atlas, {.width = 64, .height = 32}, usize{64} * 32 * 4, 0);
+    // Mip 2 is 16x8; rows padded to 128 bytes: 7 * 128 + 64.
+    validateWriteTexture(atlas, {.mipLevel = 2, .width = 16, .height = 8}, (7 * 128) + 64, 128);
+    validateWriteTexture(tiles, {.arrayLayer = 1, .layerCount = 3, .x = 8, .y = 8, .width = 8, .height = 8},
+                         usize{3} * 8 * 8, 0);
+
+    CHECK(
+        failureOf([&] { validateWriteTexture(atlas, {.x = 60, .width = 8, .height = 1}, 1024, 0); }) ==
+        "writeTexture region (60, 0) 8x1, layers 0+1 is outside texture 'Atlas' (64x32 at mip 0, 1 layers)");
+    CHECK(
+        failureOf([&] { validateWriteTexture(atlas, {.mipLevel = 1, .width = 64, .height = 1}, 1024, 0); }) ==
+        "writeTexture region (0, 0) 64x1, layers 0+1 is outside texture 'Atlas' (32x16 at mip 1, 1 layers)");
+    CHECK(failureOf([&] { validateWriteTexture(atlas, {.mipLevel = 3, .width = 1, .height = 1}, 4, 0); }) ==
+          "writeTexture of texture 'Atlas' at mip 3; it has 3 mip levels");
+    CHECK(failureOf([&] {
+              validateWriteTexture(tiles, {.arrayLayer = 3, .layerCount = 2, .width = 1, .height = 1}, 2, 0);
+          }) ==
+          "writeTexture region (0, 0) 1x1, layers 3+2 is outside texture 'Tiles' (16x16 at mip 0, 4 layers)");
+    CHECK(failureOf([&] { validateWriteTexture(atlas, {.width = 0, .height = 4}, 0, 0); }) ==
+          "writeTexture of texture 'Atlas' has an empty region 0x4, 1 layers");
+    CHECK(failureOf([&] { validateWriteTexture(atlas, {.width = 4, .height = 4}, 63, 0); }) ==
+          "writeTexture to texture 'Atlas' needs 64 bytes for 4x4, 1 layers, and got 63");
+    CHECK(failureOf([&] { validateWriteTexture(atlas, {.width = 4, .height = 4}, 1024, 12); }) ==
+          "writeTexture to texture 'Atlas': 12 bytes per row for 4 texels of 4 bytes; it must hold a row and "
+          "be "
+          "a multiple of the texel size");
+    CHECK(failureOf([&] { validateWriteTexture(atlas, {.width = 4, .height = 4}, 1024, 18); }) ==
+          "writeTexture to texture 'Atlas': 18 bytes per row for 4 texels of 4 bytes; it must hold a row and "
+          "be "
+          "a multiple of the texel size");
+    CHECK(failureOf([&] {
+              validateWriteTexture(
+                  {.format = Format::Rgba8Unorm, .usage = TextureUsage::Sampled, .debugName = "T"},
+                  {.width = 1, .height = 1}, 4, 0);
+          }) == "writeTexture to texture 'T', created without TextureUsage::CopyDst");
+    CHECK(failureOf([&] {
+              validateWriteTexture({.format = Format::Depth32Float,
+                                    .usage = TextureUsage::DepthStencil | TextureUsage::CopyDst,
+                                    .debugName = "Depth"},
+                                   {.width = 1, .height = 1}, 4, 0);
+          }) == "writeTexture to depth texture 'Depth'; depth textures cannot be uploaded in v1");
+}
+
+TEST_CASE("validateGenerateMipmaps", "[rhi][validation]") {
+    validateGenerateMipmaps({.format = Format::Rgba8Srgb, .width = 64, .height = 64, .mipLevels = kAllMips});
+    validateGenerateMipmaps({.format = Format::Rgba16Float, .width = 4, .height = 1, .mipLevels = 3});
+
+    CHECK(failureOf([] { validateGenerateMipmaps({.width = 64, .height = 64, .debugName = "T"}); }) ==
+          "generateMipmaps of texture 'T', which has one mip level");
+    CHECK(
+        failureOf([] {
+            validateGenerateMipmaps(
+                {.width = 4, .height = 4, .mipLevels = 2, .usage = TextureUsage::Sampled, .debugName = "T"});
+        }) == "generateMipmaps of texture 'T', created without TextureUsage::CopyDst");
+    CHECK(failureOf([] {
+              validateGenerateMipmaps(
+                  {.format = Format::R32Float, .width = 4, .height = 4, .mipLevels = 2, .debugName = "T"});
+          }) == "generateMipmaps of texture 'T': format R32Float is not filterable and renderable");
+}
+
 TEST_CASE("validateSamplerDesc and validateShaderModuleDesc", "[rhi][validation]") {
     validateSamplerDesc({.maxAnisotropy = 16.0F});
     validateShaderModuleDesc({.stage = ShaderStage::Fragment, .blob = kCode});
@@ -119,6 +208,14 @@ TEST_CASE("validateGraphicsPipelineDesc", "[rhi][validation]") {
           }) == "Graphics pipeline 'P' has no vertex shader");
     CHECK(failureOf([] { validateGraphicsPipelineDesc({.vertexShader = kShader, .debugName = "P"}); }) ==
           "Graphics pipeline 'P' has no render targets");
+    // The format support table: 32-bit floats render but do not blend.
+    validateGraphicsPipelineDesc({.vertexShader = kShader, .targets = {.colorFormats = {Format::R32Float}}});
+    CHECK(failureOf([] {
+              validateGraphicsPipelineDesc({.vertexShader = kShader,
+                                            .colorBlend = {{.enabled = true}},
+                                            .targets = {.colorFormats = {Format::R32Float}},
+                                            .debugName = "P"});
+          }) == "Graphics pipeline 'P': color target 0 blends format R32Float, which cannot be blended");
     CHECK(failureOf([] {
               constexpr std::array kOrphan{VertexAttribute{.location = 3, .bufferIndex = 1}};
               validateGraphicsPipelineDesc({.vertexShader = kShader,

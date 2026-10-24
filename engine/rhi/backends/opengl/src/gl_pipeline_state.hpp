@@ -70,6 +70,8 @@ public:
     void bind(GLuint program, GLuint vertexArray, const GlPipelineState& state);
     /// Lets clears of the first `count` color targets write every component: GL masks clears too.
     void prepareColorClear(u32 count);
+    /// Lets depth clears write: GL masks them with the depth write mask.
+    void prepareDepthClear();
     /// Unbinds a program and a vertex array that are about to be deleted if they are current, so that GL and
     /// the cache never refer to a deleted object, nor mistake a new object with the same name for it. 0 is
     /// ignored.

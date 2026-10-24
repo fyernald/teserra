@@ -632,13 +632,119 @@ void GlDevice::destroy(GraphicsPipelineHandle handle) {
 }
 
 // ---------------------------------------------------------------------------------------------------------
-// Other resources: created by the OpenGL backend from iteration 5 on.
+// Textures
 
 Result<TextureHandle> GlDevice::createTexture(const TextureDesc& desc) {
-    // TODO(#49): textures
-    return fail(ErrorCode::Unsupported, Module::Rhi, "The OpenGL backend cannot create textures yet ('{}')",
-                desc.debugName);
+    requireContextThread();
+    if (m_validate) {
+        validateTextureDesc(desc, m_limits);
+    }
+    if (desc.dimension == TextureDimension::Tex3D || desc.dimension == TextureDimension::Cube) {
+        return fail(ErrorCode::Unsupported, Module::Rhi,
+                    "Texture '{}': the OpenGL backend has no 3D or cube textures in v1", desc.debugName);
+    }
+    if (desc.sampleCount != 1) {
+        return fail(ErrorCode::Unsupported, Module::Rhi,
+                    "Texture '{}': the OpenGL backend has no multisampled textures in v1", desc.debugName);
+    }
+    TextureDesc resolved = desc;
+    resolved.mipLevels = mipLevelCount(desc);
+    return allocateTexture(resolved);
 }
+
+Result<TextureHandle> GlDevice::allocateTexture(const TextureDesc& desc) {
+    const bool array = desc.dimension == TextureDimension::Tex2DArray;
+    GLuint name = 0;
+    m_gl.CreateTextures(array ? GL_TEXTURE_2D_ARRAY : GL_TEXTURE_2D, 1, &name);
+    // Immutable storage for every mip level at once.
+    const auto levels = static_cast<GLsizei>(desc.mipLevels);
+    const auto width = static_cast<GLsizei>(desc.width);
+    const auto height = static_cast<GLsizei>(desc.height);
+    if (array) {
+        m_gl.TextureStorage3D(name, levels, glInternalFormat(desc.format), width, height,
+                              static_cast<GLsizei>(desc.depthOrLayers));
+    } else {
+        m_gl.TextureStorage2D(name, levels, glInternalFormat(desc.format), width, height);
+    }
+    if (m_gl.GetError() == GL_OUT_OF_MEMORY) {
+        m_gl.DeleteTextures(1, &name);
+        return fail(ErrorCode::OutOfMemory, Module::Rhi, "Out of GPU memory for texture '{}' ({}x{}x{})",
+                    desc.debugName, desc.width, desc.height, desc.depthOrLayers);
+    }
+    m_gl.ObjectLabel(GL_TEXTURE, name, static_cast<GLsizei>(desc.debugName.size()), desc.debugName.data());
+    return m_textures.create(GlTexture{
+        .name = name,
+        .dimension = desc.dimension,
+        .format = desc.format,
+        .size = {desc.width, desc.height},
+        .layers = desc.depthOrLayers,
+        .mipLevels = desc.mipLevels,
+        .usage = desc.usage,
+        .debugName = std::string(desc.debugName),
+    });
+}
+
+void GlDevice::destroy(TextureHandle handle) {
+    if (handle.isNull()) {
+        return;
+    }
+    requireContextThread();
+    releaseTexture(handle);
+}
+
+void GlDevice::writeTexture(TextureHandle handle, const TextureRegion& region,
+                            std::span<const std::byte> data, u32 bytesPerRow) {
+    requireContextThread();
+    const GlTexture* texture = m_textures.tryGet(handle);
+    TESERRA_ASSERT(texture != nullptr, "writeTexture to texture {}, which is not alive", handle);
+    if (texture == nullptr) {
+        return;
+    }
+    if (m_validate) {
+        validateWriteTexture(texture->desc(), region, data.size(), bytesPerRow);
+    }
+    // GL orders it after the commands already replayed and before later ones.
+    uploadTexels(*texture, region, bytesPerRow, data.data());
+}
+
+void GlDevice::uploadTexels(const GlTexture& texture, const TextureRegion& region, u32 bytesPerRow,
+                            const void* pixels) {
+    // Rows are read top row first into GL's first row, which is the top under the upper-left clip origin
+    // (ADR-0024): no flip. The row length is in texels; 0 means tightly packed.
+    const u32 texelSize = formatInfo(texture.format).bytesPerTexel;
+    m_gl.PixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    m_gl.PixelStorei(GL_UNPACK_ROW_LENGTH, static_cast<GLint>(bytesPerRow / texelSize));
+    const GlPixelFormat pixel = glPixelFormat(texture.format);
+    const auto level = static_cast<GLint>(region.mipLevel);
+    const auto x = static_cast<GLint>(region.x);
+    const auto y = static_cast<GLint>(region.y);
+    const auto width = static_cast<GLsizei>(region.width);
+    const auto height = static_cast<GLsizei>(region.height);
+    if (texture.dimension == TextureDimension::Tex2DArray) {
+        m_gl.TextureSubImage3D(texture.name, level, x, y, static_cast<GLint>(region.arrayLayer), width,
+                               height, static_cast<GLsizei>(region.layerCount), pixel.format, pixel.type,
+                               pixels);
+    } else {
+        m_gl.TextureSubImage2D(texture.name, level, x, y, width, height, pixel.format, pixel.type, pixels);
+    }
+}
+
+void GlDevice::generateMipmaps(TextureHandle handle) {
+    requireContextThread();
+    const GlTexture* texture = m_textures.tryGet(handle);
+    TESERRA_ASSERT(texture != nullptr, "generateMipmaps of texture {}, which is not alive", handle);
+    if (texture == nullptr) {
+        return;
+    }
+    if (m_validate) {
+        validateGenerateMipmaps(texture->desc());
+    }
+    // Drivers filter sRGB textures in linear space, as GL requires; the GPU test checks it.
+    m_gl.GenerateTextureMipmap(texture->name);
+}
+
+// ---------------------------------------------------------------------------------------------------------
+// Other resources: created by the OpenGL backend from iteration 5 on.
 
 Result<SamplerHandle> GlDevice::createSampler(const SamplerDesc& desc) {
     // TODO(#50): samplers
@@ -647,10 +753,6 @@ Result<SamplerHandle> GlDevice::createSampler(const SamplerDesc& desc) {
 }
 
 // Nothing else can be created yet, so only null handles can be destroyed.
-void GlDevice::destroy(TextureHandle handle) {
-    TESERRA_ASSERT(handle.isNull(), "Destroying texture {}, which this device did not create", handle);
-}
-
 void GlDevice::destroy(SamplerHandle handle) {
     TESERRA_ASSERT(handle.isNull(), "Destroying sampler {}, which this device did not create", handle);
 }
@@ -756,8 +858,11 @@ void GlDevice::replay(const CommandList& commands) {
             case CommandType::CopyBuffer:
                 copyBuffer(command.as<CopyBufferCommand>().copy);
                 break;
+            case CommandType::CopyBufferToTexture:
+                copyBufferToTexture(command.as<CopyBufferToTextureCommand>().copy);
+                break;
             default:
-                // Texture copies follow with textures (#49).
+                // TODO(#51): copyTextureToBuffer, for readback
                 TESERRA_ASSERT(false, "The OpenGL backend cannot replay {} commands yet",
                                commandTypeName(command.type()));
                 break;
@@ -892,13 +997,53 @@ void GlDevice::copyBuffer(const BufferCopy& copy) {
                                 static_cast<GLsizeiptr>(copy.size));
 }
 
-void GlDevice::beginRenderPass(const RenderPassDesc& pass) {
-    // TODO(#49): depth-stencil attachments, once depth textures can be created
-    TESERRA_ASSERT(pass.depthStencil.texture.isNull(),
-                   "The OpenGL backend has no depth-stencil attachments yet");
+void GlDevice::copyBufferToTexture(const BufferTextureCopy& copy) {
+    const GlBuffer* buffer = m_buffers.tryGet(copy.buffer);
+    const GlTexture* texture = m_textures.tryGet(copy.texture);
+    TESERRA_ASSERT(buffer != nullptr, "copyBufferToTexture reads buffer {}, which is not alive", copy.buffer);
+    TESERRA_ASSERT(texture != nullptr, "copyBufferToTexture writes texture {}, which is not alive",
+                   copy.texture);
+    if (buffer == nullptr || texture == nullptr) {
+        return;
+    }
+    // With a pixel unpack buffer bound, GL reads the texels from it at the byte offset passed as the pointer.
+    m_gl.BindBuffer(GL_PIXEL_UNPACK_BUFFER, buffer->name);
+    const auto offset = static_cast<std::uintptr_t>(copy.bufferOffset);
+    uploadTexels(
+        *texture,
+        {.mipLevel = copy.mipLevel,
+         .arrayLayer = copy.arrayLayer,
+         .layerCount = copy.layerCount,
+         .x = copy.x,
+         .y = copy.y,
+         .width = copy.width,
+         .height = copy.height},
+        copy.bytesPerRow,
+        reinterpret_cast<const void*>(offset)); // NOLINT(performance-no-int-to-ptr): GL's offset convention
+    // writeTexture() reads client memory, which needs no unpack buffer bound.
+    m_gl.BindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
+}
 
+void GlDevice::beginRenderPass(const RenderPassDesc& pass) {
     FramebufferKey key;
     UVec2 renderArea{};
+    const DepthStencilAttachment& depthStencil = pass.depthStencil;
+    const GlTexture* depthTexture = nullptr;
+    if (!depthStencil.texture.isNull()) {
+        depthTexture = m_textures.tryGet(depthStencil.texture);
+        TESERRA_ASSERT(depthTexture != nullptr,
+                       "The depth-stencil attachment uses texture {}, which is not alive",
+                       depthStencil.texture);
+        if (depthTexture == nullptr) {
+            return;
+        }
+        key.depthStencil = {.texture = depthStencil.texture,
+                            .mipLevel = depthStencil.mipLevel,
+                            .arrayLayer = depthStencil.arrayLayer};
+        // The render area is the first color attachment's size, or the depth attachment's without one.
+        renderArea = {std::max(depthTexture->size.x >> depthStencil.mipLevel, 1U),
+                      std::max(depthTexture->size.y >> depthStencil.mipLevel, 1U)};
+    }
     for (u32 i = 0; i < kMaxColorAttachments; ++i) {
         const ColorAttachment& attachment = pass.colorAttachments[i];
         if (attachment.texture.isNull()) {
@@ -938,7 +1083,7 @@ void GlDevice::beginRenderPass(const RenderPassDesc& pass) {
     }
     // Clears are masked like draws: a pipeline bound earlier must not keep components from being cleared.
     m_stateCache.prepareColorClear(colorCount);
-    std::array<GLenum, kMaxColorAttachments> undefined{};
+    std::array<GLenum, kMaxColorAttachments + 2> undefined{};
     u32 undefinedCount = 0;
     m_passDiscardCount = 0;
     for (u32 i = 0; i < kMaxColorAttachments && !pass.colorAttachments[i].texture.isNull(); ++i) {
@@ -952,6 +1097,37 @@ void GlDevice::beginRenderPass(const RenderPassDesc& pass) {
         }
         if (attachment.storeOp == StoreOp::DontCare) {
             m_passDiscards[m_passDiscardCount++] = GL_COLOR_ATTACHMENT0 + i;
+        }
+    }
+    if (depthTexture != nullptr) {
+        const FormatInfo& format = formatInfo(depthTexture->format);
+        const bool clearDepth = format.hasDepth && depthStencil.depthLoadOp == LoadOp::Clear;
+        const bool clearStencil = format.hasStencil && depthStencil.stencilLoadOp == LoadOp::Clear;
+        const auto stencil = static_cast<GLint>(depthStencil.clearStencil);
+        if (clearDepth) {
+            // Depth clears are masked like depth writes.
+            m_stateCache.prepareDepthClear();
+        }
+        if (clearDepth && clearStencil) {
+            m_gl.ClearNamedFramebufferfi(m_passFramebuffer, GL_DEPTH_STENCIL, 0, depthStencil.clearDepth,
+                                         stencil);
+        } else if (clearDepth) {
+            m_gl.ClearNamedFramebufferfv(m_passFramebuffer, GL_DEPTH, 0, &depthStencil.clearDepth);
+        } else if (clearStencil) {
+            m_gl.ClearNamedFramebufferiv(m_passFramebuffer, GL_STENCIL, 0, &stencil);
+        }
+        // Each aspect is loaded and stored on its own, like on Vulkan.
+        if (format.hasDepth && depthStencil.depthLoadOp == LoadOp::DontCare) {
+            undefined[undefinedCount++] = GL_DEPTH_ATTACHMENT;
+        }
+        if (format.hasStencil && depthStencil.stencilLoadOp == LoadOp::DontCare) {
+            undefined[undefinedCount++] = GL_STENCIL_ATTACHMENT;
+        }
+        if (format.hasDepth && depthStencil.depthStoreOp == StoreOp::DontCare) {
+            m_passDiscards[m_passDiscardCount++] = GL_DEPTH_ATTACHMENT;
+        }
+        if (format.hasStencil && depthStencil.stencilStoreOp == StoreOp::DontCare) {
+            m_passDiscards[m_passDiscardCount++] = GL_STENCIL_ATTACHMENT;
         }
     }
     if (undefinedCount > 0) {
@@ -996,9 +1172,7 @@ void GlDevice::releaseTexture(TextureHandle handle) {
         return;
     }
     const auto usesTexture = [&](const CachedFramebuffer& framebuffer) {
-        return std::ranges::any_of(framebuffer.key.color, [&](const FramebufferKey::Attachment& attachment) {
-            return attachment.texture == handle;
-        });
+        return framebuffer.key.uses(handle);
     };
     for (const CachedFramebuffer& framebuffer : m_framebuffers) {
         if (usesTexture(framebuffer)) {
@@ -1031,22 +1205,31 @@ GLuint GlDevice::framebuffer(const FramebufferKey& key) {
             break;
         }
         const GLenum point = GL_COLOR_ATTACHMENT0 + static_cast<GLenum>(drawBufferCount);
-        const GlTexture& texture = m_textures.get(attachment.texture);
-        if (attachment.arrayLayer == 0) {
-            m_gl.NamedFramebufferTexture(name, point, texture.name, static_cast<GLint>(attachment.mipLevel));
-        } else {
-            m_gl.NamedFramebufferTextureLayer(name, point, texture.name,
-                                              static_cast<GLint>(attachment.mipLevel),
-                                              static_cast<GLint>(attachment.arrayLayer));
-        }
+        attach(name, point, attachment);
         drawBuffers[static_cast<usize>(drawBufferCount++)] = point;
+    }
+    if (!key.depthStencil.texture.isNull()) {
+        const FormatInfo& format = formatInfo(m_textures.get(key.depthStencil.texture).format);
+        attach(name, format.hasStencil ? GL_DEPTH_STENCIL_ATTACHMENT : GL_DEPTH_ATTACHMENT, key.depthStencil);
     }
     m_gl.NamedFramebufferDrawBuffers(name, drawBufferCount, drawBuffers.data());
     const GLenum status = m_gl.CheckNamedFramebufferStatus(name, GL_DRAW_FRAMEBUFFER);
     TESERRA_ASSERT(status == GL_FRAMEBUFFER_COMPLETE, "Framebuffer of texture {} is incomplete (0x{:X})",
-                   key.color[0].texture, status);
+                   key.color[0].texture.isNull() ? key.depthStencil.texture : key.color[0].texture, status);
     m_framebuffers.push_back({.key = key, .name = name});
     return name;
+}
+
+void GlDevice::attach(GLuint name, GLenum point, const FramebufferKey::Attachment& attachment) {
+    const GlTexture& texture = m_textures.get(attachment.texture);
+    const auto level = static_cast<GLint>(attachment.mipLevel);
+    // glNamedFramebufferTexture() would attach every layer of an array texture (a layered framebuffer).
+    if (texture.dimension == TextureDimension::Tex2DArray) {
+        m_gl.NamedFramebufferTextureLayer(name, point, texture.name, level,
+                                          static_cast<GLint>(attachment.arrayLayer));
+    } else {
+        m_gl.NamedFramebufferTexture(name, point, texture.name, level);
+    }
 }
 
 void GlDevice::waitIdle() {
