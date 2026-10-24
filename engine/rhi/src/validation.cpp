@@ -235,7 +235,8 @@ void validatePipelineLayoutDesc(const PipelineLayoutDesc& desc, const ResourceLo
     }
 }
 
-void validateBindGroupDesc(const BindGroupDesc& desc, const ResourceLookup& objects) {
+void validateBindGroupDesc(const BindGroupDesc& desc, const ResourceLookup& objects,
+                           [[maybe_unused]] const DeviceLimits& limits) {
     const std::optional<BindGroupLayoutDesc> layout =
         desc.layout.isNull() ? std::nullopt : objects.bindGroupLayout(desc.layout);
     TESERRA_ASSERT(layout.has_value(), "Bind group '{}': its layout {} is not alive", desc.debugName,
@@ -294,6 +295,20 @@ void validateBindGroupDesc(const BindGroupDesc& desc, const ResourceLookup& obje
         TESERRA_ASSERT(!binding->hasDynamicOffset || range.size != 0,
                        "Bind group '{}': binding {} has a dynamic offset, so its buffer range needs a size",
                        desc.debugName, entry.binding);
+        if (binding->type != BindingType::UniformBuffer) {
+            continue;
+        }
+        TESERRA_ASSERT(
+            range.offset % limits.uniformBufferOffsetAlignment == 0,
+            "Bind group '{}': binding {} starts at offset {} of buffer '{}', which is not a multiple "
+            "of the device's uniformBufferOffsetAlignment ({})",
+            desc.debugName, entry.binding, range.offset, buffer->debugName,
+            limits.uniformBufferOffsetAlignment);
+        [[maybe_unused]] const u64 seen = range.size != 0 ? range.size : buffer->sizeInBytes - range.offset;
+        TESERRA_ASSERT(seen <= limits.maxUniformBufferRange,
+                       "Bind group '{}': binding {} sees {} bytes of buffer '{}', more than the device's "
+                       "maxUniformBufferRange ({})",
+                       desc.debugName, entry.binding, seen, buffer->debugName, limits.maxUniformBufferRange);
     }
 }
 

@@ -233,7 +233,7 @@ Result<PipelineLayoutHandle> NullDevice::createPipelineLayout(const PipelineLayo
 
 Result<BindGroupHandle> NullDevice::createBindGroup(const BindGroupDesc& desc) {
     if (m_validate) {
-        validateBindGroupDesc(desc, NullLookup(*this));
+        validateBindGroupDesc(desc, NullLookup(*this), m_limits);
     }
     Object<BindGroupDesc> object = store(desc);
     const Object<BindGroupLayoutDesc>* layout = m_bindGroupLayouts.tryGet(desc.layout);
@@ -372,7 +372,7 @@ CommandList& NullDevice::acquireCommandList() {
 void NullDevice::submit(CommandList& commands) {
     commands.finish();
     if (m_validate) {
-        validateCommands(commands, NullLookup(*this));
+        validateCommands(commands, NullLookup(*this), m_limits);
     }
     m_submitted.push_back(&commands);
 }

@@ -11,6 +11,7 @@
 #include <array>
 #include <cstddef>
 #include <format>
+#include <optional>
 #include <span>
 #include <string>
 #include <utility>
@@ -31,10 +32,13 @@ std::vector<std::byte> blob(ShaderStage stage, std::vector<ShaderBinding> bindin
                             .reflection = {.bindings = std::move(bindings)}});
 }
 
-const ShaderBinding kFrameBlock{
-    .group = 0, .binding = 0, .type = BindingType::UniformBuffer, .size = 64, .name = "Frame"};
-const ShaderBinding kDrawBlock{
-    .group = 3, .binding = 0, .type = BindingType::UniformBuffer, .size = 64, .name = "Draw"};
+// Functions, not constants: a static ShaderBinding would allocate its name before main().
+ShaderBinding frameBlock() {
+    return {.group = 0, .binding = 0, .type = BindingType::UniformBuffer, .size = 64, .name = "Frame"};
+}
+ShaderBinding drawBlock() {
+    return {.group = 3, .binding = 0, .type = BindingType::UniformBuffer, .size = 64, .name = "Draw"};
+}
 
 constexpr std::array kFrameEntries{BindGroupLayoutEntry{.binding = 0, .type = BindingType::UniformBuffer}};
 constexpr std::array kDrawEntries{
@@ -45,7 +49,7 @@ constexpr std::array kDrawEntries{
 struct BindingScene {
     explicit BindingScene(null::NullDevice& device)
         : device(device) {
-        const std::vector<std::byte> vertexBlob = blob(ShaderStage::Vertex, {kFrameBlock, kDrawBlock});
+        const std::vector<std::byte> vertexBlob = blob(ShaderStage::Vertex, {frameBlock(), drawBlock()});
         vertexShader =
             *device.createShaderModule({.stage = ShaderStage::Vertex, .blob = vertexBlob, .debugName = "VS"});
         frameLayout = *device.createBindGroupLayout({.entries = kFrameEntries, .debugName = "Frame"});
@@ -166,11 +170,11 @@ TEST_CASE("Null backend: binding objects keep sorted copies of their descriptors
 
 TEST_CASE("Null backend: shader modules keep the reflection of .tshader blobs", "[rhi_null]") {
     const auto device = null::createHeadlessDevice();
-    const std::vector<std::byte> tshader = blob(ShaderStage::Vertex, {kFrameBlock});
+    const std::vector<std::byte> tshader = blob(ShaderStage::Vertex, {frameBlock()});
     const ShaderModuleHandle reflected =
         *device->createShaderModule({.stage = ShaderStage::Vertex, .blob = tshader});
     REQUIRE(device->shaderReflection(reflected) != nullptr);
-    CHECK(device->shaderReflection(reflected)->bindings == std::vector{kFrameBlock});
+    CHECK(device->shaderReflection(reflected)->bindings == std::vector{frameBlock()});
 
     constexpr std::array kOther{std::byte{1}, std::byte{2}};
     const ShaderModuleHandle other =
@@ -306,7 +310,7 @@ TEST_CASE("Null backend: pipelines are validated against their shaders' reflecti
         const std::vector<std::byte> code = blob(stage, std::move(bindings));
         return *device->createShaderModule({.stage = stage, .blob = code, .debugName = name});
     };
-    const ShaderModuleHandle vertex = shader(ShaderStage::Vertex, {kFrameBlock}, "VS");
+    const ShaderModuleHandle vertex = shader(ShaderStage::Vertex, {frameBlock()}, "VS");
     const BindGroupLayoutHandle frame =
         *device->createBindGroupLayout({.entries = kFrameEntries, .debugName = "Frame"});
     const auto pipelineLayout = [&](std::span<const BindGroupLayoutHandle> groups) {
@@ -355,7 +359,7 @@ TEST_CASE("Null backend: pipelines are validated against their shaders' reflecti
 
     constexpr std::array kVertexOnly{BindGroupLayoutEntry{.visibility = ShaderStage::Vertex}};
     const BindGroupLayoutHandle vertexOnly = *device->createBindGroupLayout({.entries = kVertexOnly});
-    const ShaderModuleHandle fragment = shader(ShaderStage::Fragment, {kFrameBlock}, "FS");
+    const ShaderModuleHandle fragment = shader(ShaderStage::Fragment, {frameBlock()}, "FS");
     CHECK(create(vertex, fragment, pipelineLayout(std::array{vertexOnly})) ==
           "Graphics pipeline 'P': fragment shader 'FS' uses 'Frame' at (group 0, binding 0), which layout "
           "'Layout' "
@@ -462,6 +466,66 @@ TEST_CASE("Null backend: draws need compatible bind groups at the pipeline's set
               cmd.endRenderPass();
           }) ==
           std::format("bindGroup 'Frame' uses buffer {} at binding 0, which is not alive", scene.uniforms));
+}
+
+TEST_CASE("Null backend: uniform buffer offsets follow the device's alignment and range limits",
+          "[rhi_null][validation]") {
+    const auto device = null::createHeadlessDevice({.enableValidation = true});
+    const BindingScene scene(*device);
+    const DeviceLimits& limits = device->limits();
+    REQUIRE(limits.uniformBufferOffsetAlignment == 256);
+    REQUIRE(limits.maxUniformBufferRange == 16384);
+    const auto failureOf = [](auto&& call) { return test::requireAssert(call).message(); };
+
+    // At creation: the offset of every uniform buffer range, and the bytes it sees.
+    const BufferHandle large = *device->createBuffer(
+        {.sizeInBytes = 32768, .usage = BufferUsage::Uniform | BufferUsage::Storage, .debugName = "Large"});
+    const auto create = [&](BindGroupLayoutHandle layout, BufferBinding range) {
+        const std::array entries{BindGroupEntry{.binding = 0, .buffer = range}};
+        return failureOf([&] {
+            static_cast<void>(
+                device->createBindGroup({.layout = layout, .entries = entries, .debugName = "G"}));
+        });
+    };
+    CHECK(create(scene.frameLayout, {.buffer = large, .offset = 128, .size = 64}) ==
+          "Bind group 'G': binding 0 starts at offset 128 of buffer 'Large', which is not a multiple of the "
+          "device's uniformBufferOffsetAlignment (256)");
+    CHECK(create(scene.frameLayout, {.buffer = large, .offset = 256}) ==
+          "Bind group 'G': binding 0 sees 32512 bytes of buffer 'Large', more than the device's "
+          "maxUniformBufferRange (16384)");
+    const std::array fits{BindGroupEntry{.binding = 0, .buffer = {.buffer = large, .offset = 16384}}};
+    CHECK_FALSE(test::captureAssert(
+        [&] { device->destroy(*device->createBindGroup({.layout = scene.frameLayout, .entries = fits})); }));
+    // Storage buffers have neither limit.
+    constexpr std::array kStorageEntries{
+        BindGroupLayoutEntry{.binding = 0, .type = BindingType::StorageBuffer}};
+    const BindGroupLayoutHandle storage = *device->createBindGroupLayout({.entries = kStorageEntries});
+    const std::array storageResources{
+        BindGroupEntry{.binding = 0, .buffer = {.buffer = large, .offset = 16}}};
+    CHECK_FALSE(test::captureAssert([&] {
+        device->destroy(*device->createBindGroup({.layout = storage, .entries = storageResources}));
+    }));
+
+    // At submit: each dynamic offset, and the window it moves. The draw group sees 64 bytes from offset 256
+    // of a 512-byte buffer.
+    const auto failureOfBind = [&](u32 offset) {
+        device->beginFrame();
+        CommandList& cmd = device->acquireCommandList();
+        cmd.beginRenderPass({.colorAttachments = {{.texture = scene.target}}});
+        const std::array offsets{offset};
+        cmd.bindGroup(kDrawGroup, scene.drawGroup, offsets);
+        cmd.endRenderPass();
+        std::optional<test::AssertionFailure> failure = test::captureAssert([&] { device->submit(cmd); });
+        device->endFrame();
+        return failure ? failure->message() : std::string();
+    };
+    CHECK(failureOfBind(0).empty());
+    CHECK(failureOfBind(64) ==
+          "bindGroup 'Draw' at set 3: dynamic offset 64 of binding 0 is not a multiple of "
+          "the device's uniformBufferOffsetAlignment (256)");
+    CHECK(failureOfBind(256) ==
+          "bindGroup 'Draw' at set 3: dynamic offset 256 moves the 64 bytes of binding 0 "
+          "from offset 256 past the end of buffer 'Uniforms' (512 bytes)");
 }
 
 #endif

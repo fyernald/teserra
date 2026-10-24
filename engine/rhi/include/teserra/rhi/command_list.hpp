@@ -59,7 +59,8 @@ public:
 
     void bindPipeline(GraphicsPipelineHandle pipeline);
     /// Binds `group` at set `index` (< kMaxBindGroups), with one dynamic offset per dynamic uniform buffer
-    /// in its layout (at most kMaxDynamicOffsets).
+    /// in its layout (at most kMaxDynamicOffsets), in binding order. Each is a multiple of
+    /// DeviceLimits::uniformBufferOffsetAlignment and is added to its binding's offset.
     void bindGroup(u32 index, BindGroupHandle group, std::span<const u32> dynamicOffsets = {});
     /// Binds `bindings` to consecutive vertex buffer slots from `firstSlot` on.
     void bindVertexBuffers(u32 firstSlot, std::span<const VertexBufferBinding> bindings);

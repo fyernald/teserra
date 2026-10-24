@@ -136,6 +136,7 @@ inline std::string name(GLenum value) {
         {GL_DEBUG_TYPE_PUSH_GROUP, "GL_DEBUG_TYPE_PUSH_GROUP"},
         {GL_DEBUG_TYPE_POP_GROUP, "GL_DEBUG_TYPE_POP_GROUP"},
         {GL_DONT_CARE, "GL_DONT_CARE"},
+        {GL_UNIFORM_BUFFER, "GL_UNIFORM_BUFFER"},
     };
     const auto found = kNames.find(value);
     return found != kNames.end() ? std::string(found->second) : std::format("0x{:X}", value);
@@ -481,6 +482,12 @@ inline void GLAD_API_PTR vertexArrayElementBuffer(GLuint vertexArray, GLuint buf
     log(std::format("VertexArrayElementBuffer({}, {})", vertexArray, buffer));
 }
 
+inline void GLAD_API_PTR bindBufferRange(GLenum target, GLuint index, GLuint buffer, GLintptr offset,
+                                         GLsizeiptr size) {
+    log(std::format("BindBufferRange({}, {}, {}, offset {}, size {})", name(target), index, buffer, offset,
+                    size));
+}
+
 inline void GLAD_API_PTR bindVertexArray(GLuint vertexArray) {
     log(std::format("BindVertexArray({})", vertexArray));
 }
@@ -686,6 +693,7 @@ public:
              reinterpret_cast<platform::GlProc>(&fake_gl::vertexArrayVertexBuffer)},
             {"glVertexArrayElementBuffer",
              reinterpret_cast<platform::GlProc>(&fake_gl::vertexArrayElementBuffer)},
+            {"glBindBufferRange", reinterpret_cast<platform::GlProc>(&fake_gl::bindBufferRange)},
             {"glDrawArraysInstancedBaseInstance",
              reinterpret_cast<platform::GlProc>(&fake_gl::drawArraysInstancedBaseInstance)},
             {"glDrawElementsInstancedBaseVertexBaseInstance",

@@ -5,12 +5,14 @@
 #include <teserra/platform/platform.hpp>
 #include <teserra/rhi/device.hpp>
 #include <teserra/rhi/shader.hpp>
+#include <teserra/rhi/shader_blob.hpp>
 #include <teserra/rhi_opengl/opengl_backend.hpp>
 #include <teserra/test/log_capture.hpp>
 
 #include "gl_device.hpp"
 #include <catch2/catch_test_macros.hpp>
 #include <glad/gl.h>
+#include <rhi_opengl_tests/shaders.hpp>
 
 #include <algorithm>
 #include <array>
@@ -423,6 +425,153 @@ void main() { fragColor = vColor; }
 
     device.destroy(vertices);
     device.destroy(*pipeline);
+    device.destroy(*vertex);
+    device.destroy(*fragment);
+    for (const test::CapturedLog& record : log.records()) {
+        INFO(record.message);
+        CHECK(record.level < LogLevel::Warn);
+    }
+}
+
+TEST_CASE("OpenGL backend (GPU): bind groups at sets 0, 2 and 3 reach the shader", "[rhi_opengl][gpu]") {
+    const GpuWindow gpu = createGpuWindowOrSkip();
+    auto created =
+        createDevice({.backend = Backend::OpenGL, .enableValidation = true, .enableBackendDebug = true},
+                     gpu.window.get(), std::array{opengl::backendFactory()});
+    REQUIRE(created.has_value());
+    auto& device = static_cast<opengl::GlDevice&>(**created);
+    const test::LogCapture log;
+
+    // The shader source declares (set, binding); the blob's GLSL and the backend agree on the GL index.
+    const auto vertex = device.createShaderModule(
+        {.stage = ShaderStage::Vertex, .blob = test::shaders::kBindingSetsVert, .debugName = "Sets vertex"});
+    const auto fragment = device.createShaderModule({.stage = ShaderStage::Fragment,
+                                                     .blob = test::shaders::kBindingSetsFrag,
+                                                     .debugName = "Sets fragment"});
+    REQUIRE(vertex.has_value());
+    REQUIRE(fragment.has_value());
+    constexpr std::array kFrameEntries{
+        BindGroupLayoutEntry{.binding = 0, .visibility = ShaderStage::Fragment}};
+    constexpr std::array kMaterialEntries{
+        BindGroupLayoutEntry{.binding = 0, .visibility = ShaderStage::Fragment},
+        BindGroupLayoutEntry{.binding = 1, .visibility = ShaderStage::Fragment},
+    };
+    constexpr std::array kDrawEntries{
+        BindGroupLayoutEntry{.binding = 0, .visibility = ShaderStage::Fragment, .hasDynamicOffset = true}};
+    const BindGroupLayoutHandle frameLayout = *device.createBindGroupLayout({.entries = kFrameEntries});
+    const BindGroupLayoutHandle materialLayout = *device.createBindGroupLayout({.entries = kMaterialEntries});
+    const BindGroupLayoutHandle drawLayout = *device.createBindGroupLayout({.entries = kDrawEntries});
+    const std::array groups{frameLayout, BindGroupLayoutHandle{}, materialLayout, drawLayout};
+    const PipelineLayoutHandle layout = *device.createPipelineLayout({.groups = groups});
+    const auto pipeline = device.createGraphicsPipeline({
+        .vertexShader = *vertex,
+        .fragmentShader = *fragment,
+        .layout = layout,
+        .targets = {.colorFormats = {Format::Rgba8Unorm}},
+        .debugName = "Sets",
+    });
+    REQUIRE(pipeline.has_value());
+
+    // The spike's check (#36): the linked program's blocks sit at flatBinding(set, binding).
+    const GladGLContext& gl = device.gl();
+    const GLuint program = device.pipeline(*pipeline)->program;
+    const auto blockBinding = [&](const char* name) {
+        const GLuint index = gl.GetProgramResourceIndex(program, GL_UNIFORM_BLOCK, name);
+        const GLenum property = GL_BUFFER_BINDING;
+        GLint binding = -1;
+        gl.GetProgramResourceiv(program, GL_UNIFORM_BLOCK, index, 1, &property, 1, nullptr, &binding);
+        return binding;
+    };
+    CHECK(blockBinding("Frame") == static_cast<GLint>(flatBinding(0, 0)));
+    CHECK(blockBinding("Material") == 16);
+    CHECK(blockBinding("MaterialExtra") == 17);
+    CHECK(blockBinding("Draw") == 24);
+
+    // One vec4 per slot, each slot at the device's uniform buffer offset alignment: red, green, blue, and two
+    // alphas that the draws pick with their dynamic offset.
+    const u32 slot = device.limits().uniformBufferOffsetAlignment;
+    const std::array<std::array<f32, 4>, 5> values{{
+        {0.2F, 0.0F, 0.0F, 0.0F},
+        {0.0F, 0.4F, 0.0F, 0.0F},
+        {0.0F, 0.0F, 0.6F, 0.0F},
+        {0.0F, 0.0F, 0.0F, 0.25F},
+        {0.0F, 0.0F, 0.0F, 0.75F},
+    }};
+    const BufferHandle uniforms = *device.createBuffer({.sizeInBytes = u64{slot} * values.size(),
+                                                        .usage = BufferUsage::Uniform | BufferUsage::CopyDst,
+                                                        .debugName = "Sets uniforms"});
+    for (usize i = 0; i < values.size(); ++i) {
+        device.writeBuffer(uniforms, u64{slot} * i, std::as_bytes(std::span(values[i])));
+    }
+    const auto range = [&](u32 index) {
+        return BufferBinding{.buffer = uniforms, .offset = u64{slot} * index, .size = 16};
+    };
+    const std::array frameResources{BindGroupEntry{.binding = 0, .buffer = range(0)}};
+    const std::array materialResources{BindGroupEntry{.binding = 0, .buffer = range(1)},
+                                       BindGroupEntry{.binding = 1, .buffer = range(2)}};
+    const std::array drawResources{BindGroupEntry{.binding = 0, .buffer = range(3)}};
+    const BindGroupHandle frameGroup =
+        *device.createBindGroup({.layout = frameLayout, .entries = frameResources});
+    const BindGroupHandle materialGroup =
+        *device.createBindGroup({.layout = materialLayout, .entries = materialResources});
+    const BindGroupHandle drawGroup =
+        *device.createBindGroup({.layout = drawLayout, .entries = drawResources});
+
+    // The left half with the first alpha, the right half with the second.
+    constexpr UVec2 kSize{64, 32};
+    const TextureHandle target =
+        device.createTexture2D(Format::Rgba8Unorm, kSize, TextureUsage::RenderTarget, "Sets target");
+    device.beginFrame();
+    CommandList& cmd = device.acquireCommandList();
+    cmd.beginRenderPass({.colorAttachments = {{.texture = target, .loadOp = LoadOp::Clear}}});
+    cmd.bindPipeline(*pipeline);
+    cmd.bindGroup(kFrameGroup, frameGroup);
+    cmd.bindGroup(kMaterialGroup, materialGroup);
+    const std::array firstAlpha{u32{0}};
+    const std::array secondAlpha{slot};
+    cmd.setScissor({.width = kSize.x / 2, .height = kSize.y});
+    cmd.bindGroup(kDrawGroup, drawGroup, firstAlpha);
+    cmd.draw({.vertexCount = 3});
+    cmd.setScissor({.x = kSize.x / 2, .width = kSize.x / 2, .height = kSize.y});
+    cmd.bindGroup(kDrawGroup, drawGroup, secondAlpha);
+    cmd.draw({.vertexCount = 3});
+    cmd.endRenderPass();
+    device.submit(cmd);
+    device.endFrame();
+
+    const auto texel = [&](u32 x, u32 y) {
+        std::array<GLubyte, 4> rgba{};
+        gl.GetTextureSubImage(device.texture(target)->name, 0, static_cast<GLint>(x), static_cast<GLint>(y),
+                              0, 1, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, static_cast<GLsizei>(rgba.size()),
+                              rgba.data());
+        return rgba;
+    };
+    const auto near = [](const std::array<GLubyte, 4>& actual, const std::array<int, 4>& expected) {
+        for (usize i = 0; i < actual.size(); ++i) {
+            if (std::abs(actual[i] - expected[i]) > 1) {
+                return false;
+            }
+        }
+        return true;
+    };
+    const std::array<GLubyte, 4> left = texel(8, 16);
+    const std::array<GLubyte, 4> right = texel(kSize.x - 8, 16);
+    INFO(std::format("left {} {} {} {}, right {} {} {} {}", left[0], left[1], left[2], left[3], right[0],
+                     right[1], right[2], right[3]));
+    CHECK(near(left, {51, 102, 153, 64}));   // 0.2, 0.4, 0.6, 0.25
+    CHECK(near(right, {51, 102, 153, 191})); // 0.2, 0.4, 0.6, 0.75
+    device.waitIdle();
+
+    device.releaseTexture(target);
+    device.destroy(drawGroup);
+    device.destroy(materialGroup);
+    device.destroy(frameGroup);
+    device.destroy(uniforms);
+    device.destroy(*pipeline);
+    device.destroy(layout);
+    device.destroy(drawLayout);
+    device.destroy(materialLayout);
+    device.destroy(frameLayout);
     device.destroy(*vertex);
     device.destroy(*fragment);
     for (const test::CapturedLog& record : log.records()) {
