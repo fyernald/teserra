@@ -5,13 +5,14 @@
 #include <teserra/core/result.hpp>
 #include <teserra/platform/clock.hpp>
 #include <teserra/platform/event.hpp>
+#include <teserra/platform/file_system.hpp>
 #include <teserra/platform/window.hpp>
 
 #include <memory>
 
 namespace teserra::platform {
 
-/// Creation parameters of the platform. Empty for now; OS services (file system) add settings.
+/// Creation parameters of the platform. Empty for now.
 struct PlatformDesc {};
 
 /// Abstract factory for the window system and OS services. Owns the window system's global state (it
@@ -40,6 +41,10 @@ public:
     /// The monotonic clock that drives the main loop: real time (SteadyClock) here, a ManualClock in a
     /// test platform. Thread-safe, unlike the rest of the platform.
     [[nodiscard]] virtual const Clock& clock() const noexcept = 0;
+
+    /// The file system: the operating system's (NativeFileSystem) here, possibly another one in a test
+    /// platform. Like clock(), it may be used from any thread.
+    [[nodiscard]] virtual FileSystem& fileSystem() noexcept = 0;
 
     Platform(const Platform&) = delete;
     Platform& operator=(const Platform&) = delete;

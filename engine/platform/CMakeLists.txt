@@ -3,6 +3,7 @@ teserra_add_module(platform LAYER 1
     PUBLIC_HEADERS
         include/teserra/platform/clock.hpp
         include/teserra/platform/event.hpp
+        include/teserra/platform/file_system.hpp
         include/teserra/platform/fixed_step_accumulator.hpp
         include/teserra/platform/frame_timer.hpp
         include/teserra/platform/input.hpp
@@ -21,7 +22,18 @@ target_sources(teserra_platform PRIVATE
     src/common/input.cpp
     src/common/key.cpp
     src/common/mouse_button.cpp
+    src/common/native_file_system.cpp
 )
+
+# OS services: the parts of the file system only the OS knows (executable and user-data directories).
+if(WIN32)
+    target_sources(teserra_platform PRIVATE src/windows/file_system_windows.cpp)
+    # SHGetKnownFolderPath (shell32), CoTaskMemFree (ole32) and the FOLDERID_* GUIDs (uuid).
+    target_link_libraries(teserra_platform PRIVATE shell32 ole32 uuid)
+else()
+    message(FATAL_ERROR "teserra_platform: no OS services for ${CMAKE_SYSTEM_NAME} yet (see the new "
+        "platform port checklist in platform-abstraction.md)")
+endif()
 
 # Window backend, chosen at configure time; shared code never uses #ifdef to pick it
 # (docs/architecture/platform-abstraction.md#selection-mechanism). GLFW is the only backend in v1.
