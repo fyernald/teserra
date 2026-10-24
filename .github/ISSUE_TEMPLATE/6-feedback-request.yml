@@ -12,7 +12,7 @@ body:
     id: build
     attributes:
       label: Build
-      description: Link to the GitHub pre-release.
+      description: "Link to the GitHub pre-release: https://github.com/fyernald/teserra/releases/tag/<tag>. Open this issue before packaging; the link works once the release is published (docs/process/release-process.md)."
     validations:
       required: true
   - type: textarea

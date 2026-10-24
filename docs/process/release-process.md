@@ -24,9 +24,10 @@ How Teserra versions, tags, packages and announces builds. Related: [development
 
 1. CI green on `main`; the iteration's demo runs from a clean build (`cmake --workflow --preset windows-msvc-release`).
 2. `CHANGELOG.md`: the `Unreleased` section lists the iteration's user-visible changes.
-3. Tag `v0.1.0-alpha.N` and push the tag. The `release.yml` workflow builds the Windows x64 Release artifacts and drafts a GitHub pre-release. Until it exists (#122), build the Release preset, make the zip with `python tools/scripts/package_example.py --build-dir build/windows-msvc-release --example <name> --version 0.1.0-alpha.N --feedback-url <feedback issue>` (from a Visual Studio developer prompt, which locates the Visual C++ runtime), and draft the pre-release by hand.
-4. Edit the draft: short summary, link to the iteration epic, known issues, how to give feedback. Publish.
-5. For feedback iterations, open the *Feedback request* issue linking the release.
+3. **For feedback iterations, open the *Feedback request* issue first** (template). Its build link is the release's URL, `https://github.com/fyernald/teserra/releases/tag/v0.1.0-alpha.N`, which the tag name fixes before the release exists; it works from step 6 on. The zip's `README.txt` links to this issue, so it has to exist before packaging. Iterations without a feedback round skip this step, and their zip links to the issue chooser.
+4. Tag `v0.1.0-alpha.N` on the commit of step 1 and push the tag.
+5. Package. The `release.yml` workflow builds the Windows x64 Release artifacts and drafts a GitHub pre-release; it takes the feedback request's URL as an input (#122). Until it exists, build the Release preset, make the zip with `python tools/scripts/package_example.py --build-dir build/windows-msvc-release --example <name> --version 0.1.0-alpha.N --feedback-url <feedback request of step 3>` (from a Visual Studio developer prompt, which locates the Visual C++ runtime), and draft the pre-release by hand with it.
+6. Edit the draft: short summary, link to the iteration epic, known issues, and how to give feedback (the feedback request). Publish. The feedback request's build link now works; share it ([feedback loop](development-process.md#feedback-loop)).
 
 ## Release checklist (`v0.x.0`)
 
