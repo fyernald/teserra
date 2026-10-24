@@ -57,6 +57,14 @@ GLADapiproc loadFunction(void* context, const char* name) {
     return static_cast<platform::OpenGlContext*>(context)->getProcAddress(name);
 }
 
+// A .tshader blob around GLSL that does not compile. teserra_shaderc refuses such a shader at build time, so
+// the test writes the blob itself to reach the driver's compiler; the SPIR-V only has to be whole words.
+std::vector<std::byte> brokenBlob(std::string_view glsl) {
+    constexpr std::array<u32, 2> kSpirvWords{0x07230203, 0x00010500};
+    return writeShaderBlob(
+        {.stage = ShaderStage::Fragment, .spirv = std::as_bytes(std::span(kSpirvWords)), .glsl = glsl});
+}
+
 } // namespace
 
 TEST_CASE("OpenGL backend (GPU): creates a device on the window's context", "[rhi_opengl][gpu]") {
@@ -211,7 +219,8 @@ TEST_CASE("OpenGL backend (GPU): buffer uploads round trip through readback", "[
     }
 }
 
-TEST_CASE("OpenGL backend (GPU): compiles GLSL and reports errors with line numbers", "[rhi_opengl][gpu]") {
+TEST_CASE("OpenGL backend (GPU): compiles .tshader blobs and reports driver errors with line numbers",
+          "[rhi_opengl][gpu]") {
     const GpuWindow gpu = createGpuWindowOrSkip();
     auto created =
         createDevice({.backend = Backend::OpenGL, .enableValidation = true, .enableBackendDebug = true},
@@ -220,20 +229,8 @@ TEST_CASE("OpenGL backend (GPU): compiles GLSL and reports errors with line numb
     Device& device = **created;
     const test::LogCapture log;
 
-    const std::vector<std::byte> vertexBlob = temporaryGlslBlob(R"(#version 450 core
-layout(location = 0) in vec3 position;
-layout(location = 1) in vec4 color;
-layout(location = 0) out vec4 vColor;
-void main() {
-    vColor = color;
-    gl_Position = vec4(position, 1.0);
-}
-)");
-    const std::vector<std::byte> fragmentBlob = temporaryGlslBlob(R"(#version 450 core
-layout(location = 0) in vec4 vColor;
-layout(location = 0) out vec4 fragColor;
-void main() { fragColor = vColor; }
-)");
+    const std::span<const std::byte> vertexBlob = test::shaders::kVertexColorVert;
+    const std::span<const std::byte> fragmentBlob = test::shaders::kVertexColorFrag;
     const auto vertex = device.createShaderModule(
         {.stage = ShaderStage::Vertex, .blob = vertexBlob, .debugName = "GPU test vertex"});
     const auto fragment = device.createShaderModule(
@@ -246,17 +243,17 @@ void main() { fragColor = vColor; }
     }
 
     // An undeclared identifier on line 4.
-    const std::vector<std::byte> brokenBlob = temporaryGlslBlob(R"(#version 450 core
+    const std::vector<std::byte> broken = brokenBlob(R"(#version 450 core
 layout(location = 0) out vec4 fragColor;
 void main() {
     fragColor = undeclaredColor;
 }
 )");
-    const auto broken = device.createShaderModule(
-        {.stage = ShaderStage::Fragment, .blob = brokenBlob, .debugName = "GPU test broken"});
-    REQUIRE_FALSE(broken.has_value());
-    CHECK(broken.error().code == ErrorCode::CompilationFailed);
-    const std::string& message = broken.error().message;
+    const auto brokenShader = device.createShaderModule(
+        {.stage = ShaderStage::Fragment, .blob = broken, .debugName = "GPU test broken"});
+    REQUIRE_FALSE(brokenShader.has_value());
+    CHECK(brokenShader.error().code == ErrorCode::CompilationFailed);
+    const std::string& message = brokenShader.error().message;
     INFO(message);
     CHECK(message.starts_with("Shader module 'GPU test broken' (fragment) failed to compile:\n"));
     // Drivers write the line as "0(4)" (NVIDIA) or "0:4:" (Intel, AMD, Mesa).
@@ -276,22 +273,10 @@ TEST_CASE("OpenGL backend (GPU): creates and binds a graphics pipeline", "[rhi_o
     const test::LogCapture log;
 
     const auto vertex = device.createShaderModule({.stage = ShaderStage::Vertex,
-                                                   .blob = temporaryGlslBlob(R"(#version 450 core
-layout(location = 0) in vec3 position;
-layout(location = 1) in vec4 color;
-layout(location = 0) out vec4 vColor;
-void main() {
-    vColor = color;
-    gl_Position = vec4(position, 1.0);
-}
-)"),
+                                                   .blob = test::shaders::kVertexColorVert,
                                                    .debugName = "GPU pipeline vertex"});
     const auto fragment = device.createShaderModule({.stage = ShaderStage::Fragment,
-                                                     .blob = temporaryGlslBlob(R"(#version 450 core
-layout(location = 0) in vec4 vColor;
-layout(location = 0) out vec4 fragColor;
-void main() { fragColor = vColor; }
-)"),
+                                                     .blob = test::shaders::kVertexColorFrag,
                                                      .debugName = "GPU pipeline fragment"});
     REQUIRE(vertex.has_value());
     REQUIRE(fragment.has_value());
@@ -345,22 +330,10 @@ TEST_CASE("OpenGL backend (GPU): front faces are counter-clockwise and row 0 is 
     const test::LogCapture log;
 
     const auto vertex = device.createShaderModule({.stage = ShaderStage::Vertex,
-                                                   .blob = temporaryGlslBlob(R"(#version 450 core
-layout(location = 0) in vec3 position;
-layout(location = 1) in vec4 color;
-layout(location = 0) out vec4 vColor;
-void main() {
-    vColor = color;
-    gl_Position = vec4(position, 1.0);
-}
-)"),
+                                                   .blob = test::shaders::kVertexColorVert,
                                                    .debugName = "Winding vertex"});
     const auto fragment = device.createShaderModule({.stage = ShaderStage::Fragment,
-                                                     .blob = temporaryGlslBlob(R"(#version 450 core
-layout(location = 0) in vec4 vColor;
-layout(location = 0) out vec4 fragColor;
-void main() { fragColor = vColor; }
-)"),
+                                                     .blob = test::shaders::kVertexColorFrag,
                                                      .debugName = "Winding fragment"});
     REQUIRE(vertex.has_value());
     REQUIRE(fragment.has_value());

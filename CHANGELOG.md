@@ -56,6 +56,7 @@ All notable user-visible changes to Teserra are documented here. The format foll
 
 ### Changed
 
+- Shader modules take only `.tshader` blobs, on every backend: the temporary GLSL path (`rhi::temporaryGlslBlob()`, `rhi::temporaryGlslSource()`) is removed. The new `rhi::readShaderModuleBlob()` reads a module's blob for the backends. The null backend now refuses other blobs, as OpenGL does: `InvalidData` with the module name, or `InvalidArgument` for a blob of another stage. The OpenGL GPU tests compile their shaders with `teserra_add_shaders()`.
 - `rhi::validateBindGroupDesc()` and `rhi::validateCommands()` take the device's `DeviceLimits` as a last parameter. Only backends call them.
 - `rhi_triangle` turns: its vertex shader reads the angle from a per-frame uniform buffer at set 0, bound with a dynamic offset into one slot per frame in flight.
 - The OpenGL backend compiles the GLSL of `.tshader` blobs; `rhi_triangle` draws with shaders compiled at build time and embedded by `teserra_add_shaders()` (`examples/rhi_triangle/shaders/`). Blobs that are neither `.tshader` nor temporary GLSL now fail with `InvalidData` instead of `Unsupported`.

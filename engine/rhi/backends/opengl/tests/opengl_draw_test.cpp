@@ -56,9 +56,9 @@ struct Scene {
         }
         device = std::move(created).value();
         const ShaderModuleHandle vertex = *device->createShaderModule(
-            {.stage = ShaderStage::Vertex, .blob = temporaryGlslBlob(kVertexSource)});
+            {.stage = ShaderStage::Vertex, .blob = test::glslBlob(ShaderStage::Vertex, kVertexSource)});
         const ShaderModuleHandle fragment = *device->createShaderModule(
-            {.stage = ShaderStage::Fragment, .blob = temporaryGlslBlob(kFragmentSource)});
+            {.stage = ShaderStage::Fragment, .blob = test::glslBlob(ShaderStage::Fragment, kFragmentSource)});
         pipeline = createPipeline(vertex, fragment, "Triangle");
         pipelineArray = gl().lastName;
         otherPipeline = createPipeline(vertex, fragment, "Other");

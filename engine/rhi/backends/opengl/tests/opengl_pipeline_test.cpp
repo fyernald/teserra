@@ -64,11 +64,11 @@ std::unique_ptr<Device> requireOpenGl(test::FakeGlWindow& window, bool validatio
 struct Shaders {
     explicit Shaders(Device& device, test::FakeGlState& gl) {
         vertex = *device.createShaderModule({.stage = ShaderStage::Vertex,
-                                             .blob = temporaryGlslBlob(kVertexSource),
+                                             .blob = test::glslBlob(ShaderStage::Vertex, kVertexSource),
                                              .debugName = "Triangle vertex"});
         vertexName = gl.lastName;
         fragment = *device.createShaderModule({.stage = ShaderStage::Fragment,
-                                               .blob = temporaryGlslBlob(kFragmentSource),
+                                               .blob = test::glslBlob(ShaderStage::Fragment, kFragmentSource),
                                                .debugName = "Triangle fragment"});
         fragmentName = gl.lastName;
     }

@@ -91,4 +91,9 @@ struct ShaderBlobContents {
 /// Never reads outside `blob`.
 [[nodiscard]] Result<ShaderBlobContents> readShaderBlob(std::span<const std::byte> blob);
 
+/// The blob of a shader module, as every backend's createShaderModule() reads it: readShaderBlob(desc.blob)
+/// with its errors prefixed by "Shader module '<debugName>': ", and ErrorCode::InvalidArgument when the blob
+/// holds another stage than desc.stage.
+[[nodiscard]] Result<ShaderBlobContents> readShaderModuleBlob(const ShaderModuleDesc& desc);
+
 } // namespace teserra::rhi

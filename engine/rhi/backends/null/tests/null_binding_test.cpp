@@ -168,7 +168,7 @@ TEST_CASE("Null backend: binding objects keep sorted copies of their descriptors
     CHECK(device->liveObjectCount() == 3);
 }
 
-TEST_CASE("Null backend: shader modules keep the reflection of .tshader blobs", "[rhi_null]") {
+TEST_CASE("Null backend: shader modules keep the reflection of their .tshader blob", "[rhi_null]") {
     const auto device = null::createHeadlessDevice();
     const std::vector<std::byte> tshader = blob(ShaderStage::Vertex, {frameBlock()});
     const ShaderModuleHandle reflected =
@@ -176,10 +176,8 @@ TEST_CASE("Null backend: shader modules keep the reflection of .tshader blobs", 
     REQUIRE(device->shaderReflection(reflected) != nullptr);
     CHECK(device->shaderReflection(reflected)->bindings == std::vector{frameBlock()});
 
-    constexpr std::array kOther{std::byte{1}, std::byte{2}};
-    const ShaderModuleHandle other =
-        *device->createShaderModule({.stage = ShaderStage::Vertex, .blob = kOther});
-    CHECK(device->shaderReflection(other) == nullptr);
+    device->destroy(reflected);
+    CHECK(device->shaderReflection(reflected) == nullptr);
 }
 
 TEST_CASE("Null backend: bind groups survive their layouts", "[rhi_null][validation]") {
@@ -327,19 +325,17 @@ TEST_CASE("Null backend: pipelines are validated against their shaders' reflecti
         });
     };
 
-    // A layout with the binding passes; so do modules without reflection.
+    // A layout with the binding passes; so does a shader without bindings and no layout.
     const PipelineLayoutHandle withFrame = pipelineLayout(std::array{frame});
     CHECK(device
               ->createGraphicsPipeline({.vertexShader = vertex,
                                         .layout = withFrame,
                                         .targets = {.colorFormats = {Format::Rgba8Srgb}}})
               .has_value());
-    constexpr std::array kOther{std::byte{1}, std::byte{2}};
-    const ShaderModuleHandle unreflected =
-        *device->createShaderModule({.stage = ShaderStage::Vertex, .blob = kOther});
+    const ShaderModuleHandle unbound = shader(ShaderStage::Vertex, {}, "Unbound");
     CHECK(device
               ->createGraphicsPipeline(
-                  {.vertexShader = unreflected, .targets = {.colorFormats = {Format::Rgba8Srgb}}})
+                  {.vertexShader = unbound, .targets = {.colorFormats = {Format::Rgba8Srgb}}})
               .has_value());
 
     CHECK(create(vertex, {}, {}) ==

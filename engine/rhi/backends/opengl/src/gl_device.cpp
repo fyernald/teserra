@@ -48,9 +48,8 @@ public:
         if (shader == nullptr) {
             return std::nullopt;
         }
-        return ShaderModuleInfo{.stage = shader->stage,
-                                .reflection = shader->reflection ? &*shader->reflection : nullptr,
-                                .debugName = shader->debugName};
+        return ShaderModuleInfo{
+            .stage = shader->stage, .reflection = &shader->reflection, .debugName = shader->debugName};
     }
     [[nodiscard]] std::optional<BindGroupLayoutDesc>
     bindGroupLayout(BindGroupLayoutHandle handle) const override {
@@ -364,27 +363,15 @@ Result<ShaderModuleHandle> GlDevice::createShaderModule(const ShaderModuleDesc& 
     if (m_validate) {
         validateShaderModuleDesc(desc);
     }
+    Result<ShaderBlobContents> contents = readShaderModuleBlob(desc);
+    if (!contents) {
+        return Unexpected(std::move(contents).error());
+    }
     // The GLSL for OpenGL in the .tshader blob; it points into desc.blob, which lives for this call.
-    // TODO(#44): remove the temporary GLSL blobs of the first triangle
-    std::optional<std::string_view> source = temporaryGlslSource(desc.blob);
-    std::optional<ShaderReflection> reflection;
-    if (!source) {
-        Result<ShaderBlobContents> contents = readShaderBlob(desc.blob);
-        if (!contents) {
-            return fail(contents.error().code, Module::Rhi, "Shader module '{}': {}", desc.debugName,
-                        contents.error().message);
-        }
-        if (contents->stage != desc.stage) {
-            return fail(ErrorCode::InvalidArgument, Module::Rhi,
-                        "Shader module '{}' is a {} shader, but its blob holds a {} shader", desc.debugName,
-                        stageName(desc.stage), stageName(contents->stage));
-        }
-        if (contents->glsl.empty()) {
-            return fail(ErrorCode::Unsupported, Module::Rhi,
-                        "Shader module '{}': the blob has no GLSL for OpenGL", desc.debugName);
-        }
-        source = contents->glsl;
-        reflection = std::move(contents->reflection);
+    const std::string_view source = contents->glsl;
+    if (source.empty()) {
+        return fail(ErrorCode::Unsupported, Module::Rhi,
+                    "Shader module '{}': the blob has no GLSL for OpenGL", desc.debugName);
     }
     if (desc.entryPoint != "main") {
         return fail(ErrorCode::Unsupported, Module::Rhi,
@@ -394,8 +381,8 @@ Result<ShaderModuleHandle> GlDevice::createShaderModule(const ShaderModuleDesc& 
 
     const GLuint shader =
         m_gl.CreateShader(desc.stage == ShaderStage::Fragment ? GL_FRAGMENT_SHADER : GL_VERTEX_SHADER);
-    const GLchar* text = source->data();
-    const auto length = static_cast<GLint>(source->size());
+    const GLchar* text = source.data();
+    const auto length = static_cast<GLint>(source.size());
     m_gl.ShaderSource(shader, 1, &text, &length);
     m_gl.CompileShader(shader);
     GLint compiled = GL_FALSE;
@@ -416,7 +403,7 @@ Result<ShaderModuleHandle> GlDevice::createShaderModule(const ShaderModuleDesc& 
     }
     return m_shaderModules.create(GlShaderModule{.shader = shader,
                                                  .stage = desc.stage,
-                                                 .reflection = std::move(reflection),
+                                                 .reflection = std::move(contents->reflection),
                                                  .debugName = std::string(desc.debugName)});
 }
 

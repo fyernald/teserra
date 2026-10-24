@@ -56,7 +56,7 @@ struct BindGroupInfo {
 /// A shader module as validation needs it.
 struct ShaderModuleInfo {
     ShaderStage stage = ShaderStage::Vertex;
-    /// Null for a blob without reflection: the temporary GLSL blobs (removed by #44).
+    /// The reflection of the module's .tshader blob; never null.
     const ShaderReflection* reflection = nullptr;
     std::string_view debugName{};
 };
@@ -170,7 +170,7 @@ void validateGraphicsPipelineDesc(const GraphicsPipelineDesc& desc);
 
 /// The pipeline against the device's objects: a null or live layout, and every resource that the shaders'
 /// reflection lists is in that layout at its (group, binding), with the same type, visible to the stage
-/// that uses it. Shaders that are not alive or have no reflection are left to the device.
+/// that uses it. Shaders that are not alive are left to the device.
 void validateGraphicsPipelineResources(const GraphicsPipelineDesc& desc, const ResourceLookup& objects);
 
 } // namespace teserra::rhi
