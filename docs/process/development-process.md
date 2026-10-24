@@ -66,10 +66,11 @@ stateDiagram-v2
 ```mermaid
 flowchart LR
     P["Planning<br/>(Mon, ~30 min)"] --> W["Work<br/>(2 weeks)"]
-    W --> D["Demo + build<br/>(last weekend)"]
-    D --> R["Review + retro<br/>(retro issue, ~30 min)"]
-    R --> F["Feedback request<br/>(designated iterations)"]
-    F --> T["Triage feedback<br/>(at next planning)"]
+    W --> D["Demo<br/>(last weekend)"]
+    D --> F["Feedback request<br/>(designated iterations)"]
+    F --> B["Build + pre-release"]
+    B --> R["Review + retro<br/>(retro issue, ~30 min)"]
+    R --> T["Triage feedback<br/>(at next planning)"]
     T --> P
 ```
 
@@ -91,9 +92,9 @@ flowchart LR
 ### End of iteration
 
 1. Demo on `main`: the epic's exit criterion runs from a clean build.
-2. Tag a pre-release when meaningful ([release process](release-process.md)).
-3. Fill in the iteration's **retro issue** (template "Iteration review & retrospective").
-4. For feedback iterations: open a **feedback request** issue (template) with the build link and questions.
+2. For feedback iterations: open a **feedback request** issue (template) with the build link and questions, **before** packaging, since the build links back to it.
+3. Tag and publish a pre-release when meaningful, in the order of the [pre-release checklist](release-process.md#pre-release-checklist-end-of-iteration).
+4. Fill in the iteration's **retro issue** (template "Iteration review & retrospective").
 5. Close the epic if its acceptance criteria are met; otherwise record what remains as new issues.
 
 ## Definition of Ready
@@ -162,8 +163,8 @@ Builds for outside testers are published at designated iterations (see the epic 
 
 Procedure:
 
-1. **Publish** the build as a GitHub pre-release (zip with executable, assets, `THIRD_PARTY_NOTICES.md`, a `README.txt` with run instructions and the feedback link). Until `release.yml` exists (#122), `tools/scripts/package_example.py` makes the zip of an example from a Release build, with its DLLs and the Visual C++ runtime, from the `README.txt` template in `tools/packaging/`.
-2. **Ask** with a *Feedback request* issue (template) listing 3-6 specific questions, the build link, and a deadline (default: 10 days, i.e. before the next planning). Share the link in relevant communities.
+1. **Ask** with a *Feedback request* issue (template) listing 3-6 specific questions, the build link, and a deadline (default: 10 days, i.e. before the next planning). Open it first: the build link is the release URL that the tag name fixes in advance (`.../releases/tag/v0.1.0-alpha.N`), and the build's README needs the issue's URL.
+2. **Publish** the build as a GitHub pre-release (zip with executable, assets, `THIRD_PARTY_NOTICES.md`, a `README.txt` with run instructions and the link to the feedback request). Until `release.yml` exists (#122), `tools/scripts/package_example.py --feedback-url <feedback request>` makes the zip of an example from a Release build, with its DLLs and the Visual C++ runtime, from the `README.txt` template in `tools/packaging/`. Then share the feedback request in relevant communities.
 3. **Collect** answers as comments on the feedback request (or a linked Discussion if enabled). Testers can also open bugs with the Bug template.
 4. **Triage** at the next planning: each actionable point becomes an issue labeled `feedback` (bug, task or feature) or is answered and closed with a reason. Summarize the outcome in a final comment and close the feedback request.
 5. **Report back** in the next iteration's retro: what was learned and what changed because of it.
