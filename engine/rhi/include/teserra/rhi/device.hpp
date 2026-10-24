@@ -98,6 +98,17 @@ public:
     /// before the call and before those submitted after it. The buffer needs BufferUsage::CopyDst and
     /// MemoryLocation::GpuOnly; Upload buffers are written through map(). Empty data does nothing.
     virtual void writeBuffer(BufferHandle buffer, u64 offset, std::span<const std::byte> data) = 0;
+    /// Copies texels from `data` into `region` of `texture`. `data` holds the region's rows top row first
+    /// (docs/architecture/rhi.md#conventions), each `bytesPerRow` bytes after the previous one (0 means
+    /// tightly packed), and its layers one after another. The bytes are copied before the call returns and
+    /// are ordered on the GPU like writeBuffer(). The texture needs TextureUsage::CopyDst and a color format;
+    /// depth textures cannot be uploaded in v1.
+    virtual void writeTexture(TextureHandle texture, const TextureRegion& region,
+                              std::span<const std::byte> data, u32 bytesPerRow = 0) = 0;
+    /// Fills mip levels 1 and up of every layer of `texture` from level 0, ordered like writeTexture(). sRGB
+    /// textures are filtered in linear space. The texture needs more than one mip level,
+    /// TextureUsage::CopyDst and a format that is filterable and renderable (FormatCapabilities).
+    virtual void generateMipmaps(TextureHandle texture) = 0;
     /// The memory of an Upload or Readback buffer. It stays mapped while the buffer lives, so every call
     /// returns the same span of BufferDesc::sizeInBytes bytes. The CPU must not overwrite what submitted work
     /// may still read. A Readback buffer holds the GPU's writes once that work has completed: after

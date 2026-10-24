@@ -221,6 +221,13 @@ void GlStateCache::prepareColorClear(u32 count) {
     }
 }
 
+void GlStateCache::prepareDepthClear() {
+    if (!m_state.depthWrite) {
+        m_gl.DepthMask(GL_TRUE);
+        m_state.depthWrite = true;
+    }
+}
+
 void GlStateCache::unbind(GLuint program, GLuint vertexArray) {
     if (program != 0 && program == m_program) {
         m_gl.UseProgram(0);

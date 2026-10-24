@@ -9,6 +9,7 @@ teserra_add_test(rhi_opengl
         opengl_pipeline_test.cpp
         opengl_shader_test.cpp
         opengl_swapchain_test.cpp
+        opengl_texture_test.cpp
     DEPENDS rhi_opengl platform
     # The fake driver and the GPU test call GL themselves.
     LIBRARIES teserra_glad

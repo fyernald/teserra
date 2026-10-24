@@ -234,6 +234,53 @@ TEST_CASE("Null backend: buffers have memory that writeBuffer and map() reach", 
     CHECK(device->bufferData(vertices).empty());
 }
 
+TEST_CASE("Null backend: writeTexture stores texels top row first, per layer and mip", "[rhi_null]") {
+    const auto device = null::createHeadlessDevice({.enableValidation = true});
+
+    SECTION("a region with padded rows") {
+        const TextureHandle texture =
+            *device->createTexture({.format = Format::R8Unorm, .width = 4, .height = 3});
+        CHECK(device->textureData(texture).empty()); // nothing written yet
+
+        // 2x2 texels at (1, 1), rows 3 bytes apart; the third byte of each row is padding.
+        device->writeTexture(texture, {.x = 1, .y = 1, .width = 2, .height = 2}, bytes({1, 2, 99, 3, 4}), 3);
+
+        CHECK(std::ranges::equal(device->textureData(texture), bytes({
+                                                                   0,
+                                                                   0,
+                                                                   0,
+                                                                   0, // row 0 (top)
+                                                                   0,
+                                                                   1,
+                                                                   2,
+                                                                   0, // row 1
+                                                                   0,
+                                                                   3,
+                                                                   4,
+                                                                   0, // row 2
+                                                               })));
+    }
+    SECTION("layers of an array texture and a mip level") {
+        const TextureHandle texture = *device->createTexture({.dimension = TextureDimension::Tex2DArray,
+                                                              .format = Format::Rg8Unorm,
+                                                              .width = 2,
+                                                              .height = 2,
+                                                              .depthOrLayers = 3,
+                                                              .mipLevels = 2});
+
+        // Mip 1 is 1x1: one texel of 2 bytes in layers 1 and 2.
+        device->writeTexture(texture,
+                             {.mipLevel = 1, .arrayLayer = 1, .layerCount = 2, .width = 1, .height = 1},
+                             bytes({5, 6, 7, 8}));
+
+        CHECK(device->textureData(texture, 0).empty());
+        CHECK(std::ranges::equal(device->textureData(texture, 1), bytes({0, 0, 5, 6, 7, 8})));
+        CHECK(device->textureData(texture, 2).empty()); // no such level
+        device->generateMipmaps(texture);               // validated, not computed
+        CHECK(device->textureData(texture, 0).empty());
+    }
+}
+
 TEST_CASE("Null backend: shader modules need a .tshader blob of their stage", "[rhi_null]") {
     const auto device = null::createHeadlessDevice();
 
@@ -286,6 +333,22 @@ TEST_CASE("Null backend: writeBuffer and map() are validated", "[rhi_null][valid
           std::format("writeBuffer to buffer {}, which is not alive", frameData));
     CHECK(failureOf([&] { static_cast<void>(device->map(frameData)); }) ==
           std::format("map() of buffer {}, which is not alive", frameData));
+}
+
+TEST_CASE("Null backend: writeTexture and generateMipmaps are validated", "[rhi_null][validation]") {
+    const auto device = null::createHeadlessDevice({.enableValidation = true});
+    const TextureHandle atlas =
+        *device->createTexture({.format = Format::Rgba8Srgb, .width = 4, .height = 4, .debugName = "Atlas"});
+    const auto failureOf = [](auto&& call) { return test::requireAssert(call).message(); };
+
+    CHECK(failureOf(
+              [&] { device->writeTexture(atlas, {.x = 2, .width = 4, .height = 1}, bytes({1, 2, 3}), 0); }) ==
+          "writeTexture region (2, 0) 4x1, layers 0+1 is outside texture 'Atlas' (4x4 at mip 0, 1 layers)");
+    CHECK(failureOf([&] { device->generateMipmaps(atlas); }) ==
+          "generateMipmaps of texture 'Atlas', which has one mip level");
+    device->destroy(atlas);
+    CHECK(failureOf([&] { device->writeTexture(atlas, {.width = 1, .height = 1}, bytes({1, 2, 3, 4})); }) ==
+          std::format("writeTexture to texture {}, which is not alive", atlas));
 }
 #endif
 

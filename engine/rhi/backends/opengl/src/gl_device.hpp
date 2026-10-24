@@ -17,6 +17,7 @@
 #include "gl_pipeline_state.hpp"
 #include <glad/gl.h>
 
+#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <deque>
@@ -92,15 +93,26 @@ struct GlPipeline {
 /// A texture of the device.
 struct GlTexture {
     GLuint name = 0;
+    TextureDimension dimension = TextureDimension::Tex2D;
     Format format = Format::Undefined;
     UVec2 size{};
+    u32 layers = 1;
+    /// Resolved: never kAllMips.
+    u32 mipLevels = 1;
     TextureUsage usage = TextureUsage::None;
     std::string debugName;
 
-    /// The descriptor the texture was created with, for validation; its name is valid until the device
-    /// creates or destroys objects.
+    /// The descriptor the texture was created with (kAllMips resolved), for validation; its name is valid
+    /// until the device creates or destroys objects.
     [[nodiscard]] TextureDesc desc() const noexcept {
-        return {.format = format, .width = size.x, .height = size.y, .usage = usage, .debugName = debugName};
+        return {.dimension = dimension,
+                .format = format,
+                .width = size.x,
+                .height = size.y,
+                .depthOrLayers = layers,
+                .mipLevels = mipLevels,
+                .usage = usage,
+                .debugName = debugName};
     }
 };
 
@@ -115,6 +127,14 @@ struct FramebufferKey {
     };
 
     std::array<Attachment, kMaxColorAttachments> color{};
+    /// Null texture for no depth-stencil attachment.
+    Attachment depthStencil{};
+
+    [[nodiscard]] bool uses(TextureHandle texture) const noexcept {
+        return depthStencil.texture == texture ||
+               std::ranges::any_of(
+                   color, [&](const Attachment& attachment) { return attachment.texture == texture; });
+    }
 
     friend bool operator==(const FramebufferKey&, const FramebufferKey&) = default;
 };
@@ -160,6 +180,9 @@ public:
     void destroy(GraphicsPipelineHandle handle) override;
 
     void writeBuffer(BufferHandle buffer, u64 offset, std::span<const std::byte> data) override;
+    void writeTexture(TextureHandle texture, const TextureRegion& region, std::span<const std::byte> data,
+                      u32 bytesPerRow = 0) override;
+    void generateMipmaps(TextureHandle texture) override;
     [[nodiscard]] std::span<std::byte> map(BufferHandle buffer) override;
 
     void beginFrame() override;
@@ -238,6 +261,15 @@ private:
     // Replays the commands of a list (docs/architecture/rhi.md#opengl-backend-mapping).
     void replay(const CommandList& commands);
     void copyBuffer(const BufferCopy& copy);
+    void copyBufferToTexture(const BufferTextureCopy& copy);
+    // Creates the GL texture of a validated descriptor whose mip count is resolved.
+    [[nodiscard]] Result<TextureHandle> allocateTexture(const TextureDesc& desc);
+    // Uploads texels from client memory (`pixels`) or, with a pixel unpack buffer bound, from that buffer at
+    // the offset `pixels` holds.
+    void uploadTexels(const GlTexture& texture, const TextureRegion& region, u32 bytesPerRow,
+                      const void* pixels);
+    // Attaches `attachment` of `key` to the framebuffer `name` at `point`; a layer of an array texture alone.
+    void attach(GLuint name, GLenum point, const FramebufferKey::Attachment& attachment);
     void bindPipeline(GraphicsPipelineHandle handle);
     // Binds the group's buffers at flatBinding(set, binding), with the dynamic offsets applied.
     void applyBindGroup(u32 set, BindGroupHandle handle, std::span<const u32> dynamicOffsets);
@@ -271,7 +303,8 @@ private:
 
     // Replay state: the open render pass's framebuffer and its attachments that are discarded at its end.
     GLuint m_passFramebuffer = 0;
-    std::array<GLenum, kMaxColorAttachments> m_passDiscards{};
+    // Room for every color attachment, depth and stencil.
+    std::array<GLenum, kMaxColorAttachments + 2> m_passDiscards{};
     u32 m_passDiscardCount = 0;
     // The pass's bindings. Vertex and index buffers are vertex array state in GL, and each pipeline has its
     // own vertex array, so they are applied to the bound pipeline's vertex array at the next draw.

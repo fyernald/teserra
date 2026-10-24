@@ -168,6 +168,145 @@ TEST_CASE("OpenGL backend (GPU): clears and presents frames", "[rhi_opengl][gpu]
     }
 }
 
+TEST_CASE("OpenGL backend (GPU): texture uploads land top row first", "[rhi_opengl][gpu]") {
+    const GpuWindow gpu = createGpuWindowOrSkip();
+    const test::LogCapture log;
+    auto created =
+        createDevice({.backend = Backend::OpenGL, .enableValidation = true, .enableBackendDebug = true},
+                     gpu.window.get(), std::array{opengl::backendFactory()});
+    REQUIRE(created.has_value());
+    auto& device = static_cast<opengl::GlDevice&>(**created);
+    const auto readTexels = [&](TextureHandle texture, u32 layer, UVec2 size) {
+        std::vector<GLubyte> texels(usize{size.x} * size.y * 4);
+        device.gl().GetTextureSubImage(device.texture(texture)->name, 0, 0, 0, static_cast<GLint>(layer),
+                                       static_cast<GLsizei>(size.x), static_cast<GLsizei>(size.y), 1, GL_RGBA,
+                                       GL_UNSIGNED_BYTE, static_cast<GLsizei>(texels.size()), texels.data());
+        return texels;
+    };
+
+    SECTION("a 2D texture with padded rows; the top row is row 0") {
+        const TextureHandle texture = *device.createTexture(
+            {.format = Format::Rgba8Unorm, .width = 2, .height = 3, .debugName = "Rows"});
+        // Each row's texels hold their row number; rows are 12 bytes apart, the last 4 are padding (0xEE).
+        std::vector<std::byte> data;
+        for (u8 row = 0; row < 3; ++row) {
+            for (int value = 0; value < 8; ++value) {
+                data.push_back(std::byte{row});
+            }
+            if (row < 2) {
+                data.insert(data.end(), 4, std::byte{0xEE});
+            }
+        }
+        device.writeTexture(texture, {.width = 2, .height = 3}, data, 12);
+
+        const std::vector<GLubyte> texels = readTexels(texture, 0, {2, 3});
+        for (usize index = 0; index < texels.size(); ++index) {
+            INFO("byte " << index);
+            CHECK(texels[index] == index / 8); // 8 bytes per row
+        }
+        device.destroy(texture);
+    }
+    SECTION("a layer of an array texture, BGRA texels") {
+        const TextureHandle texture = *device.createTexture({.dimension = TextureDimension::Tex2DArray,
+                                                             .format = Format::Bgra8Unorm,
+                                                             .width = 1,
+                                                             .height = 1,
+                                                             .depthOrLayers = 2,
+                                                             .debugName = "Layers"});
+        const std::array data{std::byte{10}, std::byte{20}, std::byte{30}, std::byte{40}}; // B, G, R, A
+        device.writeTexture(texture, {.arrayLayer = 1, .width = 1, .height = 1}, data);
+
+        CHECK(readTexels(texture, 1, {1, 1}) == std::vector<GLubyte>{30, 20, 10, 40}); // read as RGBA
+        device.destroy(texture);
+    }
+
+    device.waitIdle();
+    for (const test::CapturedLog& record : log.records()) {
+        INFO(record.message);
+        CHECK(record.level < LogLevel::Warn);
+    }
+}
+
+TEST_CASE("OpenGL backend (GPU): sRGB textures filter in linear space", "[rhi_opengl][gpu]") {
+    const GpuWindow gpu = createGpuWindowOrSkip();
+    const test::LogCapture log;
+    auto created =
+        createDevice({.backend = Backend::OpenGL, .enableValidation = true, .enableBackendDebug = true},
+                     gpu.window.get(), std::array{opengl::backendFactory()});
+    REQUIRE(created.has_value());
+    auto& device = static_cast<opengl::GlDevice&>(**created);
+
+    // Black and white texels average to linear 0.5. Mip generation filters like sampling does, so the 1x1
+    // level is the reference: the sRGB encoding of 0.5 (188) for an sRGB texture, and 0.5 itself (128) for a
+    // linear one, which would also be what a wrongly decoded sRGB texture gives.
+    constexpr std::array<u8, 16> kCheckers{0,   0,   0,   255, 255, 255, 255, 255,
+                                           255, 255, 255, 255, 0,   0,   0,   255};
+    const auto averageOf = [&](Format format) {
+        const TextureHandle texture = *device.createTexture(
+            {.format = format, .width = 2, .height = 2, .mipLevels = kAllMips, .debugName = "Checkers"});
+        device.writeTexture(texture, {.width = 2, .height = 2}, std::as_bytes(std::span(kCheckers)));
+        device.generateMipmaps(texture);
+        std::array<GLubyte, 4> texel{};
+        device.gl().GetTextureSubImage(device.texture(texture)->name, 1, 0, 0, 0, 1, 1, 1, GL_RGBA,
+                                       GL_UNSIGNED_BYTE, static_cast<GLsizei>(texel.size()), texel.data());
+        device.destroy(texture);
+        return texel;
+    };
+
+    const std::array<GLubyte, 4> srgb = averageOf(Format::Rgba8Srgb);
+    const std::array<GLubyte, 4> linear = averageOf(Format::Rgba8Unorm);
+    for (usize channel = 0; channel < 3; ++channel) {
+        INFO("channel " << channel);
+        CHECK(std::abs(srgb[channel] - 188) <= 2);
+        CHECK(std::abs(linear[channel] - 128) <= 1);
+    }
+    CHECK(srgb[3] == 255);
+    CHECK(linear[3] == 255);
+
+    device.waitIdle();
+    for (const test::CapturedLog& record : log.records()) {
+        INFO(record.message);
+        CHECK(record.level < LogLevel::Warn);
+    }
+}
+
+TEST_CASE("OpenGL backend (GPU): depth attachments are cleared and stored", "[rhi_opengl][gpu]") {
+    const GpuWindow gpu = createGpuWindowOrSkip();
+    const test::LogCapture log;
+    auto created =
+        createDevice({.backend = Backend::OpenGL, .enableValidation = true, .enableBackendDebug = true},
+                     gpu.window.get(), std::array{opengl::backendFactory()});
+    REQUIRE(created.has_value());
+    auto& device = static_cast<opengl::GlDevice&>(**created);
+    const TextureHandle depth = *device.createTexture({.format = Format::Depth32Float,
+                                                       .width = 4,
+                                                       .height = 4,
+                                                       .usage = TextureUsage::DepthStencil,
+                                                       .debugName = "Depth"});
+
+    device.beginFrame();
+    CommandList& cmd = device.acquireCommandList();
+    cmd.beginRenderPass(
+        {.depthStencil = {.texture = depth, .depthStoreOp = StoreOp::Store, .clearDepth = 0.25F}});
+    cmd.endRenderPass();
+    device.submit(cmd);
+    device.endFrame();
+    device.waitIdle();
+
+    std::array<GLfloat, 16> values{};
+    device.gl().GetTextureSubImage(device.texture(depth)->name, 0, 0, 0, 0, 4, 4, 1, GL_DEPTH_COMPONENT,
+                                   GL_FLOAT, static_cast<GLsizei>(sizeof(values)), values.data());
+    for (const GLfloat value : values) {
+        CHECK(value == 0.25F);
+    }
+    device.destroy(depth);
+
+    for (const test::CapturedLog& record : log.records()) {
+        INFO(record.message);
+        CHECK(record.level < LogLevel::Warn);
+    }
+}
+
 TEST_CASE("OpenGL backend (GPU): buffer uploads round trip through readback", "[rhi_opengl][gpu]") {
     const GpuWindow gpu = createGpuWindowOrSkip();
     const test::LogCapture log;

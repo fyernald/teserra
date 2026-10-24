@@ -113,6 +113,11 @@ public:
 
     /// Copies into the buffer's CPU memory (bufferData()).
     void writeBuffer(BufferHandle buffer, u64 offset, std::span<const std::byte> data) override;
+    /// Copies into the texture's CPU memory (textureData()).
+    void writeTexture(TextureHandle texture, const TextureRegion& region, std::span<const std::byte> data,
+                      u32 bytesPerRow = 0) override;
+    /// Validates only: the mip levels are not computed.
+    void generateMipmaps(TextureHandle texture) override;
     /// The buffer's CPU memory. Copy commands are validated but not executed, so the GPU never writes it.
     [[nodiscard]] std::span<std::byte> map(BufferHandle buffer) override;
 
@@ -162,6 +167,11 @@ public:
     /// The memory of a buffer, zero-initialized at creation and written by writeBuffer() and through map();
     /// empty if the handle is not alive.
     [[nodiscard]] std::span<const std::byte> bufferData(BufferHandle handle) const noexcept;
+    /// The texels of one mip level of a texture as writeTexture() left them: its layers one after another,
+    /// each tightly packed rows, top row first. Empty until the level is first written (texels not written
+    /// since are zero), and if the handle is not alive or the level does not exist.
+    [[nodiscard]] std::span<const std::byte> textureData(TextureHandle handle,
+                                                         u32 mipLevel = 0) const noexcept;
 
 private:
     friend class NullSwapchain;
@@ -175,6 +185,8 @@ private:
         std::string entryPoint;
         std::vector<std::byte> blob;
         std::vector<std::byte> data; // a buffer's memory
+        // A texture's memory per mip level, allocated by the first write to the level.
+        std::vector<std::vector<std::byte>> mips;
         std::vector<VertexBufferLayout> vertexBuffers;
         std::vector<VertexAttribute> vertexAttributes;
         ShaderReflection reflection;                     // a shader module's, from its .tshader blob

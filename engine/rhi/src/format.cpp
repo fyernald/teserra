@@ -13,42 +13,84 @@ struct FormatEntry {
     FormatInfo info;
 };
 
+// The capability sets of the format support table.
+constexpr FormatCapabilities kColor = FormatCapabilities::Sampled | FormatCapabilities::Filterable |
+                                      FormatCapabilities::RenderTarget | FormatCapabilities::Blendable;
+constexpr FormatCapabilities kColorStorage = kColor | FormatCapabilities::Storage;
+// 32-bit floats and integers: Vulkan guarantees neither filtering nor blending.
+constexpr FormatCapabilities kUnfiltered =
+    FormatCapabilities::Sampled | FormatCapabilities::RenderTarget | FormatCapabilities::Storage;
+constexpr FormatCapabilities kDepth = FormatCapabilities::Sampled | FormatCapabilities::DepthStencil;
+
 // One entry per Format, in enum order; the static_assert below rejects gaps and reordering.
 constexpr std::array kFormats{
     FormatEntry{Format::Undefined, {.name = "Undefined"}},
-    FormatEntry{Format::R8Unorm, {.name = "R8Unorm", .bytesPerTexel = 1, .componentCount = 1}},
-    FormatEntry{Format::Rg8Unorm, {.name = "Rg8Unorm", .bytesPerTexel = 2, .componentCount = 2}},
-    FormatEntry{Format::Rgba8Unorm, {.name = "Rgba8Unorm", .bytesPerTexel = 4, .componentCount = 4}},
+    FormatEntry{Format::R8Unorm,
+                {.name = "R8Unorm", .bytesPerTexel = 1, .componentCount = 1, .capabilities = kColor}},
+    FormatEntry{Format::Rg8Unorm,
+                {.name = "Rg8Unorm", .bytesPerTexel = 2, .componentCount = 2, .capabilities = kColor}},
+    FormatEntry{
+        Format::Rgba8Unorm,
+        {.name = "Rgba8Unorm", .bytesPerTexel = 4, .componentCount = 4, .capabilities = kColorStorage}},
     FormatEntry{Format::Rgba8Srgb,
-                {.name = "Rgba8Srgb", .bytesPerTexel = 4, .componentCount = 4, .isSrgb = true}},
-    FormatEntry{Format::Bgra8Unorm, {.name = "Bgra8Unorm", .bytesPerTexel = 4, .componentCount = 4}},
+                {.name = "Rgba8Srgb",
+                 .bytesPerTexel = 4,
+                 .componentCount = 4,
+                 .isSrgb = true,
+                 .capabilities = kColor}},
+    FormatEntry{Format::Bgra8Unorm,
+                {.name = "Bgra8Unorm", .bytesPerTexel = 4, .componentCount = 4, .capabilities = kColor}},
     FormatEntry{Format::Bgra8Srgb,
-                {.name = "Bgra8Srgb", .bytesPerTexel = 4, .componentCount = 4, .isSrgb = true}},
-    FormatEntry{Format::Rgb10A2Unorm, {.name = "Rgb10A2Unorm", .bytesPerTexel = 4, .componentCount = 4}},
-    FormatEntry{Format::R16Float, {.name = "R16Float", .bytesPerTexel = 2, .componentCount = 1}},
-    FormatEntry{Format::Rg16Float, {.name = "Rg16Float", .bytesPerTexel = 4, .componentCount = 2}},
-    FormatEntry{Format::Rgba16Float, {.name = "Rgba16Float", .bytesPerTexel = 8, .componentCount = 4}},
-    FormatEntry{Format::R32Float, {.name = "R32Float", .bytesPerTexel = 4, .componentCount = 1}},
-    FormatEntry{Format::Rg32Float, {.name = "Rg32Float", .bytesPerTexel = 8, .componentCount = 2}},
-    FormatEntry{Format::Rgba32Float, {.name = "Rgba32Float", .bytesPerTexel = 16, .componentCount = 4}},
-    FormatEntry{Format::R32Uint, {.name = "R32Uint", .bytesPerTexel = 4, .componentCount = 1}},
+                {.name = "Bgra8Srgb",
+                 .bytesPerTexel = 4,
+                 .componentCount = 4,
+                 .isSrgb = true,
+                 .capabilities = kColor}},
+    FormatEntry{Format::Rgb10A2Unorm,
+                {.name = "Rgb10A2Unorm", .bytesPerTexel = 4, .componentCount = 4, .capabilities = kColor}},
+    FormatEntry{Format::R16Float,
+                {.name = "R16Float", .bytesPerTexel = 2, .componentCount = 1, .capabilities = kColor}},
+    FormatEntry{Format::Rg16Float,
+                {.name = "Rg16Float", .bytesPerTexel = 4, .componentCount = 2, .capabilities = kColor}},
+    FormatEntry{
+        Format::Rgba16Float,
+        {.name = "Rgba16Float", .bytesPerTexel = 8, .componentCount = 4, .capabilities = kColorStorage}},
+    FormatEntry{Format::R32Float,
+                {.name = "R32Float", .bytesPerTexel = 4, .componentCount = 1, .capabilities = kUnfiltered}},
+    FormatEntry{Format::Rg32Float,
+                {.name = "Rg32Float", .bytesPerTexel = 8, .componentCount = 2, .capabilities = kUnfiltered}},
+    FormatEntry{
+        Format::Rgba32Float,
+        {.name = "Rgba32Float", .bytesPerTexel = 16, .componentCount = 4, .capabilities = kUnfiltered}},
+    FormatEntry{Format::R32Uint,
+                {.name = "R32Uint", .bytesPerTexel = 4, .componentCount = 1, .capabilities = kUnfiltered}},
     FormatEntry{Format::Depth16Unorm,
-                {.name = "Depth16Unorm", .bytesPerTexel = 2, .componentCount = 1, .hasDepth = true}},
+                {.name = "Depth16Unorm",
+                 .bytesPerTexel = 2,
+                 .componentCount = 1,
+                 .hasDepth = true,
+                 .capabilities = kDepth}},
     FormatEntry{Format::Depth24UnormStencil8,
                 {.name = "Depth24UnormStencil8",
                  .bytesPerTexel = 4,
                  .componentCount = 2,
                  .hasDepth = true,
-                 .hasStencil = true}},
+                 .hasStencil = true,
+                 .capabilities = kDepth}},
     FormatEntry{Format::Depth32Float,
-                {.name = "Depth32Float", .bytesPerTexel = 4, .componentCount = 1, .hasDepth = true}},
+                {.name = "Depth32Float",
+                 .bytesPerTexel = 4,
+                 .componentCount = 1,
+                 .hasDepth = true,
+                 .capabilities = kDepth}},
     // A 32-bit float, 8 stencil bits and 24 unused bits, as copies see it.
     FormatEntry{Format::Depth32FloatStencil8,
                 {.name = "Depth32FloatStencil8",
                  .bytesPerTexel = 8,
                  .componentCount = 2,
                  .hasDepth = true,
-                 .hasStencil = true}},
+                 .hasStencil = true,
+                 .capabilities = kDepth}},
 };
 
 template <typename Entries>
