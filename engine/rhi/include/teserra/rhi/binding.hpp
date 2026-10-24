@@ -67,6 +67,7 @@ struct PipelineLayoutDesc {
 /// A range of a buffer.
 struct BufferBinding {
     BufferHandle buffer{};
+    /// Uniform buffers: a multiple of DeviceLimits::uniformBufferOffsetAlignment.
     u64 offset = 0;
     /// Bytes from `offset`; 0 means to the end of the buffer. Bindings with a dynamic offset need a size,
     /// the window that the dynamic offset moves through the buffer.

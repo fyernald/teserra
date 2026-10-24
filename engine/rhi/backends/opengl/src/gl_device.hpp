@@ -141,8 +141,8 @@ public:
     [[nodiscard]] Result<TextureHandle> createTexture(const TextureDesc& desc) override;
     [[nodiscard]] Result<SamplerHandle> createSampler(const SamplerDesc& desc) override;
     [[nodiscard]] Result<ShaderModuleHandle> createShaderModule(const ShaderModuleDesc& desc) override;
-    /// Bind group layouts, pipeline layouts and bind groups keep their descriptors, for validation; the GL
-    /// binding of groups follows with #43.
+    /// Bind group layouts, pipeline layouts and bind groups keep their descriptors; GL has no such objects.
+    /// Layouts with storage buffers are Unsupported (#190).
     [[nodiscard]] Result<BindGroupLayoutHandle>
     createBindGroupLayout(const BindGroupLayoutDesc& desc) override;
     [[nodiscard]] Result<PipelineLayoutHandle> createPipelineLayout(const PipelineLayoutDesc& desc) override;
@@ -239,6 +239,8 @@ private:
     void replay(const CommandList& commands);
     void copyBuffer(const BufferCopy& copy);
     void bindPipeline(GraphicsPipelineHandle handle);
+    // Binds the group's buffers at flatBinding(set, binding), with the dynamic offsets applied.
+    void applyBindGroup(u32 set, BindGroupHandle handle, std::span<const u32> dynamicOffsets);
     void bindVertexBuffers(u32 firstSlot, std::span<const VertexBufferBinding> bindings);
     void bindIndexBuffer(const BindIndexBufferCommand& bind);
     // Applies the pass's buffer bindings to the bound pipeline's vertex array if they or the vertex array

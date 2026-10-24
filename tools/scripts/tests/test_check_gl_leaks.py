@@ -128,6 +128,21 @@ class CheckGlLeaksTest(TreeTestCase):
             """)
         self.assertEqual(self.rules(), ["glm-leak"] * 3)
 
+    def test_flat_bindings_only_in_the_shader_blob_header_the_gl_backend_and_shaderc(self) -> None:
+        for allowed in ("engine/rhi/include/teserra/rhi/shader_blob.hpp",
+                        "engine/rhi/backends/opengl/src/gl_device.cpp",
+                        "engine/rhi/backends/opengl/tests/opengl_gpu_test.cpp",
+                        "tools/shaderc/src/translator.cpp"):
+            self.write(allowed, "unsigned index = rhi::flatBinding(2, 1);\n")
+        self.write("engine/renderer/src/material.cpp", """
+            // flatBinding() in a comment is fine
+            unsigned index = rhi::flatBinding(2, 1);
+            """)
+        self.assertEqual(self.violations(), [
+            "engine/renderer/src/material.cpp:2:23: error: Flat GL binding name 'flatBinding' outside "
+            "<teserra/rhi/shader_blob.hpp>, engine/rhi/backends/opengl/ and tools/shaderc/ [flat-binding-leak]",
+        ])
+
     def test_examples_and_tests_are_checked_too(self) -> None:
         self.write("examples/sandbox/main.cpp", "GLuint id;\n")
         self.write("tests/gpu/draw_test.cpp", "void f() { glFinish(); }\n")

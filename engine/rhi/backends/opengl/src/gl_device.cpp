@@ -435,13 +435,22 @@ void GlDevice::destroy(ShaderModuleHandle handle) {
 }
 
 // ---------------------------------------------------------------------------------------------------------
-// Bind group layouts, pipeline layouts and bind groups: descriptors only, for validation, until #43 binds
-// groups with glBindBufferRange.
+// Bind group layouts, pipeline layouts and bind groups: GL has no such objects, so the device keeps the
+// descriptors, and replaying bindGroup binds each buffer at its flatBinding(set, binding).
 
 Result<BindGroupLayoutHandle> GlDevice::createBindGroupLayout(const BindGroupLayoutDesc& desc) {
     requireContextThread();
     if (m_validate) {
         validateBindGroupLayoutDesc(desc);
+    }
+    for (const BindGroupLayoutEntry& entry : desc.entries) {
+        if (entry.type == BindingType::StorageBuffer) {
+            // TODO(#190): storage buffers, with their own offset alignment and binding count
+            return fail(
+                ErrorCode::Unsupported, Module::Rhi,
+                "Bind group layout '{}': the OpenGL backend cannot bind storage buffers yet (binding {})",
+                desc.debugName, entry.binding);
+        }
     }
     return m_bindGroupLayouts.create(StoredBindGroupLayout::from(desc));
 }
@@ -461,7 +470,7 @@ Result<PipelineLayoutHandle> GlDevice::createPipelineLayout(const PipelineLayout
 Result<BindGroupHandle> GlDevice::createBindGroup(const BindGroupDesc& desc) {
     requireContextThread();
     if (m_validate) {
-        validateBindGroupDesc(desc, GlLookup(*this));
+        validateBindGroupDesc(desc, GlLookup(*this), m_limits);
     }
     return m_bindGroups.create(StoredBindGroup::from(desc, m_bindGroupLayouts.tryGet(desc.layout)));
 }
@@ -535,6 +544,7 @@ Result<GraphicsPipelineHandle> GlDevice::createGraphicsPipeline(const GraphicsPi
         .state = capturePipelineState(desc),
         .primitiveMode = glPrimitiveMode(desc.topology),
         .stored = desc,
+        .layout = {}, // copied from the pipeline layout below
         .debugName = std::string(desc.debugName),
     };
     for (u32 i = 0; i < desc.vertexBuffers.size() && i < kMaxVertexBuffers; ++i) {
@@ -692,7 +702,7 @@ void GlDevice::submit(CommandList& commands) {
     requireContextThread();
     commands.finish();
     if (m_validate) {
-        validateCommands(commands, GlLookup(*this));
+        validateCommands(commands, GlLookup(*this), m_limits);
     }
     replay(commands);
 }
@@ -742,6 +752,11 @@ void GlDevice::replay(const CommandList& commands) {
             case CommandType::BindVertexBuffers:
                 bindVertexBuffers(command.as<BindVertexBuffersCommand>().firstSlot, command.vertexBuffers());
                 break;
+            case CommandType::BindGroup: {
+                const auto& bind = command.as<BindGroupCommand>();
+                applyBindGroup(bind.index, bind.group, command.dynamicOffsets());
+                break;
+            }
             case CommandType::BindIndexBuffer:
                 bindIndexBuffer(command.as<BindIndexBufferCommand>());
                 break;
@@ -755,7 +770,7 @@ void GlDevice::replay(const CommandList& commands) {
                 copyBuffer(command.as<CopyBufferCommand>().copy);
                 break;
             default:
-                // Bind groups follow with #43 and texture copies with textures (#49).
+                // Texture copies follow with textures (#49).
                 TESERRA_ASSERT(false, "The OpenGL backend cannot replay {} commands yet",
                                commandTypeName(command.type()));
                 break;
@@ -771,6 +786,41 @@ void GlDevice::bindPipeline(GraphicsPipelineHandle handle) {
     }
     m_stateCache.bind(pipeline->program, pipeline->vertexArray, pipeline->state);
     m_passPipeline = pipeline;
+}
+
+void GlDevice::applyBindGroup(u32 set, BindGroupHandle handle, std::span<const u32> dynamicOffsets) {
+    const StoredBindGroup* group = m_bindGroups.tryGet(handle);
+    TESERRA_ASSERT(group != nullptr, "bindGroup uses bind group {}, which is not alive", handle);
+    if (group == nullptr) {
+        return;
+    }
+    // Uniform buffer binding points are context state, not program state: a group stays bound across
+    // pipelines, as the RHI defines. Entries and layout entries are both sorted by binding, and the dynamic
+    // offsets follow the dynamic bindings in that order.
+    usize nextDynamicOffset = 0;
+    for (usize i = 0; i < group->entries.size() && i < group->layoutEntries.size(); ++i) {
+        const BindGroupLayoutEntry& binding = group->layoutEntries[i];
+        const BindGroupEntry& entry = group->entries[i];
+        u64 offset = entry.buffer.offset;
+        if (binding.hasDynamicOffset && nextDynamicOffset < dynamicOffsets.size()) {
+            offset += dynamicOffsets[nextDynamicOffset++];
+        }
+        // Only uniform buffers so far: storage buffer layouts are refused (#190), and textures and samplers
+        // cannot be created yet (#49, #50).
+        if (binding.type != BindingType::UniformBuffer) {
+            continue;
+        }
+        // Looked up now, not at creation: a destroyed buffer's GL name may already belong to another one.
+        const GlBuffer* buffer = m_buffers.tryGet(entry.buffer.buffer);
+        TESERRA_ASSERT(buffer != nullptr, "bindGroup '{}' uses buffer {} at binding {}, which is not alive",
+                       group->debugName, entry.buffer.buffer, entry.binding);
+        if (buffer == nullptr) {
+            continue;
+        }
+        const u64 size = entry.buffer.size != 0 ? entry.buffer.size : buffer->size - entry.buffer.offset;
+        m_gl.BindBufferRange(GL_UNIFORM_BUFFER, flatBinding(set, entry.binding), buffer->name,
+                             static_cast<GLintptr>(offset), static_cast<GLsizeiptr>(size));
+    }
 }
 
 void GlDevice::bindVertexBuffers(u32 firstSlot, std::span<const VertexBufferBinding> bindings) {

@@ -131,12 +131,13 @@ protected:
     ResourceLookup& operator=(ResourceLookup&&) = default;
 };
 
-/// Checks a submitted command list against a device's objects: handles are alive; attachments, vertex and
-/// index buffers and copies have the usage they need; a bound pipeline declares the formats of the open
-/// render pass; draws have every vertex buffer slot of the pipeline bound, and at every set of its layout a
-/// bind group with an equal layout; bind groups get one dynamic offset per dynamic binding and their
-/// resources are alive; copies stay inside their buffers and textures.
-void validateCommands(const CommandList& commands, const ResourceLookup& objects);
+/// Checks a submitted command list against a device's objects and limits: handles are alive; attachments,
+/// vertex and index buffers and copies have the usage they need; a bound pipeline declares the formats of
+/// the open render pass; draws have every vertex buffer slot of the pipeline bound, and at every set of its
+/// layout a bind group with an equal layout; bind groups get one dynamic offset per dynamic binding, each a
+/// multiple of the uniform buffer offset alignment that keeps the binding's window inside its buffer, and
+/// their resources are alive; copies stay inside their buffers and textures.
+void validateCommands(const CommandList& commands, const ResourceLookup& objects, const DeviceLimits& limits);
 
 /// A defined format, a size from 1 to the device's limits, mip levels that fit the size, DepthStencil usage
 /// exactly for depth formats, and 6 layers for a cube.
@@ -157,8 +158,10 @@ void validatePipelineLayoutDesc(const PipelineLayoutDesc& desc, const ResourceLo
 
 /// A live layout and exactly one entry per binding of it, each with a live resource of the binding's type:
 /// a buffer with Uniform or Storage usage and a range inside it (with a size if the binding has a dynamic
-/// offset), or a sampled texture and a sampler.
-void validateBindGroupDesc(const BindGroupDesc& desc, const ResourceLookup& objects);
+/// offset), or a sampled texture and a sampler. Uniform buffer ranges start at a multiple of the device's
+/// uniformBufferOffsetAlignment and see at most its maxUniformBufferRange bytes.
+void validateBindGroupDesc(const BindGroupDesc& desc, const ResourceLookup& objects,
+                           const DeviceLimits& limits);
 
 /// A vertex shader, vertex buffers and attributes within the limits, attributes that refer to declared
 /// buffers with unique locations, at least one render target, color formats used from slot 0 on without

@@ -58,7 +58,8 @@ namespace {
 
 } // namespace
 
-void validateCommands(const CommandList& commands, const ResourceLookup& objects) {
+void validateCommands(const CommandList& commands, const ResourceLookup& objects,
+                      [[maybe_unused]] const DeviceLimits& limits) {
     // Formats of the open render pass's attachments, which a bound pipeline must declare.
     std::array<Format, kMaxColorAttachments> passColorFormats{};
     Format passDepthFormat = Format::Undefined;
@@ -231,6 +232,30 @@ void validateCommands(const CommandList& commands, const ResourceLookup& objects
                     TESERRA_ASSERT(entry.sampler.isNull() || objects.sampler(entry.sampler).has_value(),
                                    "bindGroup '{}' uses sampler {} at binding {}, which is not alive",
                                    group->debugName, entry.sampler, entry.binding);
+                }
+                // The offsets pair with the dynamic bindings in binding order; layoutEntries and entries are
+                // both sorted by binding.
+                const std::span<const u32> offsets = command.dynamicOffsets();
+                usize next = 0;
+                for (usize i = 0; i < group->layoutEntries.size() && i < group->entries.size(); ++i) {
+                    if (!group->layoutEntries[i].hasDynamicOffset || next == offsets.size()) {
+                        continue;
+                    }
+                    [[maybe_unused]] const u32 offset = offsets[next++];
+                    [[maybe_unused]] const BufferBinding& range = group->entries[i].buffer;
+                    TESERRA_ASSERT(
+                        offset % limits.uniformBufferOffsetAlignment == 0,
+                        "bindGroup '{}' at set {}: dynamic offset {} of binding {} is not a multiple "
+                        "of the device's uniformBufferOffsetAlignment ({})",
+                        group->debugName, bind.index, offset, group->entries[i].binding,
+                        limits.uniformBufferOffsetAlignment);
+                    [[maybe_unused]] const std::optional<BufferDesc> buffer = objects.buffer(range.buffer);
+                    TESERRA_ASSERT(
+                        !buffer || range.offset + offset + range.size <= buffer->sizeInBytes,
+                        "bindGroup '{}' at set {}: dynamic offset {} moves the {} bytes of binding {} "
+                        "from offset {} past the end of buffer '{}' ({} bytes)",
+                        group->debugName, bind.index, offset, range.size, group->entries[i].binding,
+                        range.offset, buffer->debugName, buffer->sizeInBytes);
                 }
                 break;
             }

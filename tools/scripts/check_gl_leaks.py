@@ -37,6 +37,21 @@ def _windows_only_platform_file(path: PurePosixPath) -> bool:
     return in_platform and ("windows" in path.parent.parts or path.stem.endswith("_windows"))
 
 
+# flatBinding() turns (set, binding) into OpenGL's single binding index. Only the code that emits GLSL with
+# it and the backend that binds at it may use it, so no other code depends on GL's numbering
+# (docs/architecture/rhi.md#binding-model).
+_FLAT_BINDING_FILES = frozenset({
+    "engine/rhi/include/teserra/rhi/shader_blob.hpp",
+    "engine/rhi/src/shader_blob.cpp",
+    "engine/rhi/tests/shader_blob_test.cpp",
+})
+
+
+def _flat_binding_allowed(path: PurePosixPath) -> bool:
+    return (path.as_posix() in _FLAT_BINDING_FILES or _under("engine/rhi/backends/opengl/")(path)
+            or _under("tools/shaderc/")(path))
+
+
 @dataclass(frozen=True)
 class Rule:
     name: str
@@ -87,6 +102,14 @@ RULES = (
             r"xinput|winsock2|ws2tcpip)\.h$",
             re.IGNORECASE,
         ),
+    ),
+    Rule(
+        "flat-binding-leak",
+        "Flat GL binding",
+        "<teserra/rhi/shader_blob.hpp>, engine/rhi/backends/opengl/ and tools/shaderc/",
+        _flat_binding_allowed,
+        re.compile(r"\bflatBinding\b"),
+        None,
     ),
     Rule(
         "glm-leak",
