@@ -1,4 +1,4 @@
-// .tshader blobs: the flat binding function, the round trip and the reader's checks.
+// .tshader blobs: the flat binding function, the round trip, the reader's checks and shader modules' reads.
 
 #include <teserra/rhi/shader_blob.hpp>
 
@@ -208,4 +208,28 @@ TEST_CASE("Shader blobs: reflection checks", "[rhi][shader_blob]") {
     blob = sampleBlob();
     setWord(blob, input0 + 12, 10'000);
     CHECK(failure(blob) == "The name of vertex input 0 lies outside the shader blob's reflection section");
+}
+
+TEST_CASE("Shader blobs: shader modules read their blob with the module's name and stage", "[rhi][shader]") {
+    const std::vector<std::byte> blob = sampleBlob();
+
+    const Result<ShaderBlobContents> read =
+        readShaderModuleBlob({.stage = ShaderStage::Fragment, .blob = blob, .debugName = "Sprite"});
+    REQUIRE(read.has_value());
+    CHECK(read->glsl == kGlsl);
+    CHECK(read->reflection == sampleReflection());
+
+    const Result<ShaderBlobContents> swapped =
+        readShaderModuleBlob({.stage = ShaderStage::Vertex, .blob = blob, .debugName = "Sprite"});
+    REQUIRE_FALSE(swapped.has_value());
+    CHECK(swapped.error().code == ErrorCode::InvalidArgument);
+    CHECK(swapped.error().message ==
+          "Shader module 'Sprite' is a vertex shader, but its blob holds a fragment shader");
+
+    const std::string source = "#version 450\nvoid main() {}\n";
+    const Result<ShaderBlobContents> raw = readShaderModuleBlob(
+        {.stage = ShaderStage::Fragment, .blob = std::as_bytes(std::span(source)), .debugName = "Raw"});
+    REQUIRE_FALSE(raw.has_value());
+    CHECK(raw.error().code == ErrorCode::InvalidData);
+    CHECK(raw.error().message == "Shader module 'Raw': The shader blob is not a .tshader blob");
 }

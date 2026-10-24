@@ -58,8 +58,8 @@ struct GlBuffer {
 struct GlShaderModule {
     GLuint shader = 0;
     ShaderStage stage = ShaderStage::Vertex;
-    // Of a .tshader blob, for validation; none for the temporary GLSL blobs (#44).
-    std::optional<ShaderReflection> reflection;
+    // Of the .tshader blob, for validation.
+    ShaderReflection reflection;
     std::string debugName;
 };
 

@@ -3,6 +3,7 @@
 
 #include <teserra/engine/app.hpp>
 #include <teserra/rhi/shader.hpp>
+#include <teserra/rhi/shader_blob.hpp>
 #include <teserra/rhi_null/null_device.hpp>
 #include <teserra/test/allocation_counter.hpp>
 
@@ -11,10 +12,12 @@
 
 #include <algorithm>
 #include <array>
+#include <cstddef>
 #include <format>
 #include <memory>
 #include <span>
 #include <utility>
+#include <vector>
 
 using namespace teserra;
 using namespace teserra::engine;
@@ -160,10 +163,17 @@ TEST_CASE("App on the Null backend: the rhi_triangle frame is recorded and valid
                               .debugName = "Triangle indices"});
     device.writeBuffer(vertices, 0, std::as_bytes(std::span(kVertices)));
     device.writeBuffer(indices, 0, std::as_bytes(std::span(kIndices)));
-    const rhi::ShaderModuleHandle vertexShader = *device.createShaderModule(
-        {.stage = rhi::ShaderStage::Vertex, .blob = rhi::temporaryGlslBlob("vertex")});
-    const rhi::ShaderModuleHandle fragmentShader = *device.createShaderModule(
-        {.stage = rhi::ShaderStage::Fragment, .blob = rhi::temporaryGlslBlob("fragment")});
+    // .tshader blobs; the null backend reads their stage and reflection.
+    constexpr std::array<u32, 2> kSpirvWords{0x07230203, 0x00010500};
+    const auto blob = [&](rhi::ShaderStage stage) {
+        return rhi::writeShaderBlob({.stage = stage, .spirv = std::as_bytes(std::span(kSpirvWords))});
+    };
+    const std::vector<std::byte> vertexBlob = blob(rhi::ShaderStage::Vertex);
+    const std::vector<std::byte> fragmentBlob = blob(rhi::ShaderStage::Fragment);
+    const rhi::ShaderModuleHandle vertexShader =
+        *device.createShaderModule({.stage = rhi::ShaderStage::Vertex, .blob = vertexBlob});
+    const rhi::ShaderModuleHandle fragmentShader =
+        *device.createShaderModule({.stage = rhi::ShaderStage::Fragment, .blob = fragmentBlob});
     const rhi::GraphicsPipelineHandle pipeline = *device.createGraphicsPipeline({
         .vertexShader = vertexShader,
         .fragmentShader = fragmentShader,

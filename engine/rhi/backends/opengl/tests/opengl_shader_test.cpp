@@ -58,8 +58,8 @@ TEST_CASE("OpenGL backend: shader modules compile the GLSL of each stage", "[rhi
     const GLuint first = gl.lastName + 1; // GL names of the two shaders: first, first + 1
     gl.calls.clear();
 
-    const std::vector<std::byte> vertexBlob = temporaryGlslBlob(kVertexSource);
-    const std::vector<std::byte> fragmentBlob = temporaryGlslBlob(kFragmentSource);
+    const std::vector<std::byte> vertexBlob = test::glslBlob(ShaderStage::Vertex, kVertexSource);
+    const std::vector<std::byte> fragmentBlob = test::glslBlob(ShaderStage::Fragment, kFragmentSource);
     const auto vertex = device->createShaderModule(
         {.stage = ShaderStage::Vertex, .blob = vertexBlob, .debugName = "Triangle vertex"});
     const auto fragment = device->createShaderModule({.stage = ShaderStage::Fragment, .blob = fragmentBlob});
@@ -90,7 +90,8 @@ TEST_CASE("OpenGL backend: the device deletes the shaders left at its end", "[rh
     test::FakeGlWindow window;
     {
         const auto device = requireOpenGl(window);
-        static_cast<void>(*device->createShaderModule({.blob = temporaryGlslBlob(kVertexSource)}));
+        static_cast<void>(
+            *device->createShaderModule({.blob = test::glslBlob(ShaderStage::Vertex, kVertexSource)}));
         CHECK(window.context.state.shaders.size() == 1);
     }
     CHECK(window.context.state.shaders.empty());
@@ -103,8 +104,10 @@ TEST_CASE("OpenGL backend: a compile failure is an error with the driver's log",
     gl.compileLog = "0(3) : error C0000: syntax error, unexpected '}'\n";
     const test::LogCapture log;
 
-    const auto shader = device->createShaderModule(
-        {.stage = ShaderStage::Fragment, .blob = temporaryGlslBlob(kFragmentSource), .debugName = "Broken"});
+    const auto shader =
+        device->createShaderModule({.stage = ShaderStage::Fragment,
+                                    .blob = test::glslBlob(ShaderStage::Fragment, kFragmentSource),
+                                    .debugName = "Broken"});
 
     REQUIRE_FALSE(shader.has_value());
     CHECK(shader.error().code == ErrorCode::CompilationFailed);
@@ -171,8 +174,9 @@ TEST_CASE("OpenGL backend: blobs and entry points GLSL cannot take are errors", 
     CHECK(noGlsl.error().code == ErrorCode::Unsupported);
     CHECK(noGlsl.error().message == "Shader module 'Vulkan only': the blob has no GLSL for OpenGL");
 
-    const auto named = device->createShaderModule(
-        {.blob = temporaryGlslBlob(kVertexSource), .entryPoint = "vertexMain", .debugName = "Named"});
+    const auto named = device->createShaderModule({.blob = test::glslBlob(ShaderStage::Vertex, kVertexSource),
+                                                   .entryPoint = "vertexMain",
+                                                   .debugName = "Named"});
     REQUIRE_FALSE(named.has_value());
     CHECK(named.error().code == ErrorCode::Unsupported);
     CHECK(named.error().message ==
@@ -185,7 +189,8 @@ TEST_CASE("OpenGL backend: blobs and entry points GLSL cannot take are errors", 
 TEST_CASE("OpenGL backend: destroying a stale shader module asserts", "[rhi_opengl][shader]") {
     test::FakeGlWindow window;
     const auto device = requireOpenGl(window);
-    const ShaderModuleHandle shader = *device->createShaderModule({.blob = temporaryGlslBlob(kVertexSource)});
+    const ShaderModuleHandle shader =
+        *device->createShaderModule({.blob = test::glslBlob(ShaderStage::Vertex, kVertexSource)});
     device->destroy(shader);
 
     CHECK(test::requireAssert([&] { device->destroy(shader); }).message() ==

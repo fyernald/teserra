@@ -22,7 +22,6 @@ teserra_add_module(rhi LAYER 2
         src/command_validation.cpp
         src/device.cpp
         src/format.cpp
-        src/shader.cpp
         src/shader_blob.cpp
         src/validation.cpp
 )

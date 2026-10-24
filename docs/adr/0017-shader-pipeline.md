@@ -24,7 +24,7 @@ Shaders should be authored once and run on OpenGL now and Vulkan later. Vulkan c
   It stays a possible later optimization (no GLSL compile at load time), using the SPIR-V already in the blob with its decorations patched to flat bindings.
 - **SPIR-V validation** (`spirv-val`, from spirv-tools) is an **opt-in** vcpkg feature that the CI preset enables. spirv-tools takes about 15 minutes to build from source, against about 4.4 minutes for glslang, SPIRV-Cross and SPIRV-Headers together; tests that need `spirv-val` are skipped without it.
 - The RHI `ShaderModuleDesc` takes a `.tshader` blob; each backend picks its payload. Backends never receive raw source from the renderer.
-- Until the pipeline lands (iteration 6), the first triangle uses a temporary GLSL-only path (`rhi::temporaryGlslBlob()`, #33) that is removed by the pipeline issue (#44).
+- Until the pipeline landed (iteration 6), the first triangle used a temporary GLSL-only path (`rhi::temporaryGlslBlob()`, #33). #44 removed it: every backend now reads shader modules with `rhi::readShaderModuleBlob()` and refuses anything but a `.tshader` blob of the module's stage.
 
 ## Alternatives considered
 

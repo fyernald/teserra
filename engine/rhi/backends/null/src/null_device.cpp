@@ -198,10 +198,12 @@ Result<ShaderModuleHandle> NullDevice::createShaderModule(const ShaderModuleDesc
     if (m_validate) {
         validateShaderModuleDesc(desc);
     }
-    Object<ShaderModuleDesc> object = store(desc);
-    if (Result<ShaderBlobContents> contents = readShaderBlob(desc.blob)) {
-        object->reflection = std::move(contents->reflection);
+    Result<ShaderBlobContents> contents = readShaderModuleBlob(desc);
+    if (!contents) {
+        return Unexpected(std::move(contents).error());
     }
+    Object<ShaderModuleDesc> object = store(desc);
+    object->reflection = std::move(contents->reflection);
     return m_shaderModules.create(std::move(object));
 }
 
@@ -425,7 +427,7 @@ const GraphicsPipelineDesc* NullDevice::graphicsPipeline(GraphicsPipelineHandle 
 
 const ShaderReflection* NullDevice::shaderReflection(ShaderModuleHandle handle) const noexcept {
     const Object<ShaderModuleDesc>* object = m_shaderModules.tryGet(handle);
-    return object != nullptr && (*object)->reflection ? &*(*object)->reflection : nullptr;
+    return object != nullptr ? &(*object)->reflection : nullptr;
 }
 
 const StoredPipelineLayout* NullDevice::storedPipelineLayout(PipelineLayoutHandle handle) const noexcept {

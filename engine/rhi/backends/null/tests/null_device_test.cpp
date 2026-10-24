@@ -5,6 +5,7 @@
 
 #include <teserra/platform/window.hpp>
 #include <teserra/rhi/device.hpp>
+#include <teserra/rhi/shader_blob.hpp>
 #include <teserra/test/allocation_counter.hpp>
 #include <teserra/test/assert.hpp>
 
@@ -44,7 +45,12 @@ private:
     UVec2 m_framebufferSize;
 };
 
-constexpr std::array<std::byte, 4> kShaderCode{std::byte{1}, std::byte{2}, std::byte{3}, std::byte{4}};
+constexpr std::array<u32, 2> kSpirvWords{0x07230203, 0x00010500};
+
+// A .tshader blob of `stage`; the null backend reads only its stage and reflection.
+std::vector<std::byte> shaderBlob(ShaderStage stage) {
+    return writeShaderBlob({.stage = stage, .spirv = std::as_bytes(std::span(kSpirvWords))});
+}
 
 std::vector<std::byte> bytes(std::initializer_list<u8> values) {
     std::vector<std::byte> result;
@@ -58,8 +64,10 @@ std::vector<std::byte> bytes(std::initializer_list<u8> values) {
 struct Scene {
     explicit Scene(null::NullDevice& device)
         : device(device) {
-        vertexShader = *device.createShaderModule({.stage = ShaderStage::Vertex, .blob = kShaderCode});
-        fragmentShader = *device.createShaderModule({.stage = ShaderStage::Fragment, .blob = kShaderCode});
+        const std::vector<std::byte> vertexBlob = shaderBlob(ShaderStage::Vertex);
+        const std::vector<std::byte> fragmentBlob = shaderBlob(ShaderStage::Fragment);
+        vertexShader = *device.createShaderModule({.stage = ShaderStage::Vertex, .blob = vertexBlob});
+        fragmentShader = *device.createShaderModule({.stage = ShaderStage::Fragment, .blob = fragmentBlob});
         constexpr std::array kBuffers{VertexBufferLayout{.stride = 16}};
         constexpr std::array kAttributes{VertexAttribute{.format = VertexFormat::Float4}};
         pipeline = *device.createGraphicsPipeline({
@@ -146,7 +154,7 @@ TEST_CASE("Null backend: resources keep copies of their descriptors", "[rhi_null
     {
         // Everything the descriptors point to goes away after creation.
         std::string name = "A name longer than any small-string buffer";
-        std::vector<std::byte> code(kShaderCode.begin(), kShaderCode.end());
+        std::vector<std::byte> code = shaderBlob(ShaderStage::Vertex);
         std::vector buffers{VertexBufferLayout{.stride = 32}};
         std::vector attributes{VertexAttribute{.location = 2, .format = VertexFormat::Float2, .offset = 8}};
         buffer =
@@ -169,8 +177,7 @@ TEST_CASE("Null backend: resources keep copies of their descriptors", "[rhi_null
     CHECK(device->buffer(buffer)->sizeInBytes == 128);
     CHECK(device->buffer(buffer)->debugName == "A name longer than any small-string buffer");
     REQUIRE(device->shaderModule(shader) != nullptr);
-    CHECK(device->shaderModule(shader)->blob.size() == 4);
-    CHECK(device->shaderModule(shader)->blob[3] == std::byte{4});
+    CHECK(std::ranges::equal(device->shaderModule(shader)->blob, shaderBlob(ShaderStage::Vertex)));
     CHECK(device->shaderModule(shader)->entryPoint == "main");
     const GraphicsPipelineDesc* stored = device->graphicsPipeline(pipeline);
     REQUIRE(stored != nullptr);
@@ -227,18 +234,25 @@ TEST_CASE("Null backend: buffers have memory that writeBuffer and map() reach", 
     CHECK(device->bufferData(vertices).empty());
 }
 
-TEST_CASE("Null backend: shader modules keep temporary GLSL blobs readable", "[rhi_null]") {
+TEST_CASE("Null backend: shader modules need a .tshader blob of their stage", "[rhi_null]") {
     const auto device = null::createHeadlessDevice();
-    constexpr std::string_view kSource = "#version 450 core\nvoid main() {}\n";
-    ShaderModuleHandle shader;
-    {
-        const std::vector<std::byte> blob = temporaryGlslBlob(kSource);
-        shader = *device->createShaderModule({.blob = blob});
-    }
 
-    const ShaderModuleDesc* desc = device->shaderModule(shader);
-    REQUIRE(desc != nullptr);
-    CHECK(temporaryGlslSource(desc->blob) == kSource);
+    constexpr std::array kOpaque{std::byte{1}, std::byte{2}, std::byte{3}, std::byte{4}};
+    const Result<ShaderModuleHandle> opaque =
+        device->createShaderModule({.blob = kOpaque, .debugName = "Opaque"});
+    REQUIRE_FALSE(opaque.has_value());
+    CHECK(opaque.error().code == ErrorCode::InvalidData);
+    CHECK(opaque.error().message ==
+          "Shader module 'Opaque': The shader blob is 4 bytes, too short for a .tshader blob");
+
+    const std::vector<std::byte> fragment = shaderBlob(ShaderStage::Fragment);
+    const Result<ShaderModuleHandle> swapped =
+        device->createShaderModule({.stage = ShaderStage::Vertex, .blob = fragment, .debugName = "Swapped"});
+    REQUIRE_FALSE(swapped.has_value());
+    CHECK(swapped.error().code == ErrorCode::InvalidArgument);
+    CHECK(swapped.error().message ==
+          "Shader module 'Swapped' is a vertex shader, but its blob holds a fragment shader");
+    CHECK(device->liveObjectCount() == 0);
 }
 
 #if TESERRA_ENABLE_ASSERTS

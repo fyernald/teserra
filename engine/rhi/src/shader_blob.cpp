@@ -5,6 +5,7 @@
 #include <bit>
 #include <cstring>
 #include <optional>
+#include <string_view>
 
 namespace teserra::rhi {
 
@@ -20,6 +21,20 @@ constexpr std::size_t kSectionEntrySize = 12;     // type, offset, size
 constexpr std::size_t kReflectionHeaderSize = 12; // binding count, vertex input count, push-constant size
 constexpr std::size_t kBindingRecordSize = 24;    // group, binding, type, size, name offset, name length
 constexpr std::size_t kInputRecordSize = 20; // location, scalar type, components, name offset, name length
+
+// For messages.
+std::string_view stageName(ShaderStage stage) noexcept {
+    switch (stage) {
+        case ShaderStage::Vertex:
+            return "vertex";
+        case ShaderStage::Fragment:
+            return "fragment";
+        case ShaderStage::Compute:
+            return "compute";
+        default:
+            return "multi-stage";
+    }
+}
 
 // Section types. Plain numbers rather than an enum: they come from untrusted data.
 constexpr u32 kSpirvSection = 1;
@@ -293,6 +308,20 @@ Result<ShaderBlobContents> readShaderBlob(std::span<const std::byte> blob) {
                               .spirv = *spirv,
                               .glsl = glsl ? asText(*glsl) : std::string_view(),
                               .reflection = std::move(parsed)};
+}
+
+Result<ShaderBlobContents> readShaderModuleBlob(const ShaderModuleDesc& desc) {
+    Result<ShaderBlobContents> contents = readShaderBlob(desc.blob);
+    if (!contents) {
+        return fail(contents.error().code, Module::Rhi, "Shader module '{}': {}", desc.debugName,
+                    contents.error().message);
+    }
+    if (contents->stage != desc.stage) {
+        return fail(ErrorCode::InvalidArgument, Module::Rhi,
+                    "Shader module '{}' is a {} shader, but its blob holds a {} shader", desc.debugName,
+                    stageName(desc.stage), stageName(contents->stage));
+    }
+    return contents;
 }
 
 } // namespace teserra::rhi

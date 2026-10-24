@@ -90,7 +90,8 @@ public:
     [[nodiscard]] Result<BufferHandle> createBuffer(const BufferDesc& desc) override;
     [[nodiscard]] Result<TextureHandle> createTexture(const TextureDesc& desc) override;
     [[nodiscard]] Result<SamplerHandle> createSampler(const SamplerDesc& desc) override;
-    /// Keeps the reflection of a .tshader blob for validation; any other blob is kept without it.
+    /// Reads the .tshader blob like every backend (readShaderModuleBlob) and keeps its reflection for
+    /// validation.
     [[nodiscard]] Result<ShaderModuleHandle> createShaderModule(const ShaderModuleDesc& desc) override;
     [[nodiscard]] Result<BindGroupLayoutHandle>
     createBindGroupLayout(const BindGroupLayoutDesc& desc) override;
@@ -149,7 +150,7 @@ public:
     [[nodiscard]] const PipelineLayoutDesc* pipelineLayout(PipelineLayoutHandle handle) const noexcept;
     [[nodiscard]] const BindGroupDesc* bindGroup(BindGroupHandle handle) const noexcept;
     [[nodiscard]] const GraphicsPipelineDesc* graphicsPipeline(GraphicsPipelineHandle handle) const noexcept;
-    /// The reflection of a shader module made from a .tshader blob; nullptr for other blobs and dead handles.
+    /// The reflection of a shader module's .tshader blob; nullptr if the handle is not alive.
     [[nodiscard]] const ShaderReflection* shaderReflection(ShaderModuleHandle handle) const noexcept;
     /// What validation keeps of a pipeline layout, a bind group, or the layout of a pipeline; nullptr if the
     /// handle is not alive.
@@ -176,7 +177,7 @@ private:
         std::vector<std::byte> data; // a buffer's memory
         std::vector<VertexBufferLayout> vertexBuffers;
         std::vector<VertexAttribute> vertexAttributes;
-        std::optional<ShaderReflection> reflection;      // a shader module's, from a .tshader blob
+        ShaderReflection reflection;                     // a shader module's, from its .tshader blob
         StoredBindGroupLayout layout;                    // a bind group layout's entries
         std::vector<BindGroupLayoutHandle> groupLayouts; // a pipeline layout's handles
         StoredPipelineLayout pipelineLayout; // a pipeline layout's groups, or a pipeline's layout's

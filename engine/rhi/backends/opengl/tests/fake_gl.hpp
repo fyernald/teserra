@@ -9,6 +9,8 @@
 #include <teserra/core/math.hpp>
 #include <teserra/platform/opengl_context.hpp>
 #include <teserra/platform/window.hpp>
+#include <teserra/rhi/shader.hpp>
+#include <teserra/rhi/shader_blob.hpp>
 
 #include <glad/gl.h>
 
@@ -28,6 +30,17 @@
 #include <vector>
 
 namespace teserra::test {
+
+/// A .tshader blob whose GLSL for OpenGL is `glsl`, for tests that check what the device hands the driver.
+/// The backend never reads the SPIR-V, which only has to be whole words.
+inline std::vector<std::byte> glslBlob(rhi::ShaderStage stage, std::string_view glsl,
+                                       rhi::ShaderReflection reflection = {}) {
+    static constexpr std::array<std::uint32_t, 2> kSpirvWords{0x07230203, 0x00010500};
+    return rhi::writeShaderBlob({.stage = stage,
+                                 .spirv = std::as_bytes(std::span(kSpirvWords)),
+                                 .glsl = glsl,
+                                 .reflection = std::move(reflection)});
+}
 
 struct FakeGlState {
     std::string version = "4.6.0 Fake";

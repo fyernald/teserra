@@ -325,7 +325,7 @@ void validateGraphicsPipelineResources(const GraphicsPipelineDesc& desc, const R
     for (const ShaderModuleHandle handle : {desc.vertexShader, desc.fragmentShader}) {
         const std::optional<ShaderModuleInfo> shader =
             handle.isNull() ? std::nullopt : objects.shaderModule(handle);
-        if (shader && shader->reflection != nullptr) {
+        if (shader) {
             checkReflection(desc, *shader, layout ? &*layout : nullptr);
         }
     }
