@@ -141,6 +141,7 @@ Pinned baseline: [`9e593bb`](https://github.com/microsoft/vcpkg/commit/9e593bb18
 | `fmt` | 12.2.0#1 | transitively through spdlog | - |
 | `tl-expected` | 1.3.1 | core (`Result`, iteration 2) | - |
 | `glfw3` | 3.4#1 | platform (windows, OpenGL context, iteration 3) | - |
+| `stb` | 2024-07-29#1 | assets (stb_image 2.30, image decoding, iteration 7) | - |
 | `catch2` | 3.15.3 | tests | `tests` |
 | `glslang` | 16.4.0 | `teserra_shaderc` (GLSL to SPIR-V, iteration 6) | - |
 | `spirv-cross` | 1.4.350.1 | `teserra_shaderc` (reflection, GLSL for OpenGL, iteration 6) | - |

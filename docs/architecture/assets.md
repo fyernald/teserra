@@ -51,6 +51,16 @@ public:
 - `AssetLoadContext` provides file access through mount points, the ability to load dependencies (`ctx.load<Texture>(path)`), and the asset's import settings (sRGB, filtering, `pixelsPerUnit`) from an optional sidecar `<file>.asset.json` (v1: optional, defaults apply).
 - Loaders return `Result<T>`. A failure is logged once with the path, and the handle resolves to a **fallback asset** (magenta/black checkerboard texture, error shader, empty tileset), so a missing file never crashes a game in development.
 
+## Image decoding
+
+`decodeImage(bytes, config)` (`<teserra/assets/image.hpp>`) turns a PNG file in memory into an `ImageData`: width, height, `ImageFormat::Rgba8` and tightly packed pixels, with row 0 as the top row of the file ([ADR-0024](../adr/0024-coordinate-conventions.md)). The texture loader builds on it.
+
+- **Formats:** PNG only in v1. Grayscale, RGB, palette and 16-bit images are converted to RGBA8, and images without alpha get an alpha of 255. JPEG or TGA would each be one stb define plus a test.
+- **Color space** is not part of `ImageData`: the loader's import settings decide whether a texture is `Rgba8Srgb` or `Rgba8Unorm` ([ADR-0010](../adr/0010-stb-image-decoding.md)).
+- **Limits:** `ImageDecodeConfig::maxDimension` (default 16384 pixels per side, the smallest `MAX_TEXTURE_SIZE` that OpenGL 4.5 allows) and `maxSizeInBytes` (default 256 MiB) are checked against the header before anything is decoded or allocated. An image over either limit is `Unsupported`; empty, malformed, truncated and non-PNG data is `InvalidData`.
+- **stb_image** is private to `teserra_assets` and compiled in one translation unit: with `STB_IMAGE_STATIC`, so a game can compile its own copy; without file access; with `TESERRA_ASSERT` for its assertions; and with its allocations going through `operator new`, so they count like the engine's own.
+- **Trust:** asset files are trusted developer content in v1. stb_image is not hardened against hostile files ([SECURITY.md](../../SECURITY.md)).
+
 ## Mount points and files
 
 - Virtual paths: `assets://` maps to the game's asset directory (default `<executable dir>/assets`), `engine://` to the engine's built-in assets. Mounts are configured in `AppConfig`.
