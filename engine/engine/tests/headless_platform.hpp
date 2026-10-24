@@ -4,6 +4,7 @@
 // scripted frame time on every pollEvents(), and events are scripted per poll.
 
 #include <teserra/platform/clock.hpp>
+#include <teserra/platform/file_system.hpp>
 #include <teserra/platform/platform.hpp>
 #include <teserra/platform/window.hpp>
 
@@ -86,6 +87,7 @@ public:
     }
 
     [[nodiscard]] const platform::Clock& clock() const noexcept override { return m_clock; }
+    [[nodiscard]] platform::FileSystem& fileSystem() noexcept override { return m_fileSystem; }
 
     [[nodiscard]] u64 polls() const noexcept { return m_polls; }
     [[nodiscard]] const platform::WindowDesc& lastWindowDesc() const noexcept { return m_lastWindowDesc; }
@@ -93,6 +95,7 @@ public:
 private:
     Journal* m_journal;
     platform::ManualClock m_clock;
+    platform::NativeFileSystem m_fileSystem;
     std::vector<std::chrono::nanoseconds> m_frameTimes{std::chrono::milliseconds{16}};
     std::map<u64, std::vector<platform::Event>> m_scriptedEvents;
     platform::WindowDesc m_lastWindowDesc;

@@ -19,6 +19,7 @@ public:
     [[nodiscard]] Result<std::unique_ptr<Window>> createWindow(const WindowDesc& desc) override;
     void pollEvents(EventQueue& queue) override;
     [[nodiscard]] const Clock& clock() const noexcept override { return m_clock; }
+    [[nodiscard]] FileSystem& fileSystem() noexcept override { return m_fileSystem; }
 
     // For GlfwWindow.
 
@@ -30,6 +31,7 @@ public:
 private:
     MainThread m_mainThread;
     SteadyClock m_clock;
+    NativeFileSystem m_fileSystem;
     std::vector<Event> m_pending; // events from GLFW callbacks since the last pollEvents()
     u32 m_windowCount = 0;
 };

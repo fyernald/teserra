@@ -65,8 +65,8 @@ classDiagram
         +readFile(path) Result~vector~byte~~
         +writeFile(path, bytes) Result~void~
         +exists(path) bool
-        +executableDirectory() path
-        +userDataDirectory(appName) path
+        +executableDirectory() Result~string~
+        +userDataDirectory(appName) Result~string~
     }
     Platform --> Window
     Window --> OpenGlContext
@@ -82,7 +82,12 @@ classDiagram
 - **Keys** are an engine enum `platform::Key` based on *physical* key positions (US layout names, like `Key::W`), plus `TextEntered` events for text; mouse buttons are `platform::MouseButton`. The GLFW backend translates codes in one table, `src/glfw/glfw_key_table.cpp`, whose `static_assert` fails the build if a `Key` has no mapping.
 - **`Clock`** returns monotonic time as `std::chrono::nanoseconds`. `SteadyClock` wraps `std::chrono::steady_clock` (high resolution and monotonic on all supported platforms) and is what `Platform::clock()` returns. It is an interface for testability (a `ManualClock`, advanced by hand, drives loop and fixed-step tests, and a test platform can return one), not for portability.
 - **`FrameTimer`** and **`FixedStepAccumulator`** are plain values fed explicit times. `FrameTimer::tick(clock.now())` gives the frame delta, the elapsed time and an FPS value averaged over 500 ms windows. `FixedStepAccumulator::advance(delta)` returns how many fixed steps (default 1/60 s) to run this frame, carries time below one step over to the next frame, and drops whole steps beyond `maxStepsPerFrame` (default 5) after a stall, so a slow simulation cannot fall into a spiral of death.
-- **`FileSystem`** uses UTF-8 paths at the API (`std::filesystem::path` constructed from `std::u8string_view` where needed). Platform-specific parts are only `executableDirectory()` and `userDataDirectory()`.
+- **`FileSystem`** (`<teserra/platform/file_system.hpp>`) reads and writes whole files. `NativeFileSystem` is the operating system's; `Platform::fileSystem()` returns one, may be used from any thread, and tools and tests can create their own. It is an interface so that tests can use another file system (an in-memory one for asset loaders).
+  - **Paths** are UTF-8 `std::string_view`s at the API ([ADR-0015](../adr/0015-windows-first-platform-abstraction.md)). Inside, `std::filesystem::path` is built from a `std::u8string_view`, never from a `std::string`, which Windows would read in the ANSI code page. Invalid UTF-8, an empty path or a null character is `InvalidArgument`, checked before `std::filesystem` sees the path, so it never throws.
+  - **Directories:** `executableDirectory()` and `userDataDirectory(appName)` (`%APPDATA%\<appName>` on Windows, created if missing) return absolute paths with `/` separators and no trailing separator, so `dir + "/save.dat"` works on every OS. `appName` must be one directory name that is valid on every supported OS.
+  - **`writeFile`** writes `<path>.tmp` and renames it over the file, so a crash during the write keeps the previous content. It does not create parent directories.
+  - **Errors** name the path: `NotFound`, `AccessDenied`, `InvalidArgument` (also for a directory), `IoFailure`.
+  - **OS-specific** are only `executableDirectory()` and `userDataDirectory()`, in `src/windows/file_system_windows.cpp`; reading, writing and `exists()` are portable (`src/common/native_file_system.cpp`).
 - **Threading:** use `std::thread`/`std::jthread`, `std::mutex`, `std::atomic`, `std::condition_variable` directly. The platform layer adds only `setCurrentThreadName()`. All window and event functions must be called on the main thread (asserted in debug builds).
 
 ## Selection mechanism
