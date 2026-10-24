@@ -16,7 +16,8 @@
 # module sees it: with the module's public include directories and dependencies and the Teserra warning
 # set. The build fails if a header is not self-contained or exposes a private dependency: spdlog or fmt
 # (private to teserra_core, ADR-0011), GLFW (private to teserra_platform, ADR-0006), <windows.h>
-# (ADR-0015) or OpenGL headers (private to teserra_rhi_opengl, ADR-0009).
+# (ADR-0015), OpenGL headers (private to teserra_rhi_opengl, ADR-0009) or stb_image (private to
+# teserra_assets, ADR-0010).
 #
 #   teserra_add_compile_fail_test(<name> SOURCE <file> EXPECT <regex> [WARNINGS_AS_ERRORS]
 #       [DEPENDS <module>...])
@@ -125,6 +126,9 @@ function(teserra_add_header_check module)
 #endif
 #if defined(GLAD_GL_H_) || defined(__gl_h_) || defined(__GL_H__)
 #error "<@include_path@> exposes OpenGL headers, which are private to teserra_rhi_opengl (ADR-0009)"
+#endif
+#if defined(STBI_VERSION)
+#error "<@include_path@> exposes stb_image, which is private to teserra_assets (ADR-0010)"
 #endif
 ]])
         list(APPEND sources "${source}")

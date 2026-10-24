@@ -11,6 +11,7 @@
     "glslang",
     "spdlog",
     "spirv-cross",
+    "stb",
     "tl-expected"
   ],
   "features": {
