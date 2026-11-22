@@ -499,6 +499,15 @@ TEST_CASE("Null backend: submitted streams are validated against the device's ob
                                        .width = 64,
                                        .height = 64});
           }) == "copyTextureToBuffer needs 16384 bytes from offset 4 of buffer 'Staging', which has 16384");
+    const TextureHandle depth =
+        *device->createTexture({.format = Format::Depth32Float,
+                                .width = 4,
+                                .height = 4,
+                                .usage = TextureUsage::DepthStencil | TextureUsage::CopySrc,
+                                .debugName = "Depth"});
+    CHECK(failureOf([&](CommandList& cmd) {
+              cmd.copyTextureToBuffer({.buffer = scene.staging, .texture = depth, .width = 4, .height = 4});
+          }) == "copyTextureToBuffer with depth texture 'Depth'; depth textures cannot be copied in v1");
 
     const TextureHandle stale =
         *device->createTexture({.width = 4, .height = 4, .usage = TextureUsage::RenderTarget});

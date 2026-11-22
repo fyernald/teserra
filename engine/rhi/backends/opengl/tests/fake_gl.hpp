@@ -83,6 +83,8 @@ struct FakeGlState {
     std::set<GLuint> liveVertexArrays{};
     /// The buffer bound to GL_PIXEL_UNPACK_BUFFER.
     GLuint unpackBuffer = 0;
+    /// The buffer bound to GL_PIXEL_PACK_BUFFER.
+    GLuint packBuffer = 0;
     /// The data pointer of the last texture upload.
     const void* lastPixels = nullptr;
 };
@@ -100,6 +102,9 @@ inline std::string name(GLenum value) {
         {GL_UNPACK_ALIGNMENT, "GL_UNPACK_ALIGNMENT"},
         {GL_UNPACK_ROW_LENGTH, "GL_UNPACK_ROW_LENGTH"},
         {GL_PIXEL_UNPACK_BUFFER, "GL_PIXEL_UNPACK_BUFFER"},
+        {GL_PACK_ALIGNMENT, "GL_PACK_ALIGNMENT"},
+        {GL_PACK_ROW_LENGTH, "GL_PACK_ROW_LENGTH"},
+        {GL_PIXEL_PACK_BUFFER, "GL_PIXEL_PACK_BUFFER"},
         {GL_RED, "GL_RED"},
         {GL_RGBA, "GL_RGBA"},
         {GL_BGRA, "GL_BGRA"},
@@ -350,6 +355,8 @@ inline void GLAD_API_PTR textureStorage2D(GLuint texture, GLsizei levels, GLenum
 inline void GLAD_API_PTR bindBuffer(GLenum target, GLuint buffer) {
     if (target == GL_PIXEL_UNPACK_BUFFER) {
         current->unpackBuffer = buffer;
+    } else if (target == GL_PIXEL_PACK_BUFFER) {
+        current->packBuffer = buffer;
     }
     log(std::format("BindBuffer({}, {})", name(target), buffer));
 }
@@ -384,6 +391,21 @@ inline void GLAD_API_PTR textureSubImage3D(GLuint texture, GLint level, GLint x,
                                            GLenum type, const void* pixels) {
     log(std::format("TextureSubImage3D({}, {}, {} {} {}, {}x{}x{}, {}, {}, {})", texture, level, x, y, z,
                     width, height, depth, name(format), name(type), pixelSource(pixels)));
+}
+
+// Where texel data goes: client memory, or an offset into the bound pixel pack buffer.
+inline std::string pixelDestination(const void* pixels) {
+    if (current->packBuffer != 0) {
+        return std::format("buffer {} + {}", current->packBuffer, reinterpret_cast<std::uintptr_t>(pixels));
+    }
+    return "client memory";
+}
+
+inline void GLAD_API_PTR getTextureSubImage(GLuint texture, GLint level, GLint x, GLint y, GLint z,
+                                            GLsizei width, GLsizei height, GLsizei depth, GLenum format,
+                                            GLenum type, GLsizei bufSize, void* pixels) {
+    log(std::format("GetTextureSubImage({}, {}, {} {} {}, {}x{}x{}, {}, {}, {} bytes, {})", texture, level, x,
+                    y, z, width, height, depth, name(format), name(type), bufSize, pixelDestination(pixels)));
 }
 
 inline void GLAD_API_PTR generateTextureMipmap(GLuint texture) {
@@ -809,6 +831,7 @@ public:
             {"glTextureSubImage2D", reinterpret_cast<platform::GlProc>(&fake_gl::textureSubImage2D)},
             {"glTextureSubImage3D", reinterpret_cast<platform::GlProc>(&fake_gl::textureSubImage3D)},
             {"glGenerateTextureMipmap", reinterpret_cast<platform::GlProc>(&fake_gl::generateTextureMipmap)},
+            {"glGetTextureSubImage", reinterpret_cast<platform::GlProc>(&fake_gl::getTextureSubImage)},
             {"glBindBuffer", reinterpret_cast<platform::GlProc>(&fake_gl::bindBuffer)},
             {"glObjectLabel", reinterpret_cast<platform::GlProc>(&fake_gl::objectLabel)},
             {"glDeleteTextures", reinterpret_cast<platform::GlProc>(&fake_gl::deleteTextures)},

@@ -18,11 +18,14 @@
 #include <array>
 #include <cstddef>
 #include <cstdlib>
+#include <cstring>
 #include <format>
 #include <memory>
 #include <ranges>
 #include <span>
 #include <string>
+#include <string_view>
+#include <utility>
 #include <vector>
 
 using namespace teserra;
@@ -63,6 +66,123 @@ std::vector<std::byte> brokenBlob(std::string_view glsl) {
     constexpr std::array<u32, 2> kSpirvWords{0x07230203, 0x00010500};
     return writeShaderBlob(
         {.stage = ShaderStage::Fragment, .spirv = std::as_bytes(std::span(kSpirvWords)), .glsl = glsl});
+}
+
+// The vertex-colored triangles of the convention tests, in normalized device coordinates (+Y up): a green
+// counter-clockwise one in the top-left corner and a red clockwise one in the top-right corner. With back
+// faces culled, only the green one may appear, and at the top (ADR-0024).
+constexpr std::array<f32, usize{6} * 7> kWindingVertices{
+    -1.0F, 1.0F, 0.0F, 0.0F, 1.0F, 0.0F, 1.0F, // counter-clockwise
+    -1.0F, 0.0F, 0.0F, 0.0F, 1.0F, 0.0F, 1.0F, //
+    0.0F,  1.0F, 0.0F, 0.0F, 1.0F, 0.0F, 1.0F, //
+    1.0F,  1.0F, 0.0F, 1.0F, 0.0F, 0.0F, 1.0F, // clockwise
+    1.0F,  0.0F, 0.0F, 1.0F, 0.0F, 0.0F, 1.0F, //
+    0.0F,  1.0F, 0.0F, 1.0F, 0.0F, 0.0F, 1.0F, //
+};
+
+using Rgba = std::array<u8, 4>;
+constexpr Rgba kGreen{0, 255, 0, 255};
+constexpr Rgba kBlack{0, 0, 0, 255};
+
+// What draws kWindingVertices into targets of one format, with back faces culled.
+class WindingScene {
+public:
+    WindingScene(Device& device, Format format)
+        : m_device(device) {
+        m_vertex = *device.createShaderModule({.stage = ShaderStage::Vertex,
+                                               .blob = test::shaders::kVertexColorVert,
+                                               .debugName = "Winding vertex"});
+        m_fragment = *device.createShaderModule({.stage = ShaderStage::Fragment,
+                                                 .blob = test::shaders::kVertexColorFrag,
+                                                 .debugName = "Winding fragment"});
+        constexpr std::array kBuffers{VertexBufferLayout{.stride = 28}};
+        constexpr std::array kAttributes{
+            VertexAttribute{.location = 0, .format = VertexFormat::Float3},
+            VertexAttribute{.location = 1, .format = VertexFormat::Float4, .offset = 12},
+        };
+        m_pipeline = *device.createGraphicsPipeline({
+            .vertexShader = m_vertex,
+            .fragmentShader = m_fragment,
+            .vertexBuffers = kBuffers,
+            .vertexAttributes = kAttributes,
+            .raster = {.cullMode = CullMode::Back, .frontFace = FrontFace::CounterClockwise},
+            .targets = {.colorFormats = {format}},
+            .debugName = "Winding",
+        });
+        m_vertices = *device.createBuffer(
+            {.sizeInBytes = sizeof(kWindingVertices), .usage = BufferUsage::Vertex | BufferUsage::CopyDst});
+        device.writeBuffer(m_vertices, 0, std::as_bytes(std::span(kWindingVertices)));
+    }
+    ~WindingScene() {
+        m_device.destroy(m_vertices);
+        m_device.destroy(m_pipeline);
+        m_device.destroy(m_fragment);
+        m_device.destroy(m_vertex);
+    }
+
+    WindingScene(const WindingScene&) = delete;
+    WindingScene& operator=(const WindingScene&) = delete;
+    WindingScene(WindingScene&&) = delete;
+    WindingScene& operator=(WindingScene&&) = delete;
+
+    // Draws the triangles in the current render pass.
+    void draw(CommandList& cmd) const {
+        cmd.bindPipeline(m_pipeline);
+        cmd.bindVertexBuffer(0, m_vertices);
+        cmd.draw({.vertexCount = 6});
+    }
+
+private:
+    Device& m_device;
+    ShaderModuleHandle m_vertex;
+    ShaderModuleHandle m_fragment;
+    GraphicsPipelineHandle m_pipeline;
+    BufferHandle m_vertices;
+};
+
+// Reads the texels of an RGBA8 texture back through RHI calls alone, as a Vulkan backend's conformance run
+// would: copyTextureToBuffer into a Readback buffer, recorded after the rendering it reads.
+class Readback {
+public:
+    Readback(Device& device, UVec2 size)
+        : m_device(device), m_size(size) {
+        m_buffer = *device.createBuffer({.sizeInBytes = u64{size.x} * size.y * 4,
+                                         .usage = BufferUsage::CopyDst,
+                                         .memory = MemoryLocation::Readback,
+                                         .debugName = "Readback"});
+    }
+    ~Readback() { m_device.destroy(m_buffer); }
+
+    Readback(const Readback&) = delete;
+    Readback& operator=(const Readback&) = delete;
+    Readback(Readback&&) = delete;
+    Readback& operator=(Readback&&) = delete;
+
+    void record(CommandList& cmd, TextureHandle texture) const {
+        cmd.copyTextureToBuffer(
+            {.buffer = m_buffer, .texture = texture, .width = m_size.x, .height = m_size.y});
+    }
+
+    // The texel in column x of row y, row 0 being the top; valid once the copy has completed (waitIdle()).
+    [[nodiscard]] Rgba texel(u32 x, u32 y) const {
+        const std::span<const std::byte> bytes =
+            m_device.map(m_buffer).subspan((usize{y} * m_size.x + x) * 4, 4);
+        Rgba rgba{};
+        std::memcpy(rgba.data(), bytes.data(), rgba.size());
+        return rgba;
+    }
+
+private:
+    Device& m_device;
+    UVec2 m_size;
+    BufferHandle m_buffer;
+};
+
+void checkNoWarnings(const test::LogCapture& log) {
+    for (const test::CapturedLog& record : log.records()) {
+        INFO(record.message);
+        CHECK(record.level < LogLevel::Warn);
+    }
 }
 
 } // namespace
@@ -458,91 +578,140 @@ TEST_CASE("OpenGL backend (GPU): creates and binds a graphics pipeline", "[rhi_o
     }
 }
 
-TEST_CASE("OpenGL backend (GPU): front faces are counter-clockwise and row 0 is the top",
-          "[rhi_opengl][gpu]") {
+TEST_CASE("OpenGL backend (GPU): rendered, sampled and read back, row 0 is the top and front faces are "
+          "counter-clockwise",
+          "[rhi_opengl][gpu][conventions]") {
     const GpuWindow gpu = createGpuWindowOrSkip();
     auto created =
         createDevice({.backend = Backend::OpenGL, .enableValidation = true, .enableBackendDebug = true},
                      gpu.window.get(), std::array{opengl::backendFactory()});
     REQUIRE(created.has_value());
-    auto& device = static_cast<opengl::GlDevice&>(**created);
+    // Only RHI calls from here on: the Vulkan backend will pass the same test.
+    Device& device = **created;
     const test::LogCapture log;
+    constexpr UVec2 kSize{8, 8};
+    constexpr Format kFormat = Format::Rgba8Unorm;
+    {
+        const WindingScene winding(device, kFormat);
+        const TextureHandle rendered = *device.createTexture(
+            {.format = kFormat,
+             .width = kSize.x,
+             .height = kSize.y,
+             .usage = TextureUsage::RenderTarget | TextureUsage::Sampled | TextureUsage::CopySrc,
+             .debugName = "Rendered"});
+        const TextureHandle resampled =
+            *device.createTexture({.format = kFormat,
+                                   .width = kSize.x,
+                                   .height = kSize.y,
+                                   .usage = TextureUsage::RenderTarget | TextureUsage::CopySrc,
+                                   .debugName = "Resampled"});
 
-    const auto vertex = device.createShaderModule({.stage = ShaderStage::Vertex,
-                                                   .blob = test::shaders::kVertexColorVert,
-                                                   .debugName = "Winding vertex"});
-    const auto fragment = device.createShaderModule({.stage = ShaderStage::Fragment,
-                                                     .blob = test::shaders::kVertexColorFrag,
-                                                     .debugName = "Winding fragment"});
-    REQUIRE(vertex.has_value());
-    REQUIRE(fragment.has_value());
-    constexpr std::array kBuffers{VertexBufferLayout{.stride = 28}};
-    constexpr std::array kAttributes{
-        VertexAttribute{.location = 0, .format = VertexFormat::Float3},
-        VertexAttribute{.location = 1, .format = VertexFormat::Float4, .offset = 12},
-    };
-    const auto pipeline = device.createGraphicsPipeline({
-        .vertexShader = *vertex,
-        .fragmentShader = *fragment,
-        .vertexBuffers = kBuffers,
-        .vertexAttributes = kAttributes,
-        .raster = {.cullMode = CullMode::Back, .frontFace = FrontFace::CounterClockwise},
-        .targets = {.colorFormats = {device.swapchain()->format()}},
-        .debugName = "Winding",
-    });
-    REQUIRE(pipeline.has_value());
+        // A triangle over the whole target that copies `rendered` texel for texel: UV (0, 0) is its top-left
+        // texel.
+        const ShaderModuleHandle vertex = *device.createShaderModule({.stage = ShaderStage::Vertex,
+                                                                      .blob = test::shaders::kSampledVert,
+                                                                      .debugName = "Sampled vertex"});
+        const ShaderModuleHandle fragment = *device.createShaderModule({.stage = ShaderStage::Fragment,
+                                                                        .blob = test::shaders::kSampledFrag,
+                                                                        .debugName = "Sampled fragment"});
+        constexpr std::array kEntries{BindGroupLayoutEntry{
+            .binding = 0, .type = BindingType::SampledTexture, .visibility = ShaderStage::Fragment}};
+        const BindGroupLayoutHandle materialLayout = *device.createBindGroupLayout({.entries = kEntries});
+        const std::array groups{BindGroupLayoutHandle{}, BindGroupLayoutHandle{}, materialLayout};
+        const PipelineLayoutHandle layout = *device.createPipelineLayout({.groups = groups});
+        const GraphicsPipelineHandle copy = *device.createGraphicsPipeline({
+            .vertexShader = vertex,
+            .fragmentShader = fragment,
+            .layout = layout,
+            .targets = {.colorFormats = {kFormat}},
+            .debugName = "Copy",
+        });
+        const SamplerHandle nearest =
+            *device.createSampler({.minFilter = Filter::Nearest, .magFilter = Filter::Nearest});
+        const std::array resources{BindGroupEntry{.binding = 0, .texture = rendered, .sampler = nearest}};
+        const BindGroupHandle group =
+            *device.createBindGroup({.layout = materialLayout, .entries = resources});
 
-    // NDC, +Y up: a green counter-clockwise triangle in the top-left corner and a red clockwise one in the
-    // top-right corner. With back faces culled, only the green one may appear, and at the top.
-    constexpr std::array<f32, usize{6} * 7> kVertices{
-        -1.0F, 1.0F, 0.0F, 0.0F, 1.0F, 0.0F, 1.0F, // counter-clockwise
-        -1.0F, 0.0F, 0.0F, 0.0F, 1.0F, 0.0F, 1.0F, //
-        0.0F,  1.0F, 0.0F, 0.0F, 1.0F, 0.0F, 1.0F, //
-        1.0F,  1.0F, 0.0F, 1.0F, 0.0F, 0.0F, 1.0F, // clockwise
-        1.0F,  0.0F, 0.0F, 1.0F, 0.0F, 0.0F, 1.0F, //
-        0.0F,  1.0F, 0.0F, 1.0F, 0.0F, 0.0F, 1.0F, //
-    };
-    const BufferHandle vertices = *device.createBuffer(
-        {.sizeInBytes = sizeof(kVertices), .usage = BufferUsage::Vertex | BufferUsage::CopyDst});
-    device.writeBuffer(vertices, 0, std::as_bytes(std::span(kVertices)));
+        const Readback renderedTexels(device, kSize);
+        const Readback resampledTexels(device, kSize);
+        device.beginFrame();
+        CommandList& cmd = device.acquireCommandList();
+        cmd.beginRenderPass({.colorAttachments = {{.texture = rendered, .loadOp = LoadOp::Clear}}});
+        winding.draw(cmd);
+        cmd.endRenderPass();
+        renderedTexels.record(cmd, rendered);
+        // The next pass samples what the last one rendered. The RHI has no barrier call: backends order such
+        // hazards themselves (docs/architecture/rhi.md#synchronization-and-frames-in-flight).
+        cmd.beginRenderPass({.colorAttachments = {{.texture = resampled, .loadOp = LoadOp::Clear}}});
+        cmd.bindPipeline(copy);
+        cmd.bindGroup(kMaterialGroup, group);
+        cmd.draw({.vertexCount = 3});
+        cmd.endRenderPass();
+        resampledTexels.record(cmd, resampled);
+        device.submit(cmd);
+        device.endFrame();
+        device.waitIdle();
 
-    device.beginFrame();
-    const TextureHandle image = device.swapchain()->acquireNextImage();
-    CommandList& cmd = device.acquireCommandList();
-    cmd.beginRenderPass(
-        {.colorAttachments = {
-             {.texture = image, .loadOp = LoadOp::Clear, .clearColor = {0.0F, 0.0F, 0.0F, 1.0F}}}});
-    cmd.bindPipeline(*pipeline);
-    cmd.bindVertexBuffer(0, vertices);
-    cmd.draw({.vertexCount = 6});
-    cmd.endRenderPass();
-    device.submit(cmd);
+        const std::array readbacks{std::pair{"rendered", &renderedTexels},
+                                   std::pair{"rendered, sampled and rendered again", &resampledTexels}};
+        for (const auto& [name, texels] : readbacks) {
+            INFO(name);
+            CHECK(texels->texel(0, 0) == kGreen); // the counter-clockwise triangle, in row 0
+            CHECK(texels->texel(1, 1) == kGreen);
+            CHECK(texels->texel(0, 2) == kGreen);
+            CHECK(texels->texel(kSize.x - 1, 0) == kBlack); // the clockwise one is culled
+            CHECK(texels->texel(0, kSize.y - 1) == kBlack); // nothing at the bottom
+        }
 
-    const auto texel = [&](u32 x, u32 y) {
-        std::array<GLubyte, 4> rgba{};
-        device.gl().GetTextureSubImage(device.texture(image)->name, 0, static_cast<GLint>(x),
-                                       static_cast<GLint>(y), 0, 1, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE,
-                                       static_cast<GLsizei>(rgba.size()), rgba.data());
-        return rgba;
-    };
-    const UVec2 size = device.swapchain()->size();
-    constexpr std::array<GLubyte, 4> kGreen{0, 255, 0, 255};
-    constexpr std::array<GLubyte, 4> kBlack{0, 0, 0, 255};
-    CHECK(texel(10, 10) == kGreen);          // the counter-clockwise triangle, at the top
-    CHECK(texel(size.x - 10, 10) == kBlack); // the clockwise one is culled
-    CHECK(texel(10, size.y - 10) == kBlack); // nothing at the bottom
-    device.swapchain()->present();
-    device.endFrame();
-    device.waitIdle();
-
-    device.destroy(vertices);
-    device.destroy(*pipeline);
-    device.destroy(*vertex);
-    device.destroy(*fragment);
-    for (const test::CapturedLog& record : log.records()) {
-        INFO(record.message);
-        CHECK(record.level < LogLevel::Warn);
+        device.destroy(group);
+        device.destroy(nearest);
+        device.destroy(copy);
+        device.destroy(layout);
+        device.destroy(materialLayout);
+        device.destroy(fragment);
+        device.destroy(vertex);
+        device.destroy(resampled);
+        device.destroy(rendered);
     }
+    checkNoWarnings(log);
+}
+
+TEST_CASE("OpenGL backend (GPU): the swapchain image keeps row 0 at the top until present() flips it",
+          "[rhi_opengl][gpu][conventions]") {
+    // The window itself cannot be checked here: drivers leave the pixels of a hidden window undefined. The
+    // swapchain image is read back like any texture, the flip of present() is checked against the fake driver
+    // (opengl_swapchain_test.cpp), and the window by eye
+    // (docs/guides/testing-strategy.md#gpu-integration-tests).
+    const GpuWindow gpu = createGpuWindowOrSkip();
+    auto created =
+        createDevice({.backend = Backend::OpenGL, .enableValidation = true, .enableBackendDebug = true},
+                     gpu.window.get(), std::array{opengl::backendFactory()});
+    REQUIRE(created.has_value());
+    Device& device = **created;
+    const test::LogCapture log;
+    Swapchain& swapchain = *device.swapchain();
+    const UVec2 size = swapchain.size();
+    {
+        const WindingScene winding(device, swapchain.format());
+        const Readback presented(device, size);
+        device.beginFrame();
+        const TextureHandle image = swapchain.acquireNextImage();
+        CommandList& cmd = device.acquireCommandList();
+        cmd.beginRenderPass({.colorAttachments = {{.texture = image, .loadOp = LoadOp::Clear}}});
+        winding.draw(cmd);
+        cmd.endRenderPass();
+        presented.record(cmd, image);
+        device.submit(cmd);
+        swapchain.present();
+        device.endFrame();
+        device.waitIdle();
+
+        // Green and black are the same in sRGB and linear values.
+        CHECK(presented.texel(4, 4) == kGreen);          // the image's top-left corner
+        CHECK(presented.texel(size.x - 5, 4) == kBlack); // the clockwise triangle is culled
+        CHECK(presented.texel(4, size.y - 5) == kBlack); // nothing at the bottom
+    }
+    checkNoWarnings(log);
 }
 
 TEST_CASE("OpenGL backend (GPU): bind groups at sets 0, 2 and 3 reach the shader", "[rhi_opengl][gpu]") {

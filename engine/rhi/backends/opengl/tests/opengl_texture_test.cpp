@@ -222,6 +222,68 @@ TEST_CASE("OpenGL backend: copyBufferToTexture reads from a pixel unpack buffer"
     CHECK(gl.calls == expected);
 }
 
+TEST_CASE("OpenGL backend: copyTextureToBuffer writes into a pixel pack buffer, top row first",
+          "[rhi_opengl][texture]") {
+    test::FakeGlWindow window;
+    const auto device = requireOpenGl(window);
+    test::FakeGlState& gl = window.context.state;
+    const BufferHandle readback = *device->createBuffer(
+        {.sizeInBytes = 4096, .usage = BufferUsage::CopyDst, .memory = MemoryLocation::Readback});
+    const GLuint buffer = gl.lastName;
+    const auto copyCalls = [&](TextureHandle texture, const BufferTextureCopy& region) {
+        BufferTextureCopy copy = region;
+        copy.buffer = readback;
+        copy.texture = texture;
+        gl.calls.clear();
+        device->beginFrame();
+        CommandList& commands = device->acquireCommandList();
+        commands.copyTextureToBuffer(copy);
+        device->submit(commands);
+        device->endFrame();
+        return gl.calls;
+    };
+
+    SECTION("a region of a 2D texture into padded rows, BGRA as stored") {
+        const TextureHandle texture = *device->createTexture(
+            {.format = Format::Bgra8Unorm, .width = 8, .height = 8, .usage = TextureUsage::CopySrc});
+        const GLuint name = gl.lastName;
+
+        const std::vector<std::string> expected{
+            "PixelStorei(GL_PACK_ALIGNMENT, 1)",
+            "PixelStorei(GL_PACK_ROW_LENGTH, 16)",
+            std::format("BindBuffer(GL_PIXEL_PACK_BUFFER, {})", buffer),
+            // 3 rows of 64 bytes, the last one 16 bytes: no flip, no padding after the last row.
+            std::format(
+                "GetTextureSubImage({}, 0, 2 5 0, 4x3x1, GL_BGRA, GL_UNSIGNED_BYTE, 144 bytes, buffer {} "
+                "+ 128)",
+                name, buffer),
+            "BindBuffer(GL_PIXEL_PACK_BUFFER, 0)",
+        };
+        CHECK(copyCalls(texture,
+                        {.bufferOffset = 128, .bytesPerRow = 64, .x = 2, .y = 5, .width = 4, .height = 3}) ==
+              expected);
+    }
+    SECTION("layers of an array texture, from a mip level, tightly packed") {
+        const TextureHandle texture = *device->createTexture({.dimension = TextureDimension::Tex2DArray,
+                                                              .format = Format::Rgba16Float,
+                                                              .width = 8,
+                                                              .height = 8,
+                                                              .depthOrLayers = 4,
+                                                              .mipLevels = 2,
+                                                              .usage = TextureUsage::CopySrc});
+        const GLuint name = gl.lastName;
+
+        const std::vector<std::string> calls =
+            copyCalls(texture, {.mipLevel = 1, .arrayLayer = 1, .layerCount = 2, .width = 4, .height = 4});
+        REQUIRE(calls.size() == 5);
+        CHECK(calls[1] == "PixelStorei(GL_PACK_ROW_LENGTH, 0)");
+        CHECK(calls[3] ==
+              std::format("GetTextureSubImage({}, 1, 0 0 1, 4x4x2, GL_RGBA, GL_HALF_FLOAT, 256 bytes, "
+                          "buffer {} + 0)",
+                          name, buffer));
+    }
+}
+
 TEST_CASE("OpenGL backend: render passes attach depth-stencil textures and array layers",
           "[rhi_opengl][texture]") {
     test::FakeGlWindow window;

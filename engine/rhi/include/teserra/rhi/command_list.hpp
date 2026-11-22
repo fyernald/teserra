@@ -78,7 +78,11 @@ public:
     // Copies, outside render passes
 
     void copyBuffer(const BufferCopy& copy);
+    /// The texture needs TextureUsage::CopyDst and a color format: depth textures cannot be copied in v1.
     void copyBufferToTexture(const BufferTextureCopy& copy);
+    /// Readback: the buffer receives the region's rows top row first. Once the work has completed (after
+    /// waitIdle(), or once the frame slot is reused), a Readback buffer's map() holds them. The texture needs
+    /// TextureUsage::CopySrc and a color format.
     void copyTextureToBuffer(const BufferTextureCopy& copy);
 
     // Debug groups, shown by graphics debuggers

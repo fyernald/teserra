@@ -282,6 +282,7 @@ private:
     void replay(const CommandList& commands);
     void copyBuffer(const BufferCopy& copy);
     void copyBufferToTexture(const BufferTextureCopy& copy);
+    void copyTextureToBuffer(const BufferTextureCopy& copy);
     // Creates the GL texture of a validated descriptor whose mip count is resolved.
     [[nodiscard]] Result<TextureHandle> allocateTexture(const TextureDesc& desc);
     // Uploads texels from client memory (`pixels`) or, with a pixel unpack buffer bound, from that buffer at
