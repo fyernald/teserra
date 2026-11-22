@@ -77,3 +77,4 @@ All notable user-visible changes to Teserra are documented here. The format foll
 ### Fixed
 
 - `teserra_add_shaders()` works in deep build directories on Windows (#192): generated blobs and sources moved from `generated/teserra_shaders/<target>/blobs/` and `.../src/` to `tsh/<hash of the target>/`, which saves about 45 characters, and a generated path that Windows could not write (260 characters or more) now fails configuration with a message that names it, instead of failing the build.
+- `tools/scripts/package_example.py` includes the example's `assets/` folder, so a packaged `textured_quad` finds its image, and its README describes what `textured_quad` testers should see.

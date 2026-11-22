@@ -8,6 +8,7 @@ Writes <out>/teserra-<version>-windows-x64-<example>.zip (the naming of docs/pro
 single top-level folder of the same name holds:
 
 - the example's executable and the DLLs next to it in the build (GLFW, spdlog, fmt);
+- the example's assets/ folder, if it has one (textured_quad reads its image from there);
 - the Visual C++ runtime DLLs it needs, copied app-locally so that testers need no installer. They come from
   --vc-runtime, or else from the Microsoft.VC*.CRT folder under %VCToolsRedistDir%\\x64 (set by the Visual
   Studio developer environment);
@@ -48,6 +49,11 @@ DESCRIPTIONS = {
         "Resizing the window keeps the triangle in the middle of it."
     ),
     "rhi_clear": "What you should see: a window whose color slowly cycles through the hues.",
+    "textured_quad": (
+        "What you should see: a square picture in the middle of a dark window: a blue tile with a dark border,\n"
+        "a red block in its top-left corner and a large upright letter F. Press Space to switch between sharp\n"
+        "pixels (nearest) and smooth blending (linear); the window title shows which."
+    ),
 }
 
 
@@ -124,6 +130,10 @@ def package(root: Path, build_dir: Path, example: str, version: str, out_dir: Pa
     path = out_dir / f"{name}.zip"
     entries: list[tuple[str, Path | str]] = [(executable.name, executable)]
     entries += [(dll.name, dll) for dll in sorted(example_dir.glob("*.dll"), key=lambda p: p.name.lower())]
+    # Files the example loads at run time, from the assets/ folder its build copies next to the executable.
+    assets = example_dir / "assets"
+    entries += [(file.relative_to(example_dir).as_posix(), file)
+                for file in sorted(assets.rglob("*"), key=lambda p: p.as_posix().lower()) if file.is_file()]
     entries += [(dll, runtime / dll) for dll in VC_RUNTIME_DLLS]
     entries += [(file, root / file) for file in ROOT_FILES]
     entries.append(("README.txt", readme(root, example, version, executable.name, feedback_url)))
