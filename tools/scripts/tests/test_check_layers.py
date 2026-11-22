@@ -70,6 +70,19 @@ class CheckLayersTest(TreeTestCase):
         self.write("engine/platform/tests/window_test.cpp", "#include <teserra/rhi/device.hpp>\n")
         self.assertEqual(len(self.violations()), 1)
 
+    def test_tests_may_include_what_their_test_executable_links(self) -> None:
+        self.write("engine/platform/tests/CMakeLists.txt", """
+            # teserra_add_test(platform DEPENDS core) is only a comment
+            teserra_add_test(platform
+                SOURCES window_test.cpp
+                DEPENDS platform rhi  # the backend the tests run on
+                LIBRARIES glfw)
+            """)
+        self.write("engine/platform/tests/window_test.cpp", "#include <teserra/rhi/device.hpp>\n")
+        self.assertEqual(self.violations(), [])
+        self.write("engine/platform/src/window.cpp", "#include <teserra/rhi/device.hpp>\n")
+        self.assertEqual(len(self.violations()), 1)  # the module itself still may not
+
     def test_a_nested_module_owns_its_directory(self) -> None:
         self.write("engine/rhi/backends/opengl/CMakeLists.txt",
                    'teserra_add_module(rhi_opengl LAYER 3 DEPENDS rhi "platform")\n')

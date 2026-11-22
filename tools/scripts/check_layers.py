@@ -8,7 +8,8 @@ Modules are read from `teserra_add_module(<name> LAYER <n> DEPENDS ...)` in engi
 module owns the files under its directory (a nested module, like a backend, owns its own subtree). A file
 may include `<teserra/<x>/...>` when x is its own module or a direct DEPENDS entry; transitive dependencies
 do not count, so every module declares what it uses. Files under a module's tests/ may also include the
-test support headers `<teserra/test/...>`. CMake enforces the layer order of DEPENDS at configure time;
+test support headers `<teserra/test/...>` and the modules that `teserra_add_test(... DEPENDS ...)` in
+tests/CMakeLists.txt links, such as the null backend for renderer tests. CMake enforces the layer order of DEPENDS at configure time;
 this script closes the gap that PUBLIC linking leaves (docs/architecture/overview.md#how-the-layering-is-enforced).
 Used by the `layer-check` / `check` CMake targets and by the CI `checks` job.
 """
@@ -29,6 +30,8 @@ RULE = "layer-include"
 TEST_SUPPORT = "test"
 _MODULE_CALL = re.compile(r"\bteserra_add_module\s*\(([^)]*)\)", re.IGNORECASE)
 _MODULE_KEYWORDS = frozenset({"LAYER", "DEPENDS", "OPTIONAL_DEPENDS", "PUBLIC_HEADERS", "SOURCES"})
+_TEST_CALL = re.compile(r"\bteserra_add_test\s*\(([^)]*)\)", re.IGNORECASE)
+_TEST_KEYWORDS = frozenset({"SOURCES", "DEPENDS", "LIBRARIES"})
 # Optional dependencies may be absent from a build, but where they are used, they are dependencies.
 _DEPENDS_KEYWORDS = frozenset({"DEPENDS", "OPTIONAL_DEPENDS"})
 _TESERRA_HEADER = re.compile(r"^teserra/([^/]+)/")
@@ -40,6 +43,8 @@ class Module:
     directory: PurePosixPath  # relative to the root
     depends: frozenset[str]
     cmake_file: str
+    # Modules that the module's test executables link (teserra_add_test DEPENDS in tests/CMakeLists.txt).
+    test_depends: frozenset[str] = frozenset()
 
 
 def _strip_cmake_comments(text: str) -> str:
@@ -75,8 +80,25 @@ def find_modules(root: Path) -> dict[str, Module]:
                 elif keyword in _DEPENDS_KEYWORDS:
                     depends.add(token)
             directory = PurePosixPath(cmake_file.parent.as_posix())
-            modules[tokens[0]] = Module(tokens[0], directory, frozenset(depends), cmake_file.as_posix())
+            modules[tokens[0]] = Module(tokens[0], directory, frozenset(depends), cmake_file.as_posix(),
+                                        _test_depends(root, directory))
     return modules
+
+
+def _test_depends(root: Path, directory: PurePosixPath) -> frozenset[str]:
+    """The DEPENDS of the teserra_add_test() calls in the module's tests/CMakeLists.txt."""
+    cmake_file = root / directory / "tests" / "CMakeLists.txt"
+    if not cmake_file.is_file():
+        return frozenset()
+    depends: set[str] = set()
+    for call in _TEST_CALL.finditer(_strip_cmake_comments(read_text(cmake_file))):
+        keyword = None
+        for token in (token.strip('"') for token in call.group(1).split()[1:]):
+            if token in _TEST_KEYWORDS:
+                keyword = token
+            elif keyword == "DEPENDS":
+                depends.add(token)
+    return frozenset(depends)
 
 
 def owning_module(path: PurePosixPath, modules: dict[str, Module]) -> Module | None:
@@ -98,7 +120,7 @@ def check_file(root: Path, path: PurePosixPath, module: Module, modules: dict[st
         target = match.group(1)
         if target == module.name or target in module.depends:
             continue
-        if target == TEST_SUPPORT and in_tests:
+        if in_tests and (target == TEST_SUPPORT or target in module.test_depends):
             continue
         if target == TEST_SUPPORT:
             message = (f"<{include.header}> is test support; only {module.directory}/tests/ may include it, "
