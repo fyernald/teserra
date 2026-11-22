@@ -173,7 +173,8 @@ void validatePipelineLayoutDesc(const PipelineLayoutDesc& desc, const ResourceLo
 /// A live layout and exactly one entry per binding of it, each with a live resource of the binding's type:
 /// a buffer with Uniform or Storage usage and a range inside it (with a size if the binding has a dynamic
 /// offset), or a sampled texture and a sampler. Uniform buffer ranges start at a multiple of the device's
-/// uniformBufferOffsetAlignment and see at most its maxUniformBufferRange bytes.
+/// uniformBufferOffsetAlignment and see at most its maxUniformBufferRange bytes. A sampler that filters
+/// linearly (min or mag filter, or mipmaps of a texture with several levels) needs a Filterable format.
 void validateBindGroupDesc(const BindGroupDesc& desc, const ResourceLookup& objects,
                            const DeviceLimits& limits);
 

@@ -341,9 +341,23 @@ void validateBindGroupDesc(const BindGroupDesc& desc, const ResourceLookup& obje
                 !texture || hasAll(texture->usage, TextureUsage::Sampled),
                 "Bind group '{}': texture '{}' at binding {} was created without TextureUsage::Sampled",
                 desc.debugName, texture->debugName, entry.binding);
-            TESERRA_ASSERT(!entry.sampler.isNull() && objects.sampler(entry.sampler).has_value(),
-                           "Bind group '{}': binding {} needs a live sampler, not {}", desc.debugName,
-                           entry.binding, entry.sampler);
+            const std::optional<SamplerDesc> sampler =
+                entry.sampler.isNull() ? std::nullopt : objects.sampler(entry.sampler);
+            TESERRA_ASSERT(sampler.has_value(), "Bind group '{}': binding {} needs a live sampler, not {}",
+                           desc.debugName, entry.binding, entry.sampler);
+            if (texture && sampler) {
+                // Vulkan's rule: linear filtering needs a format that supports it, which backends cannot
+                // emulate.
+                [[maybe_unused]] const bool linear =
+                    sampler->minFilter == Filter::Linear || sampler->magFilter == Filter::Linear ||
+                    (sampler->mipmapMode == MipmapMode::Linear && texture->mipLevels > 1);
+                TESERRA_ASSERT(
+                    !linear || formatSupports(texture->format, FormatCapabilities::Filterable),
+                    "Bind group '{}': sampler '{}' at binding {} filters linearly, but format {} of "
+                    "texture '{}' is not filterable",
+                    desc.debugName, sampler->debugName, entry.binding, formatInfo(texture->format).name,
+                    texture->debugName);
+            }
             continue;
         }
         const BufferBinding& range = entry.buffer;

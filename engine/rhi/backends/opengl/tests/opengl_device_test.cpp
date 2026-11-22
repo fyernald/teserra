@@ -211,13 +211,20 @@ TEST_CASE("OpenGL backend: frames hand out command lists per frame slot", "[rhi_
     CHECK(window.context.state.finishCalls == 1);
 }
 
-TEST_CASE("OpenGL backend: other resources are not implemented yet", "[rhi_opengl]") {
+TEST_CASE("OpenGL backend: destroying null handles does nothing", "[rhi_opengl]") {
     test::FakeGlWindow window;
     const auto device = requireOpenGl(window);
+    window.context.state.calls.clear();
 
-    CHECK_FALSE(device->createSampler({}).has_value());
-    CHECK_FALSE(device->createShaderModule({}).has_value());
-    device->destroy(TextureHandle{}); // null handles are ignored
+    device->destroy(BufferHandle{});
+    device->destroy(TextureHandle{});
+    device->destroy(SamplerHandle{});
+    device->destroy(ShaderModuleHandle{});
+    device->destroy(BindGroupLayoutHandle{});
+    device->destroy(PipelineLayoutHandle{});
+    device->destroy(BindGroupHandle{});
+    device->destroy(GraphicsPipelineHandle{});
+    CHECK(window.context.state.calls.empty());
 }
 
 #if TESERRA_ENABLE_ASSERTS
