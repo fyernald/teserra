@@ -75,3 +75,18 @@ add_test(NAME cmake.shaders.incremental
         -P "${CMAKE_CURRENT_SOURCE_DIR}/shaders/TestShaderBuild.cmake"
 )
 set_tests_properties(cmake.shaders.incremental PROPERTIES LABELS "cmake;shaderc")
+
+# Generated shader paths that Windows cannot write fail configuration with a clear message (#192).
+if(CMAKE_HOST_WIN32)
+    add_test(NAME cmake.shaders.path_length
+        COMMAND "${CMAKE_COMMAND}" "-DTESERRA_SOURCE_DIR=${PROJECT_SOURCE_DIR}"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/shaders/TestShaderPathLength.cmake"
+    )
+    # CMake wraps long messages, so spaces in the expectation also match line breaks.
+    string(REPLACE " " "[ \t\r\n]+" _teserra_path_length_regex
+        "teserra_add_shaders\\(deep\\): the generated file C:/build/d+a[.]vert[.]d would have 260 characters, more than the 259 that Windows allows")
+    set_tests_properties(cmake.shaders.path_length PROPERTIES
+        PASS_REGULAR_EXPRESSION "${_teserra_path_length_regex}"
+        LABELS "cmake;shaderc"
+    )
+endif()
