@@ -67,6 +67,17 @@ class PackageExampleTest(TreeTestCase):
         self.assertIn("\r\n", readme)
         self.assertNotIn("\r\r", readme)
 
+    def test_the_assets_folder_of_an_example_is_packaged(self) -> None:
+        self.write("build/examples/rhi_triangle/assets/orientation_f.png", "png")
+        self.write("build/examples/rhi_triangle/assets/fonts/mono.ttf", "font")
+
+        made = self.package()
+
+        self.assertEqual(made.files[3:5], ("assets/fonts/mono.ttf", "assets/orientation_f.png"))
+        with zipfile.ZipFile(made.path) as archive:
+            self.assertEqual(
+                archive.read("teserra-0.1.0-alpha.5-windows-x64-rhi_triangle/assets/orientation_f.png"), b"png")
+
     def test_the_runtime_is_found_through_the_developer_environment(self) -> None:
         with mock.patch.dict(os.environ, {"VCToolsRedistDir": str(self.root / "redist")}):
             made = self.package(vc_runtime=None)
