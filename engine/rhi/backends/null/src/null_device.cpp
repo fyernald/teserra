@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <array>
 #include <cstddef>
+#include <memory>
 #include <optional>
 #include <string_view>
 #include <type_traits>
@@ -104,7 +105,10 @@ NullSwapchain::NullSwapchain(NullDevice& device, const SwapchainDesc& desc, UVec
 }
 
 NullSwapchain::~NullSwapchain() {
-    releaseImage();
+    // Only the device's destructor destroys its swapchain, and no frame runs after that: nothing to defer.
+    if (!m_image.isNull()) {
+        m_device.m_textures.destroy(m_image);
+    }
 }
 
 void NullSwapchain::present() {
@@ -274,52 +278,54 @@ TextureHandle NullDevice::createSwapchainImage(Format format, UVec2 size) {
     }));
 }
 
-void NullDevice::destroy(BufferHandle handle) {
-    if (!handle.isNull()) {
-        m_buffers.destroy(handle);
+template <typename Desc, typename Tag>
+void NullDevice::retire(HandlePool<Object<Desc>, Tag>& pool, Handle<Tag> handle) {
+    if (handle.isNull()) {
+        return;
     }
+    // The current frame may still use the object, or between frames the last one ended; an object no frame
+    // used is released at once.
+    const bool used = m_inFrame || m_frame > 0;
+    if (Object<Desc>* object = pool.tryGet(handle); object != nullptr && used) {
+        m_retired.push_back({.lastFrame = m_inFrame ? m_frame : m_frame - 1, .object = std::move(*object)});
+    }
+    pool.destroy(handle); // asserts on stale handles
+}
+
+void NullDevice::releaseCompleted() {
+    std::erase_if(m_retired, [&](const Retired& retired) { return retired.lastFrame < m_completedFrames; });
+}
+
+void NullDevice::destroy(BufferHandle handle) {
+    retire(m_buffers, handle);
 }
 
 void NullDevice::destroy(TextureHandle handle) {
-    if (!handle.isNull()) {
-        m_textures.destroy(handle);
-    }
+    retire(m_textures, handle);
 }
 
 void NullDevice::destroy(SamplerHandle handle) {
-    if (!handle.isNull()) {
-        m_samplers.destroy(handle);
-    }
+    retire(m_samplers, handle);
 }
 
 void NullDevice::destroy(ShaderModuleHandle handle) {
-    if (!handle.isNull()) {
-        m_shaderModules.destroy(handle);
-    }
+    retire(m_shaderModules, handle);
 }
 
 void NullDevice::destroy(BindGroupLayoutHandle handle) {
-    if (!handle.isNull()) {
-        m_bindGroupLayouts.destroy(handle);
-    }
+    retire(m_bindGroupLayouts, handle);
 }
 
 void NullDevice::destroy(PipelineLayoutHandle handle) {
-    if (!handle.isNull()) {
-        m_pipelineLayouts.destroy(handle);
-    }
+    retire(m_pipelineLayouts, handle);
 }
 
 void NullDevice::destroy(BindGroupHandle handle) {
-    if (!handle.isNull()) {
-        m_bindGroups.destroy(handle);
-    }
+    retire(m_bindGroups, handle);
 }
 
 void NullDevice::destroy(GraphicsPipelineHandle handle) {
-    if (!handle.isNull()) {
-        m_pipelines.destroy(handle);
-    }
+    retire(m_pipelines, handle);
 }
 
 void NullDevice::writeBuffer(BufferHandle buffer, u64 offset, std::span<const std::byte> data) {
@@ -397,7 +403,12 @@ std::span<std::byte> NullDevice::map(BufferHandle buffer) {
 
 void NullDevice::beginFrame() {
     TESERRA_ASSERT(!m_inFrame, "beginFrame() twice without endFrame()");
-    for (CommandList& list : m_commandLists[m_frame % kMaxFramesInFlight]) {
+    // Reusing the slot waits for the frame that last used it: that frame and every earlier one are complete.
+    if (m_frame >= kMaxFramesInFlight) {
+        m_completedFrames = std::max(m_completedFrames, m_frame - kMaxFramesInFlight + 1);
+    }
+    releaseCompleted();
+    for (CommandList& list : m_commandLists[frameSlot()]) {
         list.reset();
     }
     m_commandListsInUse = 0;
@@ -411,9 +422,16 @@ void NullDevice::endFrame() {
     ++m_frame;
 }
 
+void NullDevice::waitIdle() {
+    // The GPU finishes everything submitted. Inside a frame, the current frame's later commands may still
+    // use what it destroyed, so only the ended frames count as complete.
+    m_completedFrames = m_frame;
+    releaseCompleted();
+}
+
 CommandList& NullDevice::acquireCommandList() {
     TESERRA_ASSERT(m_inFrame, "acquireCommandList() outside beginFrame() / endFrame()");
-    std::deque<CommandList>& lists = m_commandLists[m_frame % kMaxFramesInFlight];
+    std::deque<CommandList>& lists = m_commandLists[frameSlot()];
     if (m_commandListsInUse == lists.size()) {
         lists.emplace_back();
     }

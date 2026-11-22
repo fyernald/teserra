@@ -89,6 +89,7 @@ public:
 
     void beginFrame() override {}
     void endFrame() override {}
+    [[nodiscard]] u32 frameSlot() const noexcept override { return 0; }
     [[nodiscard]] CommandList& acquireCommandList() override {
         m_commands.reset();
         return m_commands;

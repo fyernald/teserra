@@ -33,6 +33,7 @@ classDiagram
       +acquireCommandList() CommandList&
       +submit(CommandList&)
       +beginFrame() / endFrame()
+      +frameSlot() u32
       +swapchain() Swapchain*
       +limits() DeviceLimits
     }
@@ -81,7 +82,7 @@ The RHI contract (all backends): clip-space depth `[0, 1]`; NDC +Y up; **top-lef
 ## Handles and resource lifetime
 
 - All objects are referenced by typed generational handles (`BufferHandle`, `TextureHandle`, ...). Null handle = default-constructed.
-- `Device::destroy(handle)` invalidates the handle **immediately** (CPU side). The backend **defers** destruction of the underlying GPU object until every frame that may still use it has completed (tracked per frame slot, `kMaxFramesInFlight = 2`).
+- `Device::destroy(handle)` invalidates the handle **immediately** (CPU side). The backend **defers** destruction of the underlying GPU object until every frame that may still use it has completed (tracked per frame slot, `kMaxFramesInFlight = 2`): an object destroyed during frame N, or between frames after frame N ended, is freed once frame N has completed. `waitIdle()` outside a frame frees everything pending. The null backend implements this rule with fake fences, so tests check it without a GPU; the OpenGL backend deletes at once, because the driver already keeps deleted objects alive while submitted commands use them.
 - `rhi::Unique<THandle>` is a move-only RAII owner (handle + `Device&`) for code that wants scope-based lifetime. Containers of resources (materials, render targets) own handles explicitly and destroy them in their destructors.
 - Descriptor structs carry an optional `debugName` that backends forward to their debug-labeling facility and that validation messages print.
 
@@ -363,7 +364,7 @@ device.endFrame();
 
 ### Synchronization and frames in flight
 
-- The device keeps `kMaxFramesInFlight = 2` frame slots. `beginFrame()` waits on the fence of the slot being reused; `endFrame()` signals it. This bounds CPU-ahead-of-GPU latency and makes per-frame ring buffers safe.
+- The device keeps `kMaxFramesInFlight = 2` frame slots. `beginFrame()` waits on the fence of the slot being reused; `endFrame()` signals it. `frameSlot()` is the current frame's slot (frame N uses N % 2): per-frame resources such as ring buffer regions come one per slot, and after `beginFrame()` the GPU no longer reads what the slot's previous frame left in them. This bounds CPU-ahead-of-GPU latency and makes per-frame ring buffers safe.
 - Hazards *within* a frame (render to texture, then sample it) are handled **implicitly** by the backend based on declared usage (render pass attachments, bind group contents). The renderer never issues barriers in v1.
   - The Vulkan backend derives them by scanning each render pass's commands before `vkCmdBeginRendering`: it collects the resources of the attachments, bound bind groups and vertex/index buffers, and emits the transitions up front, because Vulkan forbids most barriers inside a render pass.
   - Copies happen only outside render passes and get their barriers inline.
@@ -427,7 +428,7 @@ CHECK(device->graphicsPipeline(pipeline)->targets.colorFormats[0] == rhi::Format
 - It is always built (no option) and is offered by `rhi::null::backendFactory()`. Without a window it has no swapchain. With a window (`createDevice(desc, window, ...)`), it has a `NullSwapchain` of the window's framebuffer size, so an `engine::App` with `AppConfig::backend = Backend::Null` runs, records and "presents" on the headless platform.
 - `submitted()` lists the command lists of the frame since the last `beginFrame()`; they stay valid until their frame slot is reused. `buffer(handle)`, `texture(handle)`, `bindGroup(handle)`, ... return the stored descriptor (with copies of names, shader code, vertex layouts and entries, which are sorted by binding), or `nullptr` for a dead handle; `shaderReflection(handle)` returns the reflection of a module's `.tshader` blob, which it reads like every backend; `bufferData(handle)` returns a buffer's memory; `liveObjectCount()` checks for leaks.
 - Copy commands are validated but not executed: a `Readback` buffer keeps what the CPU wrote.
-- `destroy()` frees at once: there is no GPU work to wait for.
+- **Fake fences:** the fake GPU completes frame N when frame N + 2 begins, which is when a real device waits for frame N's fence, or at `waitIdle()`. `destroy()` makes the handle stale at once and keeps the object until the frames that may use it have completed, as a Vulkan backend must: `pendingDestructionCount()` and `completedFrameCount()` let tests check it. Objects that no frame used yet are released at once.
 - With `enableValidation` it checks descriptors, uploads and every submitted stream with `<teserra/rhi/validation.hpp>` (see [Validation layer](#validation-layer)), like every backend.
 
 ## Future: Vulkan backend mapping
@@ -470,7 +471,7 @@ This is the **only** section of the engine documentation where OpenGL specifics 
 | CommandList | Validated with `validateCommands()` (with `enableValidation`), then replayed at `submit()` on the context thread; each record maps to a handful of GL calls. Replay still asserts on stale handles, for when validation is off |
 | Vertex and index buffers, draws | Buffer bindings are vertex array state in GL and each pipeline has its own VAO, while the RHI binds buffers independently of the pipeline. Replay therefore keeps the pass's bindings and applies them to the bound pipeline's VAO at the next draw, when they or the VAO changed: `glVertexArrayVertexBuffer` (with the pipeline's stride) per buffer slot of the pipeline, `glVertexArrayElementBuffer`. Draws: `glDrawArraysInstancedBaseInstance`, `glDrawElementsInstancedBaseVertexBaseInstance` (byte offset = binding offset + first index × index size). Bindings are cleared at the start of each pass |
 | Implicit hazards | GL orders commands implicitly; `glMemoryBarrier` only needed once storage writes exist (future) |
-| Fence | `glFenceSync` at `endFrame()`, `glClientWaitSync` in `beginFrame()` for the reused slot |
+| Fence | `glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE)` per slot at `endFrame()`. `beginFrame()` waits on the reused slot's fence before recycling its command lists: `glClientWaitSync` with `GL_SYNC_FLUSH_COMMANDS_BIT` on the first try, then without flushing while it times out (1 s each); `GL_WAIT_FAILED` is logged at Error and the frame goes on; then `glDeleteSync`. `waitIdle()` = `glFinish()` and deletes the slots' fences. `destroy()` stays immediate (see [Handles and resource lifetime](#handles-and-resource-lifetime)) |
 | Debug groups / names | `glPushDebugGroup(GL_DEBUG_SOURCE_APPLICATION, ...)` / `glPopDebugGroup` / `glObjectLabel`. The driver's echo messages of pushed and popped groups are turned off with `glDebugMessageControl` |
 | Threading | The context is current only on the main thread; every GL call happens inside `Device`/`Swapchain` methods on that thread (asserted in debug) |
 

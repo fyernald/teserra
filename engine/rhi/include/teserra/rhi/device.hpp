@@ -120,6 +120,10 @@ public:
     virtual void beginFrame() = 0;
     /// Ends the frame started by beginFrame().
     virtual void endFrame() = 0;
+    /// The slot of the current frame (or, between frames, of the next one): frame N uses slot
+    /// N % kMaxFramesInFlight. Per-frame resources, such as the regions of a ring buffer, come one per slot;
+    /// after beginFrame(), the GPU no longer reads what the slot's previous frame left in them.
+    [[nodiscard]] virtual u32 frameSlot() const noexcept = 0;
 
     /// An empty command list owned by the current frame, valid until the frame slot is reused.
     [[nodiscard]] virtual CommandList& acquireCommandList() = 0;
@@ -129,7 +133,8 @@ public:
     /// The swapchain of the device's window; null for a headless device.
     [[nodiscard]] virtual Swapchain* swapchain() noexcept = 0;
 
-    /// Waits until the GPU has finished all submitted work: for shutdown, resizing and tests.
+    /// Waits until the GPU has finished all submitted work: for shutdown, resizing and tests. Outside a
+    /// frame, it also releases every destroyed object.
     virtual void waitIdle() = 0;
 };
 

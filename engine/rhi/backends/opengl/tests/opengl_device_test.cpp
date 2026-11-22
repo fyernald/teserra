@@ -11,8 +11,10 @@
 
 #include <algorithm>
 #include <array>
+#include <format>
 #include <memory>
 #include <string>
+#include <vector>
 
 using namespace teserra;
 using namespace teserra::rhi;
@@ -209,6 +211,82 @@ TEST_CASE("OpenGL backend: frames hand out command lists per frame slot", "[rhi_
 
     device->waitIdle();
     CHECK(window.context.state.finishCalls == 1);
+}
+
+TEST_CASE("OpenGL backend: a frame waits for the fence of the frame that last used its slot",
+          "[rhi_opengl][frames]") {
+    test::FakeGlWindow window;
+    const auto device = requireOpenGl(window);
+    test::FakeGlState& gl = window.context.state;
+    // The fence calls of `frames` frames.
+    const auto syncCalls = [&](int frames) {
+        gl.syncCalls.clear();
+        for (int frame = 0; frame < frames; ++frame) {
+            device->beginFrame();
+            device->endFrame();
+        }
+        return gl.syncCalls;
+    };
+    // The name of the fence that a "FenceSync(...) = <name>" call created.
+    const auto created = [](const std::string& call) { return call.substr(call.rfind(' ') + 1); };
+    const auto fence = [](const std::string& name) {
+        return std::format("FenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE) = {}", name);
+    };
+
+    SECTION("frames 0 and 1 place fences; frame 2 waits for frame 0's before reusing slot 0") {
+        const std::vector<std::string> calls = syncCalls(3);
+        REQUIRE(calls.size() == 5);
+        const std::string first = created(calls[0]);
+        CHECK(calls == std::vector<std::string>{
+                           fence(first),
+                           fence(created(calls[1])),
+                           std::format("ClientWaitSync({}, GL_SYNC_FLUSH_COMMANDS_BIT)", first),
+                           std::format("DeleteSync({})", first),
+                           fence(created(calls[4])),
+                       });
+        CHECK(device->frameSlot() == 1);
+        CHECK(gl.liveSyncs.size() == 2);
+
+        device->waitIdle(); // every fence is signaled after glFinish()
+        CHECK(gl.finishCalls == 1);
+        CHECK(gl.liveSyncs.empty());
+        const std::vector<std::string> next = syncCalls(1); // nothing left to wait for
+        REQUIRE(next.size() == 1);
+        CHECK(next[0].starts_with("FenceSync("));
+    }
+    SECTION("a frame still running is waited for without flushing again") {
+        const std::string first = created(syncCalls(2)[0]);
+        gl.waitResults = {GL_TIMEOUT_EXPIRED, GL_TIMEOUT_EXPIRED, GL_ALREADY_SIGNALED};
+        const std::vector<std::string> calls = syncCalls(1);
+        REQUIRE(calls.size() == 5);
+        CHECK(calls == std::vector<std::string>{
+                           std::format("ClientWaitSync({}, GL_SYNC_FLUSH_COMMANDS_BIT)", first),
+                           std::format("ClientWaitSync({}, 0)", first),
+                           std::format("ClientWaitSync({}, 0)", first),
+                           std::format("DeleteSync({})", first),
+                           fence(created(calls[4])),
+                       });
+    }
+    SECTION("a failed wait is logged and the frame goes on") {
+        static_cast<void>(syncCalls(2));
+        gl.waitResults = {GL_WAIT_FAILED};
+        const test::LogCapture log;
+        CHECK(syncCalls(1).size() == 3); // the wait, the delete and the new fence
+        REQUIRE(log.records().size() == 1);
+        CHECK(log.records()[0].level == LogLevel::Error);
+        CHECK(log.records()[0].message == "Waiting for the GPU to finish frame slot 0 failed");
+    }
+}
+
+TEST_CASE("OpenGL backend: the device deletes the fences it still holds", "[rhi_opengl][frames]") {
+    test::FakeGlWindow window;
+    {
+        const auto device = requireOpenGl(window);
+        device->beginFrame();
+        device->endFrame();
+        CHECK(window.context.state.liveSyncs.size() == 1);
+    }
+    CHECK(window.context.state.liveSyncs.empty());
 }
 
 TEST_CASE("OpenGL backend: destroying null handles does nothing", "[rhi_opengl]") {

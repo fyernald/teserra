@@ -101,7 +101,9 @@ public:
     [[nodiscard]] Result<GraphicsPipelineHandle>
     createGraphicsPipeline(const GraphicsPipelineDesc& desc) override;
 
-    /// Frees the object at once (there is no GPU to wait for). Null handles are ignored; stale ones assert.
+    /// Makes the handle stale at once, but keeps the object until the frames that may use it have completed
+    /// on the fake GPU (see beginFrame()), as a Vulkan backend must: pendingDestructionCount() counts them.
+    /// Null handles are ignored; stale ones assert.
     void destroy(BufferHandle handle) override;
     void destroy(TextureHandle handle) override;
     void destroy(SamplerHandle handle) override;
@@ -121,9 +123,14 @@ public:
     /// The buffer's CPU memory. Copy commands are validated but not executed, so the GPU never writes it.
     [[nodiscard]] std::span<std::byte> map(BufferHandle buffer) override;
 
-    /// Starts a frame and forgets the lists submitted in the previous one (submitted()).
+    /// Starts a frame and forgets the lists submitted in the previous one (submitted()). The fake GPU
+    /// completes a frame when the frame that reuses its slot begins, kMaxFramesInFlight frames later, which
+    /// is when a real device waits for its fence; objects destroyed during or before it are released then.
     void beginFrame() override;
     void endFrame() override;
+    [[nodiscard]] u32 frameSlot() const noexcept override {
+        return static_cast<u32>(m_frame % kMaxFramesInFlight);
+    }
 
     [[nodiscard]] CommandList& acquireCommandList() override;
     /// Finishes the list, validates it against the device's objects with validateCommands() when
@@ -132,7 +139,8 @@ public:
 
     [[nodiscard]] Swapchain* swapchain() noexcept override { return m_swapchain.get(); }
 
-    void waitIdle() override {}
+    /// Completes every ended frame on the fake GPU. Outside a frame, that releases every destroyed object.
+    void waitIdle() override;
 
     // Inspection, for tests.
 
@@ -141,6 +149,10 @@ public:
     [[nodiscard]] std::span<const CommandList* const> submitted() const noexcept { return m_submitted; }
     /// Frames ended so far.
     [[nodiscard]] u64 frameCount() const noexcept { return m_frame; }
+    /// Frames the fake GPU has completed: frames 0 to completedFrameCount() - 1.
+    [[nodiscard]] u64 completedFrameCount() const noexcept { return m_completedFrames; }
+    /// Destroyed objects whose frames have not completed yet, so they are not released.
+    [[nodiscard]] usize pendingDestructionCount() const noexcept { return m_retired.size(); }
     /// Live objects of every kind, swapchain images included.
     [[nodiscard]] usize liveObjectCount() const noexcept;
 
@@ -202,6 +214,11 @@ private:
     [[nodiscard]] static Object<Desc> store(const Desc& desc);
 
     [[nodiscard]] TextureHandle createSwapchainImage(Format format, UVec2 size);
+    // Destroys `handle` in `pool` and keeps its object until the frames that may use it have completed.
+    template <typename Desc, typename Tag>
+    void retire(HandlePool<Object<Desc>, Tag>& pool, Handle<Tag> handle);
+    // Releases the retired objects whose last frame has completed.
+    void releaseCompleted();
 
     DeviceLimits m_limits{};
     bool m_validate;
@@ -217,6 +234,13 @@ private:
 
     u64 m_frame = 0;
     bool m_inFrame = false;
+    u64 m_completedFrames = 0;
+    // A destroyed object and the last frame that may use it; type-erased, so one queue holds every kind.
+    struct Retired {
+        u64 lastFrame = 0;
+        std::shared_ptr<void> object;
+    };
+    std::vector<Retired> m_retired;
     // Command lists of each frame slot; a deque keeps handed-out references valid when it grows.
     std::array<std::deque<CommandList>, kMaxFramesInFlight> m_commandLists;
     usize m_commandListsInUse = 0; // of the current frame slot
