@@ -184,6 +184,8 @@ teserra_add_shaders(<target>
   - Each constant is an `extern const std::span<const std::byte>` whose data is 4-byte aligned, so SPIR-V can be used in place.
   - Every shader is its own generated translation unit, so editing one recompiles only that one.
   - Two shaders with the same file name in one call are a configure error.
+  - The blobs and generated sources live in `${CMAKE_CURRENT_BINARY_DIR}/tsh/<hash>/`, where `<hash>` is the first 8 hex digits of the SHA-1 of the target name. The short directory keeps deep build directories within Windows' path limit.
+- **Path length (Windows):** a generated file whose path would have 260 characters or more fails configuration. The message names the file and its length. Use a shorter build directory then, for example a clone at `C:/src/teserra`.
 - `INCLUDE_DIRECTORIES` (relative to the current source directory) and `DEFINES` become the tool's `-I` and `-D`. Call the function in the directory that defines `<target>`.
 - `teserra_rhi` cannot use it: the tool links `teserra_rhi`.
 
@@ -191,7 +193,10 @@ teserra_add_shaders(<target>
 
 - full, no-op and incremental builds after touching an include and after touching a shader;
 - a shader error failing the build;
-- duplicate names failing configuration.
+- duplicate names failing configuration;
+- embedded blobs in `tsh/<hash>/`.
+
+`cmake.shaders.path_length` (Windows) checks that a generated path of 259 characters passes and one of 260 fails configuration with the message.
 
 ## Layer and leak checks
 

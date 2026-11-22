@@ -66,6 +66,12 @@ _expect("${output}" "embedded shaders ok" "embedded data")
 if(NOT EXISTS "${build}/assets/shaders/a.vert.tshader")
     message(FATAL_ERROR "TestShaderBuild: the shader file build/assets/shaders/a.vert.tshader is missing")
 endif()
+# Embedded shaders are generated under tsh/<hash of the target>/, which keeps paths short (#192).
+file(GLOB_RECURSE embedded_blobs RELATIVE "${build}" "${build}/tsh/*.tshader")
+list(SORT embedded_blobs)
+if(NOT embedded_blobs MATCHES "^tsh/[0-9a-f]+/shaders/a\\.vert\\.tshader;tsh/[0-9a-f]+/shaders/b\\.frag\\.tshader$")
+    message(FATAL_ERROR "TestShaderBuild: the embedded blobs are not in tsh/<hash>/: '${embedded_blobs}'")
+endif()
 
 # 2. Nothing changed, nothing runs: no shader is recompiled on every build.
 _run("no-op build" COMMAND ${rebuild} OUTPUT output)

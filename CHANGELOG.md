@@ -73,3 +73,7 @@ All notable user-visible changes to Teserra are documented here. The format foll
 - `AppConfig::graphicsApi` is replaced by `AppConfig::backend` (`std::optional<rhi::Backend>`; `std::nullopt` for an App without a device). `vsync` selects the swapchain's present mode.
 - Descriptor and config structs give every field a default, so they can be created with partial designated initializers without Clang warnings: `App app{{.title = "Game", .args = {argc, argv}}}`, `app.run({.update = ...})`. `AppCallbacks` members and `LogConfig::filePath` gained `{}` defaults; the `window_input` example and the App tests use the style.
 - The repository is now `fyernald/teserra` (clone with `git clone https://github.com/fyernald/teserra.git`); links are updated and old `fyernald/tessera` URLs redirect. The project name stays Teserra.
+
+### Fixed
+
+- `teserra_add_shaders()` works in deep build directories on Windows (#192): generated blobs and sources moved from `generated/teserra_shaders/<target>/blobs/` and `.../src/` to `tsh/<hash of the target>/`, which saves about 45 characters, and a generated path that Windows could not write (260 characters or more) now fails configuration with a message that names it, instead of failing the build.
