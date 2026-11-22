@@ -201,14 +201,21 @@ public:
     void generateMipmaps(TextureHandle texture) override;
     [[nodiscard]] std::span<std::byte> map(BufferHandle buffer) override;
 
+    /// Waits on the fence of the frame that last used the slot (glClientWaitSync) before reusing its command
+    /// lists.
     void beginFrame() override;
+    /// Places the slot's fence (glFenceSync) after the frame's commands.
     void endFrame() override;
+    [[nodiscard]] u32 frameSlot() const noexcept override {
+        return static_cast<u32>(m_frame % kMaxFramesInFlight);
+    }
 
     [[nodiscard]] CommandList& acquireCommandList() override;
     void submit(CommandList& commands) override;
 
     [[nodiscard]] Swapchain* swapchain() noexcept override;
 
+    /// glFinish(); the fences of every slot are signaled then and are deleted.
     void waitIdle() override;
 
     // For the swapchain and tests within the backend.
@@ -272,6 +279,8 @@ private:
     [[nodiscard]] Result<void> queryLimits();
     [[nodiscard]] i32 getInteger(GLenum name) const;
     void requireContextThread() const;
+    // Waits until the GPU has finished the frame that placed the slot's fence, then deletes the fence.
+    void waitForFrameSlot(u32 slot);
 
     [[nodiscard]] GLuint framebuffer(const FramebufferKey& key);
     // The program of a shader pair, linked on first use; the caller becomes one of its users.
@@ -344,6 +353,8 @@ private:
 
     u64 m_frame = 0;
     bool m_inFrame = false;
+    // The fence of each slot's last frame; null once waited for, or before the slot's first frame.
+    std::array<GLsync, kMaxFramesInFlight> m_fences{};
     // Command lists of each frame slot; a deque keeps handed-out references valid when it grows.
     std::array<std::deque<CommandList>, kMaxFramesInFlight> m_commandLists;
     usize m_commandListsInUse = 0; // of the current frame slot

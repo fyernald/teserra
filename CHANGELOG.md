@@ -61,6 +61,7 @@ All notable user-visible changes to Teserra are documented here. The format foll
 - `teserra_textured_quad` example: a PNG read with `platform::FileSystem` and `assets::decodeImage()` is uploaded to an sRGB texture and drawn on a square quad through a bind group at the material set; Space switches between nearest and linear filtering, shown in the window title. Smoke run `--frames 120 --hidden-window`.
 - Readback in the OpenGL backend: `copyTextureToBuffer` writes a texture region into a buffer, top row first, through a pixel pack buffer.
 - GPU convention tests that use RHI calls only and read results back through a `Readback` buffer: a texture is rendered (row 0 is the top, counter-clockwise faces are front faces), sampled into another texture in the next pass without a barrier call, and read back. The swapchain image is checked the same way before `present()`. The presented window is a documented visual check (`teserra_textured_quad`).
+- Frames in flight: `Device::frameSlot()` gives the current frame's slot (frame N uses slot N % `kMaxFramesInFlight`) for per-frame resources. The OpenGL backend places a fence per slot at `endFrame()` and waits on it in `beginFrame()` before reusing the slot; `waitIdle()` drains them. The null backend models fences: frame N completes when frame N + 2 begins or at `waitIdle()`, and destroyed objects are kept until the frames that may use them have completed (`NullDevice::pendingDestructionCount()`, `completedFrameCount()`), the rule a Vulkan backend follows.
 
 ### Changed
 

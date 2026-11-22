@@ -19,6 +19,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <deque>
 #include <format>
 #include <map>
 #include <set>
@@ -87,6 +88,14 @@ struct FakeGlState {
     GLuint packBuffer = 0;
     /// The data pointer of the last texture upload.
     const void* lastPixels = nullptr;
+    /// The fence calls, apart from `calls`: every frame makes them, and most tests are about something else.
+    std::vector<std::string> syncCalls{};
+    /// Fence sync objects not deleted yet, by name. Syncs are not GL names: they are numbered on their own,
+    /// so that fences leave the names of other objects unchanged.
+    std::set<GLuint> liveSyncs{};
+    GLuint lastSync = 0;
+    /// What the next glClientWaitSync() calls return, in order; GL_CONDITION_SATISFIED once empty.
+    std::deque<GLenum> waitResults{};
 };
 
 namespace fake_gl {
@@ -196,6 +205,7 @@ inline std::string name(GLenum value) {
         {GL_REPEAT, "GL_REPEAT"},
         {GL_MIRRORED_REPEAT, "GL_MIRRORED_REPEAT"},
         {GL_CLAMP_TO_EDGE, "GL_CLAMP_TO_EDGE"},
+        {GL_SYNC_GPU_COMMANDS_COMPLETE, "GL_SYNC_GPU_COMMANDS_COMPLETE"},
     };
     const auto found = kNames.find(value);
     return found != kNames.end() ? std::string(found->second) : std::format("0x{:X}", value);
@@ -653,6 +663,37 @@ inline void GLAD_API_PTR deleteVertexArrays(GLsizei count, const GLuint* arrays)
     }
 }
 
+// Fence syncs: a GLsync is the fake name it was created with.
+
+inline GLuint syncName(GLsync sync) {
+    return static_cast<GLuint>(reinterpret_cast<std::uintptr_t>(sync));
+}
+
+inline GLsync GLAD_API_PTR fenceSync(GLenum condition, GLbitfield /*flags*/) {
+    const GLuint name = ++current->lastSync;
+    current->liveSyncs.insert(name);
+    current->syncCalls.push_back(std::format("FenceSync({}) = {}", fake_gl::name(condition), name));
+    return reinterpret_cast<GLsync>(static_cast<std::uintptr_t>(name)); // NOLINT(performance-no-int-to-ptr)
+}
+
+inline GLenum GLAD_API_PTR clientWaitSync(GLsync sync, GLbitfield flags, GLuint64 /*timeout*/) {
+    // The flag is spelled out: its value, 1, is also GL_ONE.
+    current->syncCalls.push_back(std::format(
+        "ClientWaitSync({}, {})", syncName(sync),
+        flags == GL_SYNC_FLUSH_COMMANDS_BIT ? "GL_SYNC_FLUSH_COMMANDS_BIT" : std::format("{}", flags)));
+    if (current->waitResults.empty()) {
+        return GL_CONDITION_SATISFIED;
+    }
+    const GLenum result = current->waitResults.front();
+    current->waitResults.pop_front();
+    return result;
+}
+
+inline void GLAD_API_PTR deleteSync(GLsync sync) {
+    current->liveSyncs.erase(syncName(sync));
+    current->syncCalls.push_back(std::format("DeleteSync({})", syncName(sync)));
+}
+
 // Draws
 
 inline void GLAD_API_PTR drawArraysInstancedBaseInstance(GLenum mode, GLint first, GLsizei count,
@@ -836,6 +877,9 @@ public:
             {"glObjectLabel", reinterpret_cast<platform::GlProc>(&fake_gl::objectLabel)},
             {"glDeleteTextures", reinterpret_cast<platform::GlProc>(&fake_gl::deleteTextures)},
             {"glBindTextureUnit", reinterpret_cast<platform::GlProc>(&fake_gl::bindTextureUnit)},
+            {"glFenceSync", reinterpret_cast<platform::GlProc>(&fake_gl::fenceSync)},
+            {"glClientWaitSync", reinterpret_cast<platform::GlProc>(&fake_gl::clientWaitSync)},
+            {"glDeleteSync", reinterpret_cast<platform::GlProc>(&fake_gl::deleteSync)},
             {"glCreateSamplers", reinterpret_cast<platform::GlProc>(&fake_gl::createSamplers)},
             {"glSamplerParameteri", reinterpret_cast<platform::GlProc>(&fake_gl::samplerParameteri)},
             {"glSamplerParameterf", reinterpret_cast<platform::GlProc>(&fake_gl::samplerParameterf)},

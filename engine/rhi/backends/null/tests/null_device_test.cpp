@@ -194,7 +194,7 @@ TEST_CASE("Null backend: resources keep copies of their descriptors", "[rhi_null
     CHECK(device->liveObjectCount() == 103);
 }
 
-TEST_CASE("Null backend: destroy frees at once", "[rhi_null]") {
+TEST_CASE("Null backend: destroy makes handles stale at once", "[rhi_null]") {
     const auto device = null::createHeadlessDevice();
     const auto texture = *device->createTexture({.width = 8, .height = 8});
     const auto sampler = *device->createSampler({});
@@ -207,9 +207,69 @@ TEST_CASE("Null backend: destroy frees at once", "[rhi_null]") {
     CHECK(device->texture(texture) == nullptr);
     CHECK(device->sampler(sampler) == nullptr);
     CHECK(device->liveObjectCount() == 0);
+    CHECK(device->pendingDestructionCount() == 0); // no frame has used them
 #if TESERRA_ENABLE_ASSERTS
     REQUIRE_ASSERTS(device->destroy(texture));
 #endif
+}
+
+TEST_CASE("Null backend: destroyed objects are released when the frames that may use them complete",
+          "[rhi_null][frames]") {
+    const auto device = null::createHeadlessDevice();
+    const auto uniforms = [&] {
+        return *device->createBuffer({.sizeInBytes = 64, .usage = BufferUsage::Uniform});
+    };
+    CHECK(device->frameSlot() == 0);
+
+    SECTION("destroyed during a frame: released when the frame reusing its slot begins") {
+        device->beginFrame(); // frame 0, slot 0
+        const BufferHandle buffer = uniforms();
+        device->destroy(buffer);
+        CHECK(device->buffer(buffer) == nullptr); // the handle is stale at once
+        CHECK(device->pendingDestructionCount() == 1);
+        device->endFrame();
+
+        CHECK(device->frameSlot() == 1);
+        device->beginFrame(); // frame 1: frame 0 may still be running
+        CHECK(device->completedFrameCount() == 0);
+        CHECK(device->pendingDestructionCount() == 1);
+        device->endFrame();
+
+        CHECK(device->frameSlot() == 0);
+        device->beginFrame(); // frame 2 reuses slot 0, so it waits for frame 0
+        CHECK(device->completedFrameCount() == 1);
+        CHECK(device->pendingDestructionCount() == 0);
+        device->endFrame();
+    }
+    SECTION("destroyed between frames: the last ended frame may still use it") {
+        for (int frame = 0; frame < 3; ++frame) {
+            device->beginFrame();
+            device->endFrame();
+        }
+        device->destroy(uniforms()); // after frame 2 ended
+        device->beginFrame();        // frame 3 waits for frame 1
+        CHECK(device->pendingDestructionCount() == 1);
+        device->endFrame();
+        device->beginFrame(); // frame 4 waits for frame 2
+        CHECK(device->pendingDestructionCount() == 0);
+        device->endFrame();
+    }
+    SECTION("waitIdle() releases everything outside a frame, inside one only what ended frames used") {
+        device->beginFrame();
+        device->endFrame();
+        device->destroy(uniforms()); // frame 0 may use it
+        device->beginFrame();
+        device->destroy(uniforms()); // frame 1, still being recorded, may use it
+
+        device->waitIdle();
+        CHECK(device->completedFrameCount() == 1);
+        CHECK(device->pendingDestructionCount() == 1);
+        device->endFrame();
+        device->waitIdle();
+        CHECK(device->completedFrameCount() == device->frameCount());
+        CHECK(device->pendingDestructionCount() == 0);
+    }
+    CHECK(device->liveObjectCount() == 0);
 }
 
 TEST_CASE("Null backend: buffers have memory that writeBuffer and map() reach", "[rhi_null]") {

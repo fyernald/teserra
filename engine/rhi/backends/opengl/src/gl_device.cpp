@@ -166,6 +166,11 @@ GlDevice::~GlDevice() {
     requireContextThread();
     m_context.makeCurrent();
     m_swapchain.reset();
+    for (const GLsync fence : m_fences) {
+        if (fence != nullptr) {
+            m_gl.DeleteSync(fence);
+        }
+    }
     for (const CachedFramebuffer& framebuffer : m_framebuffers) {
         m_gl.DeleteFramebuffers(1, &framebuffer.name);
     }
@@ -828,8 +833,10 @@ void GlDevice::destroy(SamplerHandle handle) {
 void GlDevice::beginFrame() {
     requireContextThread();
     TESERRA_ASSERT(!m_inFrame, "beginFrame() twice without endFrame()");
-    // TODO(#56): wait for the frame slot's fence before reusing its command lists
-    for (CommandList& list : m_commandLists[m_frame % kMaxFramesInFlight]) {
+    // The slot's per-frame data (command lists here, ring buffer regions in the renderer) is free once the
+    // GPU has finished the frame that used it kMaxFramesInFlight frames ago.
+    waitForFrameSlot(frameSlot());
+    for (CommandList& list : m_commandLists[frameSlot()]) {
         list.reset();
     }
     m_commandListsInUse = 0;
@@ -839,13 +846,39 @@ void GlDevice::beginFrame() {
 void GlDevice::endFrame() {
     requireContextThread();
     TESERRA_ASSERT(m_inFrame, "endFrame() without beginFrame()");
+    // beginFrame() waited for the slot's previous fence, so there is none to replace.
+    m_fences[frameSlot()] = m_gl.FenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
     m_inFrame = false;
     ++m_frame;
 }
 
+void GlDevice::waitForFrameSlot(u32 slot) {
+    GLsync& fence = m_fences[slot];
+    if (fence == nullptr) {
+        return;
+    }
+    // The first wait flushes, so that the fence reaches the GPU; later ones only wait. A timeout means the
+    // frame is still running, so the wait goes on.
+    constexpr GLuint64 kTimeoutNanoseconds = 1'000'000'000;
+    GLbitfield flags = GL_SYNC_FLUSH_COMMANDS_BIT;
+    for (;;) {
+        const GLenum status = m_gl.ClientWaitSync(fence, flags, kTimeoutNanoseconds);
+        if (status == GL_ALREADY_SIGNALED || status == GL_CONDITION_SATISFIED) {
+            break;
+        }
+        if (status == GL_WAIT_FAILED) {
+            TESERRA_LOG_ERROR(LogCategory::Rhi, "Waiting for the GPU to finish frame slot {} failed", slot);
+            break;
+        }
+        flags = 0;
+    }
+    m_gl.DeleteSync(fence);
+    fence = nullptr;
+}
+
 CommandList& GlDevice::acquireCommandList() {
     TESERRA_ASSERT(m_inFrame, "acquireCommandList() outside beginFrame() / endFrame()");
-    std::deque<CommandList>& lists = m_commandLists[m_frame % kMaxFramesInFlight];
+    std::deque<CommandList>& lists = m_commandLists[frameSlot()];
     if (m_commandListsInUse == lists.size()) {
         lists.emplace_back();
     }
@@ -1353,6 +1386,12 @@ void GlDevice::attach(GLuint name, GLenum point, const FramebufferKey::Attachmen
 void GlDevice::waitIdle() {
     requireContextThread();
     m_gl.Finish();
+    for (GLsync& fence : m_fences) {
+        if (fence != nullptr) {
+            m_gl.DeleteSync(fence);
+            fence = nullptr;
+        }
+    }
 }
 
 void GlDevice::requireContextThread() const {
