@@ -515,8 +515,10 @@ void main() {
     const std::string& message = brokenShader.error().message;
     INFO(message);
     CHECK(message.starts_with("Shader module 'GPU test broken' (fragment) failed to compile:\n"));
-    // Drivers write the line as "0(4)" (NVIDIA) or "0:4:" (Intel, AMD, Mesa).
-    CHECK((message.find("(4)") != std::string::npos || message.find(":4:") != std::string::npos));
+    // Drivers write the line as "0(4)" (NVIDIA), "0:4:" (Intel, AMD) or "0:4(17)" with the column (Mesa,
+    // including llvmpipe on CI runners, #52).
+    CHECK((message.find("(4)") != std::string::npos || message.find(":4:") != std::string::npos ||
+           message.find(":4(") != std::string::npos));
 
     device.destroy(*vertex);
     device.destroy(*fragment);
