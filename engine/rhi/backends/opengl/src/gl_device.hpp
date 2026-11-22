@@ -116,6 +116,22 @@ struct GlTexture {
     }
 };
 
+/// A sampler object of the device.
+struct GlSampler {
+    GLuint name = 0;
+    /// The descriptor without its name; see desc().
+    SamplerDesc stored{};
+    std::string debugName;
+
+    /// The descriptor the sampler was created with, for validation; its name is valid until the device
+    /// creates or destroys objects.
+    [[nodiscard]] SamplerDesc desc() const noexcept {
+        SamplerDesc result = stored;
+        result.debugName = debugName;
+        return result;
+    }
+};
+
 /// The attachments a framebuffer object is made of; framebuffers are cached by it.
 struct FramebufferKey {
     struct Attachment {
@@ -207,6 +223,10 @@ public:
     [[nodiscard]] const GlTexture* texture(TextureHandle handle) const noexcept {
         return m_textures.tryGet(handle);
     }
+    /// The sampler behind `handle`, or nullptr if the handle is not live.
+    [[nodiscard]] const GlSampler* sampler(SamplerHandle handle) const noexcept {
+        return m_samplers.tryGet(handle);
+    }
     /// The shader module behind `handle`, or nullptr if the handle is not live.
     [[nodiscard]] const GlShaderModule* shaderModule(ShaderModuleHandle handle) const noexcept {
         return m_shaderModules.tryGet(handle);
@@ -271,7 +291,8 @@ private:
     // Attaches `attachment` of `key` to the framebuffer `name` at `point`; a layer of an array texture alone.
     void attach(GLuint name, GLenum point, const FramebufferKey::Attachment& attachment);
     void bindPipeline(GraphicsPipelineHandle handle);
-    // Binds the group's buffers at flatBinding(set, binding), with the dynamic offsets applied.
+    // Binds the group's buffers, and its textures with their samplers, at flatBinding(set, binding), with
+    // the dynamic offsets applied.
     void applyBindGroup(u32 set, BindGroupHandle handle, std::span<const u32> dynamicOffsets);
     void bindVertexBuffers(u32 firstSlot, std::span<const VertexBufferBinding> bindings);
     void bindIndexBuffer(const BindIndexBufferCommand& bind);
@@ -298,6 +319,7 @@ private:
     std::vector<CachedProgram> m_programs;
     GlStateCache m_stateCache{m_gl};
     HandlePool<GlTexture, TextureTag> m_textures;
+    HandlePool<GlSampler, SamplerTag> m_samplers;
     std::vector<CachedFramebuffer> m_framebuffers;
     std::unique_ptr<GlSwapchain> m_swapchain;
 

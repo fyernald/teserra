@@ -64,6 +64,7 @@ struct FakeGlState {
     GLDEBUGPROC debugCallback = nullptr;
     int finishCalls = 0;
     std::set<GLuint> liveTextures{};
+    std::set<GLuint> liveSamplers{};
     std::set<GLuint> liveFramebuffers{};
     /// The storage of each live buffer.
     std::map<GLuint, std::vector<std::byte>> buffers{};
@@ -172,6 +173,24 @@ inline std::string name(GLenum value) {
         {GL_DEBUG_TYPE_POP_GROUP, "GL_DEBUG_TYPE_POP_GROUP"},
         {GL_DONT_CARE, "GL_DONT_CARE"},
         {GL_UNIFORM_BUFFER, "GL_UNIFORM_BUFFER"},
+        {GL_SAMPLER, "GL_SAMPLER"},
+        {GL_TEXTURE_MIN_FILTER, "GL_TEXTURE_MIN_FILTER"},
+        {GL_TEXTURE_MAG_FILTER, "GL_TEXTURE_MAG_FILTER"},
+        {GL_TEXTURE_WRAP_S, "GL_TEXTURE_WRAP_S"},
+        {GL_TEXTURE_WRAP_T, "GL_TEXTURE_WRAP_T"},
+        {GL_TEXTURE_WRAP_R, "GL_TEXTURE_WRAP_R"},
+        {GL_TEXTURE_MAX_ANISOTROPY_EXT, "GL_TEXTURE_MAX_ANISOTROPY"},
+        {GL_TEXTURE_COMPARE_MODE, "GL_TEXTURE_COMPARE_MODE"},
+        {GL_TEXTURE_COMPARE_FUNC, "GL_TEXTURE_COMPARE_FUNC"},
+        {GL_COMPARE_REF_TO_TEXTURE, "GL_COMPARE_REF_TO_TEXTURE"},
+        {GL_LINEAR, "GL_LINEAR"},
+        {GL_NEAREST_MIPMAP_NEAREST, "GL_NEAREST_MIPMAP_NEAREST"},
+        {GL_NEAREST_MIPMAP_LINEAR, "GL_NEAREST_MIPMAP_LINEAR"},
+        {GL_LINEAR_MIPMAP_NEAREST, "GL_LINEAR_MIPMAP_NEAREST"},
+        {GL_LINEAR_MIPMAP_LINEAR, "GL_LINEAR_MIPMAP_LINEAR"},
+        {GL_REPEAT, "GL_REPEAT"},
+        {GL_MIRRORED_REPEAT, "GL_MIRRORED_REPEAT"},
+        {GL_CLAMP_TO_EDGE, "GL_CLAMP_TO_EDGE"},
     };
     const auto found = kNames.find(value);
     return found != kNames.end() ? std::string(found->second) : std::format("0x{:X}", value);
@@ -380,6 +399,41 @@ inline void GLAD_API_PTR deleteTextures(GLsizei count, const GLuint* textures) {
     for (GLsizei i = 0; i < count; ++i) {
         current->liveTextures.erase(textures[i]);
         log(std::format("DeleteTextures({})", textures[i]));
+    }
+}
+
+inline void GLAD_API_PTR bindTextureUnit(GLuint unit, GLuint texture) {
+    log(std::format("BindTextureUnit({}, {})", unit, texture));
+}
+
+// Samplers
+
+inline void GLAD_API_PTR createSamplers(GLsizei count, GLuint* samplers) {
+    for (GLsizei i = 0; i < count; ++i) {
+        samplers[i] = ++current->lastName;
+        current->liveSamplers.insert(samplers[i]);
+        log(std::format("CreateSamplers() = {}", samplers[i]));
+    }
+}
+
+// Every integer parameter the device sets is an enum value.
+inline void GLAD_API_PTR samplerParameteri(GLuint sampler, GLenum parameter, GLint value) {
+    log(std::format("SamplerParameteri({}, {}, {})", sampler, name(parameter),
+                    name(static_cast<GLenum>(value))));
+}
+
+inline void GLAD_API_PTR samplerParameterf(GLuint sampler, GLenum parameter, GLfloat value) {
+    log(std::format("SamplerParameterf({}, {}, {})", sampler, name(parameter), value));
+}
+
+inline void GLAD_API_PTR bindSampler(GLuint unit, GLuint sampler) {
+    log(std::format("BindSampler({}, {})", unit, sampler));
+}
+
+inline void GLAD_API_PTR deleteSamplers(GLsizei count, const GLuint* samplers) {
+    for (GLsizei i = 0; i < count; ++i) {
+        current->liveSamplers.erase(samplers[i]);
+        log(std::format("DeleteSamplers({})", samplers[i]));
     }
 }
 
@@ -758,6 +812,12 @@ public:
             {"glBindBuffer", reinterpret_cast<platform::GlProc>(&fake_gl::bindBuffer)},
             {"glObjectLabel", reinterpret_cast<platform::GlProc>(&fake_gl::objectLabel)},
             {"glDeleteTextures", reinterpret_cast<platform::GlProc>(&fake_gl::deleteTextures)},
+            {"glBindTextureUnit", reinterpret_cast<platform::GlProc>(&fake_gl::bindTextureUnit)},
+            {"glCreateSamplers", reinterpret_cast<platform::GlProc>(&fake_gl::createSamplers)},
+            {"glSamplerParameteri", reinterpret_cast<platform::GlProc>(&fake_gl::samplerParameteri)},
+            {"glSamplerParameterf", reinterpret_cast<platform::GlProc>(&fake_gl::samplerParameterf)},
+            {"glBindSampler", reinterpret_cast<platform::GlProc>(&fake_gl::bindSampler)},
+            {"glDeleteSamplers", reinterpret_cast<platform::GlProc>(&fake_gl::deleteSamplers)},
             {"glCreateBuffers", reinterpret_cast<platform::GlProc>(&fake_gl::createBuffers)},
             {"glNamedBufferStorage", reinterpret_cast<platform::GlProc>(&fake_gl::namedBufferStorage)},
             {"glMapNamedBufferRange", reinterpret_cast<platform::GlProc>(&fake_gl::mapNamedBufferRange)},

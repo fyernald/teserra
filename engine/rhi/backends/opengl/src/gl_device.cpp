@@ -40,8 +40,9 @@ public:
         const GlTexture* texture = m_device.texture(handle);
         return texture != nullptr ? std::optional(texture->desc()) : std::nullopt;
     }
-    [[nodiscard]] std::optional<SamplerDesc> sampler(SamplerHandle /*handle*/) const override {
-        return std::nullopt; // no samplers yet (#50)
+    [[nodiscard]] std::optional<SamplerDesc> sampler(SamplerHandle handle) const override {
+        const GlSampler* sampler = m_device.sampler(handle);
+        return sampler != nullptr ? std::optional(sampler->desc()) : std::nullopt;
     }
     [[nodiscard]] std::optional<ShaderModuleInfo> shaderModule(ShaderModuleHandle handle) const override {
         const GlShaderModule* shader = m_device.shaderModule(handle);
@@ -107,6 +108,30 @@ std::string_view stageName(ShaderStage stage) noexcept {
     }
 }
 
+// GL_TEXTURE_MIN_FILTER, which holds the filtering between mip levels too.
+GLenum glMinFilter(Filter filter, MipmapMode mipmapMode) noexcept {
+    if (filter == Filter::Nearest) {
+        return mipmapMode == MipmapMode::Nearest ? GL_NEAREST_MIPMAP_NEAREST : GL_NEAREST_MIPMAP_LINEAR;
+    }
+    return mipmapMode == MipmapMode::Nearest ? GL_LINEAR_MIPMAP_NEAREST : GL_LINEAR_MIPMAP_LINEAR;
+}
+
+GLenum glFilter(Filter filter) noexcept {
+    return filter == Filter::Nearest ? GL_NEAREST : GL_LINEAR;
+}
+
+GLenum glAddressMode(AddressMode mode) noexcept {
+    switch (mode) {
+        case AddressMode::Repeat:
+            return GL_REPEAT;
+        case AddressMode::MirroredRepeat:
+            return GL_MIRRORED_REPEAT;
+        case AddressMode::ClampToEdge:
+            return GL_CLAMP_TO_EDGE;
+    }
+    return GL_CLAMP_TO_EDGE;
+}
+
 std::string_view glString(const GladGLContext& gl, GLenum name) {
     const GLubyte* value = gl.GetString(name);
     return value != nullptr ? std::string_view(reinterpret_cast<const char*>(value))
@@ -146,6 +171,8 @@ GlDevice::~GlDevice() {
     }
     m_textures.forEach(
         [&](TextureHandle /*handle*/, const GlTexture& texture) { m_gl.DeleteTextures(1, &texture.name); });
+    m_samplers.forEach(
+        [&](SamplerHandle /*handle*/, const GlSampler& sampler) { m_gl.DeleteSamplers(1, &sampler.name); });
     m_buffers.forEach(
         [&](BufferHandle /*handle*/, const GlBuffer& buffer) { m_gl.DeleteBuffers(1, &buffer.name); });
     m_pipelines.forEach([&](GraphicsPipelineHandle /*handle*/, const GlPipeline& pipeline) {
@@ -423,7 +450,8 @@ void GlDevice::destroy(ShaderModuleHandle handle) {
 
 // ---------------------------------------------------------------------------------------------------------
 // Bind group layouts, pipeline layouts and bind groups: GL has no such objects, so the device keeps the
-// descriptors, and replaying bindGroup binds each buffer at its flatBinding(set, binding).
+// descriptors, and replaying bindGroup binds each buffer, texture and sampler at its flatBinding(set,
+// binding).
 
 Result<BindGroupLayoutHandle> GlDevice::createBindGroupLayout(const BindGroupLayoutDesc& desc) {
     requireContextThread();
@@ -744,17 +772,54 @@ void GlDevice::generateMipmaps(TextureHandle handle) {
 }
 
 // ---------------------------------------------------------------------------------------------------------
-// Other resources: created by the OpenGL backend from iteration 5 on.
+// Samplers: GL sampler objects, bound to a texture unit next to the texture of a binding.
 
 Result<SamplerHandle> GlDevice::createSampler(const SamplerDesc& desc) {
-    // TODO(#50): samplers
-    return fail(ErrorCode::Unsupported, Module::Rhi, "The OpenGL backend cannot create samplers yet ('{}')",
-                desc.debugName);
+    requireContextThread();
+    if (m_validate) {
+        validateSamplerDesc(desc);
+    }
+    GLuint name = 0;
+    m_gl.CreateSamplers(1, &name);
+    // Every parameter is set, so nothing depends on GL's defaults (which repeat and filter between mips).
+    m_gl.SamplerParameteri(name, GL_TEXTURE_MIN_FILTER,
+                           static_cast<GLint>(glMinFilter(desc.minFilter, desc.mipmapMode)));
+    m_gl.SamplerParameteri(name, GL_TEXTURE_MAG_FILTER, static_cast<GLint>(glFilter(desc.magFilter)));
+    m_gl.SamplerParameteri(name, GL_TEXTURE_WRAP_S, static_cast<GLint>(glAddressMode(desc.addressU)));
+    m_gl.SamplerParameteri(name, GL_TEXTURE_WRAP_T, static_cast<GLint>(glAddressMode(desc.addressV)));
+    m_gl.SamplerParameteri(name, GL_TEXTURE_WRAP_R, static_cast<GLint>(glAddressMode(desc.addressW)));
+    // maxSamplerAnisotropy is 1 without EXT_texture_filter_anisotropic, which leaves the parameter unset.
+    const f32 anisotropy = std::min(desc.maxAnisotropy, m_limits.maxSamplerAnisotropy);
+    if (anisotropy > 1.0F) {
+        m_gl.SamplerParameterf(name, GL_TEXTURE_MAX_ANISOTROPY_EXT, anisotropy);
+    }
+    if (desc.compare) {
+        m_gl.SamplerParameteri(name, GL_TEXTURE_COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE);
+        m_gl.SamplerParameteri(name, GL_TEXTURE_COMPARE_FUNC,
+                               static_cast<GLint>(glCompareFunction(*desc.compare)));
+    }
+    if (!desc.debugName.empty()) {
+        m_gl.ObjectLabel(GL_SAMPLER, name, static_cast<GLsizei>(desc.debugName.size()),
+                         desc.debugName.data());
+    }
+    GlSampler sampler{.name = name, .stored = desc, .debugName = std::string(desc.debugName)};
+    sampler.stored.debugName = {}; // a view of the caller's descriptor, only valid during this call
+    return m_samplers.create(std::move(sampler));
 }
 
-// Nothing else can be created yet, so only null handles can be destroyed.
 void GlDevice::destroy(SamplerHandle handle) {
-    TESERRA_ASSERT(handle.isNull(), "Destroying sampler {}, which this device did not create", handle);
+    if (handle.isNull()) {
+        return;
+    }
+    requireContextThread();
+    const GlSampler* sampler = m_samplers.tryGet(handle);
+    TESERRA_ASSERT(sampler != nullptr, "Destroying sampler {}, which is not alive", handle);
+    if (sampler == nullptr) {
+        return;
+    }
+    // Deleting unbinds it from every texture unit that uses it.
+    m_gl.DeleteSamplers(1, &sampler->name);
+    m_samplers.destroy(handle);
 }
 
 // ---------------------------------------------------------------------------------------------------------
@@ -886,23 +951,40 @@ void GlDevice::applyBindGroup(u32 set, BindGroupHandle handle, std::span<const u
     if (group == nullptr) {
         return;
     }
-    // Uniform buffer binding points are context state, not program state: a group stays bound across
-    // pipelines, as the RHI defines. Entries and layout entries are both sorted by binding, and the dynamic
-    // offsets follow the dynamic bindings in that order.
+    // Uniform buffer binding points and texture units are context state, not program state: a group stays
+    // bound across pipelines, as the RHI defines. Entries and layout entries are both sorted by binding, and
+    // the dynamic offsets follow the dynamic bindings in that order. Resources are looked up now, not at
+    // creation: a destroyed object's GL name may already belong to another one.
     usize nextDynamicOffset = 0;
     for (usize i = 0; i < group->entries.size() && i < group->layoutEntries.size(); ++i) {
         const BindGroupLayoutEntry& binding = group->layoutEntries[i];
         const BindGroupEntry& entry = group->entries[i];
+        if (binding.type == BindingType::SampledTexture) {
+            const GlTexture* texture = m_textures.tryGet(entry.texture);
+            const GlSampler* sampler = m_samplers.tryGet(entry.sampler);
+            TESERRA_ASSERT(texture != nullptr,
+                           "bindGroup '{}' uses texture {} at binding {}, which is not alive",
+                           group->debugName, entry.texture, entry.binding);
+            TESERRA_ASSERT(sampler != nullptr,
+                           "bindGroup '{}' uses sampler {} at binding {}, which is not alive",
+                           group->debugName, entry.sampler, entry.binding);
+            if (texture == nullptr || sampler == nullptr) {
+                continue;
+            }
+            // The shader's sampler2D reads the texture unit of its flat binding.
+            const GLuint unit = flatBinding(set, entry.binding);
+            m_gl.BindTextureUnit(unit, texture->name);
+            m_gl.BindSampler(unit, sampler->name);
+            continue;
+        }
         u64 offset = entry.buffer.offset;
         if (binding.hasDynamicOffset && nextDynamicOffset < dynamicOffsets.size()) {
             offset += dynamicOffsets[nextDynamicOffset++];
         }
-        // Only uniform buffers so far: storage buffer layouts are refused (#190), and textures and samplers
-        // cannot be created yet (#49, #50).
+        // Storage buffer layouts are refused (#190).
         if (binding.type != BindingType::UniformBuffer) {
             continue;
         }
-        // Looked up now, not at creation: a destroyed buffer's GL name may already belong to another one.
         const GlBuffer* buffer = m_buffers.tryGet(entry.buffer.buffer);
         TESERRA_ASSERT(buffer != nullptr, "bindGroup '{}' uses buffer {} at binding {}, which is not alive",
                        group->debugName, entry.buffer.buffer, entry.binding);

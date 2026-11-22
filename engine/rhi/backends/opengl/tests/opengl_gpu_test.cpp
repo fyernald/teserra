@@ -691,3 +691,120 @@ TEST_CASE("OpenGL backend (GPU): bind groups at sets 0, 2 and 3 reach the shader
         CHECK(record.level < LogLevel::Warn);
     }
 }
+
+TEST_CASE("OpenGL backend (GPU): textures are sampled through bind groups, nearest or linear",
+          "[rhi_opengl][gpu]") {
+    const GpuWindow gpu = createGpuWindowOrSkip();
+    auto created =
+        createDevice({.backend = Backend::OpenGL, .enableValidation = true, .enableBackendDebug = true},
+                     gpu.window.get(), std::array{opengl::backendFactory()});
+    REQUIRE(created.has_value());
+    auto& device = static_cast<opengl::GlDevice&>(**created);
+    const test::LogCapture log;
+
+    const auto vertex = device.createShaderModule(
+        {.stage = ShaderStage::Vertex, .blob = test::shaders::kSampledVert, .debugName = "Sampled vertex"});
+    const auto fragment = device.createShaderModule({.stage = ShaderStage::Fragment,
+                                                     .blob = test::shaders::kSampledFrag,
+                                                     .debugName = "Sampled fragment"});
+    REQUIRE(vertex.has_value());
+    REQUIRE(fragment.has_value());
+    constexpr std::array kEntries{BindGroupLayoutEntry{
+        .binding = 0, .type = BindingType::SampledTexture, .visibility = ShaderStage::Fragment}};
+    const BindGroupLayoutHandle materialLayout = *device.createBindGroupLayout({.entries = kEntries});
+    const std::array groups{BindGroupLayoutHandle{}, BindGroupLayoutHandle{}, materialLayout};
+    const PipelineLayoutHandle layout = *device.createPipelineLayout({.groups = groups});
+    const auto pipeline = device.createGraphicsPipeline({
+        .vertexShader = *vertex,
+        .fragmentShader = *fragment,
+        .layout = layout,
+        .targets = {.colorFormats = {Format::Rgba8Unorm}},
+        .debugName = "Sampled",
+    });
+    REQUIRE(pipeline.has_value());
+
+    // A 2x2 texture, top row first: red, green / blue, white. Unorm, so filtering mixes the stored values.
+    const TextureHandle texture = *device.createTexture(
+        {.format = Format::Rgba8Unorm, .width = 2, .height = 2, .debugName = "Quadrants"});
+    constexpr std::array<u8, 16> kTexels{255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 255, 255, 255, 255};
+    device.writeTexture(texture, {.width = 2, .height = 2}, std::as_bytes(std::span(kTexels)));
+    const SamplerHandle nearest = *device.createSampler(
+        {.minFilter = Filter::Nearest, .magFilter = Filter::Nearest, .debugName = "Nearest"});
+    const SamplerHandle linear = *device.createSampler({.debugName = "Linear"});
+    const std::array nearestResources{BindGroupEntry{.binding = 0, .texture = texture, .sampler = nearest}};
+    const std::array linearResources{BindGroupEntry{.binding = 0, .texture = texture, .sampler = linear}};
+    const BindGroupHandle nearestGroup =
+        *device.createBindGroup({.layout = materialLayout, .entries = nearestResources});
+    const BindGroupHandle linearGroup =
+        *device.createBindGroup({.layout = materialLayout, .entries = linearResources});
+
+    // Draws the texture magnified to 4x4 texels and reads them back, top row first.
+    constexpr UVec2 kSize{4, 4};
+    const TextureHandle target =
+        device.createTexture2D(Format::Rgba8Unorm, kSize, TextureUsage::RenderTarget, "Sampled target");
+    const auto drawWith = [&](BindGroupHandle group) {
+        device.beginFrame();
+        CommandList& cmd = device.acquireCommandList();
+        cmd.beginRenderPass({.colorAttachments = {{.texture = target, .loadOp = LoadOp::Clear}}});
+        cmd.bindPipeline(*pipeline);
+        cmd.bindGroup(kMaterialGroup, group);
+        cmd.draw({.vertexCount = 3});
+        cmd.endRenderPass();
+        device.submit(cmd);
+        device.endFrame();
+        std::array<GLubyte, usize{kSize.x} * kSize.y * 4> texels{};
+        device.gl().GetTextureSubImage(device.texture(target)->name, 0, 0, 0, 0,
+                                       static_cast<GLsizei>(kSize.x), static_cast<GLsizei>(kSize.y), 1,
+                                       GL_RGBA, GL_UNSIGNED_BYTE, static_cast<GLsizei>(texels.size()),
+                                       texels.data());
+        return texels;
+    };
+    const auto rgb = [&](const auto& texels, u32 x, u32 y) {
+        const usize index = (usize{y} * kSize.x + x) * 4;
+        return std::array<int, 3>{texels[index], texels[index + 1], texels[index + 2]};
+    };
+    const auto near = [](const std::array<int, 3>& actual, const std::array<int, 3>& expected) {
+        for (usize i = 0; i < actual.size(); ++i) {
+            if (std::abs(actual[i] - expected[i]) > 2) {
+                return false;
+            }
+        }
+        return true;
+    };
+
+    SECTION("nearest: each texel of the texture covers a 2x2 quadrant, red at row 0, column 0") {
+        const auto texels = drawWith(nearestGroup);
+        CHECK(rgb(texels, 0, 0) == std::array{255, 0, 0});
+        CHECK(rgb(texels, 1, 1) == std::array{255, 0, 0});
+        CHECK(rgb(texels, 3, 0) == std::array{0, 255, 0});
+        CHECK(rgb(texels, 0, 3) == std::array{0, 0, 255});
+        CHECK(rgb(texels, 3, 3) == std::array{255, 255, 255});
+    }
+    SECTION("linear: the corners clamp to their texel, the inner texels mix all four") {
+        const auto texels = drawWith(linearGroup);
+        CHECK(rgb(texels, 0, 0) == std::array{255, 0, 0});
+        CHECK(rgb(texels, 3, 3) == std::array{255, 255, 255});
+        // Texel (1, 1) samples 1/4 texel from the red one's center: 9/16 red, 3/16 green and blue, 1/16
+        // white.
+        const std::array<int, 3> inner = rgb(texels, 1, 1);
+        INFO(std::format("texel (1, 1): {} {} {}", inner[0], inner[1], inner[2]));
+        CHECK(near(inner, {159, 64, 64}));
+    }
+
+    device.waitIdle();
+    device.releaseTexture(target);
+    device.destroy(linearGroup);
+    device.destroy(nearestGroup);
+    device.destroy(linear);
+    device.destroy(nearest);
+    device.destroy(texture);
+    device.destroy(*pipeline);
+    device.destroy(layout);
+    device.destroy(materialLayout);
+    device.destroy(*vertex);
+    device.destroy(*fragment);
+    for (const test::CapturedLog& record : log.records()) {
+        INFO(record.message);
+        CHECK(record.level < LogLevel::Warn);
+    }
+}
