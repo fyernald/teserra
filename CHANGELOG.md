@@ -59,11 +59,14 @@ All notable user-visible changes to Teserra are documented here. The format foll
 - Samplers in the OpenGL backend: `createSampler` makes a GL sampler object from every field of `SamplerDesc` (filters, mip filtering, address modes, comparison, anisotropy clamped to the driver's limit and only with `EXT_texture_filter_anisotropic`), and replaying `bindGroup` binds each `SampledTexture` binding's texture and sampler to the texture unit at `rhi::flatBinding(set, binding)`.
 - Bind group validation: a sampler that filters linearly (min or mag filter, or mipmaps of a texture with several levels) needs a texture format with `FormatCapabilities::Filterable`, as on Vulkan.
 - `teserra_textured_quad` example: a PNG read with `platform::FileSystem` and `assets::decodeImage()` is uploaded to an sRGB texture and drawn on a square quad through a bind group at the material set; Space switches between nearest and linear filtering, shown in the window title. Smoke run `--frames 120 --hidden-window`.
+- Readback in the OpenGL backend: `copyTextureToBuffer` writes a texture region into a buffer, top row first, through a pixel pack buffer.
+- GPU convention tests that use RHI calls only and read results back through a `Readback` buffer: a texture is rendered (row 0 is the top, counter-clockwise faces are front faces), sampled into another texture in the next pass without a barrier call, and read back. The swapchain image is checked the same way before `present()`. The presented window is a documented visual check (`teserra_textured_quad`).
 
 ### Changed
 
 - Shader modules take only `.tshader` blobs, on every backend: the temporary GLSL path (`rhi::temporaryGlslBlob()`, `rhi::temporaryGlslSource()`) is removed. The new `rhi::readShaderModuleBlob()` reads a module's blob for the backends. The null backend now refuses other blobs, as OpenGL does: `InvalidData` with the module name, or `InvalidArgument` for a blob of another stage. The OpenGL GPU tests compile their shaders with `teserra_add_shaders()`.
 - `rhi::validateBindGroupDesc()` and `rhi::validateCommands()` take the device's `DeviceLimits` as a last parameter. Only backends call them.
+- Copy commands refuse depth textures in both directions; readback of depth textures was never implemented.
 - `rhi_triangle` turns: its vertex shader reads the angle from a per-frame uniform buffer at set 0, bound with a dynamic offset into one slot per frame in flight.
 - The OpenGL backend compiles the GLSL of `.tshader` blobs; `rhi_triangle` draws with shaders compiled at build time and embedded by `teserra_add_shaders()` (`examples/rhi_triangle/shaders/`). Blobs that are neither `.tshader` nor temporary GLSL now fail with `InvalidData` instead of `Unsupported`.
 - `teserra_engine` declares `core` in `DEPENDS`, which it includes directly.

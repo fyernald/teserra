@@ -100,8 +100,9 @@ void validateCommands(const CommandList& commands, const ResourceLookup& objects
         }
         const TextureRegion region = regionOf(copy);
         validateTextureRegion(*textureDesc, region, use);
-        TESERRA_ASSERT(!toTexture || !isDepthStencil(textureDesc->format),
-                       "{} into depth texture '{}'; depth textures cannot be uploaded in v1", use,
+        // Vulkan copies one aspect of a depth-stencil image at a time, which copies cannot select in v1.
+        TESERRA_ASSERT(!isDepthStencil(textureDesc->format),
+                       "{} with depth texture '{}'; depth textures cannot be copied in v1", use,
                        textureDesc->debugName);
         [[maybe_unused]] const u32 texelSize = formatInfo(textureDesc->format).bytesPerTexel;
         TESERRA_ASSERT(

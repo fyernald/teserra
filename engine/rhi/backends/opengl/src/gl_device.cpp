@@ -926,9 +926,11 @@ void GlDevice::replay(const CommandList& commands) {
             case CommandType::CopyBufferToTexture:
                 copyBufferToTexture(command.as<CopyBufferToTextureCommand>().copy);
                 break;
+            case CommandType::CopyTextureToBuffer:
+                copyTextureToBuffer(command.as<CopyTextureToBufferCommand>().copy);
+                break;
             default:
-                // TODO(#51): copyTextureToBuffer, for readback
-                TESERRA_ASSERT(false, "The OpenGL backend cannot replay {} commands yet",
+                TESERRA_ASSERT(false, "The OpenGL backend cannot replay {} commands",
                                commandTypeName(command.type()));
                 break;
         }
@@ -1104,6 +1106,40 @@ void GlDevice::copyBufferToTexture(const BufferTextureCopy& copy) {
         reinterpret_cast<const void*>(offset)); // NOLINT(performance-no-int-to-ptr): GL's offset convention
     // writeTexture() reads client memory, which needs no unpack buffer bound.
     m_gl.BindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
+}
+
+void GlDevice::copyTextureToBuffer(const BufferTextureCopy& copy) {
+    const GlBuffer* buffer = m_buffers.tryGet(copy.buffer);
+    const GlTexture* texture = m_textures.tryGet(copy.texture);
+    TESERRA_ASSERT(buffer != nullptr, "copyTextureToBuffer writes buffer {}, which is not alive",
+                   copy.buffer);
+    TESERRA_ASSERT(texture != nullptr, "copyTextureToBuffer reads texture {}, which is not alive",
+                   copy.texture);
+    if (buffer == nullptr || texture == nullptr) {
+        return;
+    }
+    // Texels are written in storage order, which is top row first under the upper-left clip origin
+    // (ADR-0024): no flip, as for uploads. The row length is in texels; 0 means tightly packed.
+    const u32 texelSize = formatInfo(texture->format).bytesPerTexel;
+    m_gl.PixelStorei(GL_PACK_ALIGNMENT, 1);
+    m_gl.PixelStorei(GL_PACK_ROW_LENGTH, static_cast<GLint>(copy.bytesPerRow / texelSize));
+    const GlPixelFormat pixel = glPixelFormat(texture->format);
+    const u64 size = textureDataSize(
+        texture->format, {.layerCount = copy.layerCount, .width = copy.width, .height = copy.height},
+        copy.bytesPerRow);
+    // Layers are the z range of an array texture; a 2D texture has one, at z = 0.
+    const bool array = texture->dimension == TextureDimension::Tex2DArray;
+    // With a pixel pack buffer bound, GL writes the texels into it at the byte offset passed as the pointer.
+    m_gl.BindBuffer(GL_PIXEL_PACK_BUFFER, buffer->name);
+    const auto offset = static_cast<std::uintptr_t>(copy.bufferOffset);
+    m_gl.GetTextureSubImage(
+        texture->name, static_cast<GLint>(copy.mipLevel), static_cast<GLint>(copy.x),
+        static_cast<GLint>(copy.y), array ? static_cast<GLint>(copy.arrayLayer) : 0,
+        static_cast<GLsizei>(copy.width), static_cast<GLsizei>(copy.height),
+        array ? static_cast<GLsizei>(copy.layerCount) : 1, pixel.format, pixel.type,
+        static_cast<GLsizei>(size),
+        reinterpret_cast<void*>(offset)); // NOLINT(performance-no-int-to-ptr): GL's offset convention
+    m_gl.BindBuffer(GL_PIXEL_PACK_BUFFER, 0);
 }
 
 void GlDevice::beginRenderPass(const RenderPassDesc& pass) {

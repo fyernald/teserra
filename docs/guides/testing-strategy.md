@@ -92,6 +92,11 @@ The `ci-windows` test preset also writes a JUnit report to `build/ci-windows/jun
 - Locally they run with the normal test command if a GPU is available; they skip (not fail) with a clear message when no suitable context can be created, unless `TESERRA_REQUIRE_GPU_TESTS=1` is set (CI sets it on GPU jobs).
 - **Headless GPU testing in CI** is decided by a time-boxed spike (candidates: Mesa llvmpipe for Windows, i.e. a software OpenGL 4.5 implementation shipped as `opengl32.dll` next to the test executable; or a Linux runner with Mesa llvmpipe once the GL backend builds on Linux). Until then, GPU tests run locally before merging rendering PRs (PR checklist item).
 - Key GPU tests: orientation and winding tests ([ADR-0024](../adr/0024-coordinate-conventions.md)), clear/triangle/textured quad, bind group remapping, frames-in-flight ring buffer correctness, swapchain resize.
+- **Convention tests** (`[conventions]` in `engine/rhi/backends/opengl/tests/opengl_gpu_test.cpp`) use RHI calls only, so the Vulkan backend will run them unchanged as conformance tests. They read texels back with `copyTextureToBuffer` into a `Readback` buffer, then `waitIdle()` and `map()`:
+  - a green counter-clockwise triangle in the top-left corner and a red clockwise one in the top-right corner, with back faces culled, are rendered to a texture: the green one must be in row 0 and the red one absent;
+  - the next pass samples that texture into another one, with no barrier call, and the readback must match;
+  - the same scene in the swapchain image is read back before `present()`.
+- **The window itself is checked by eye.** Drivers leave the pixels of a hidden window undefined, so no test can read what `present()` put on screen. The flip of the present blit is checked against the fake driver (`opengl_swapchain_test.cpp`). After a change to presentation, run `teserra_textured_quad`: the red marker of its image must be in the top-left corner of the quad and the "F" upright. On a new backend or platform, this check is part of the first hardware run.
 
 ## Snapshot tests
 
