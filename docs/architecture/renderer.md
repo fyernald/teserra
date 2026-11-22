@@ -90,16 +90,18 @@ struct Perspective  { f32 fovYRadians = 1.0472f; f32 nearPlane = 0.1f; f32 farPl
 
 struct Camera {
     std::variant<Orthographic, Perspective> projection = Orthographic{};
-    Rect viewport = {0, 0, 1, 1};     // normalized, top-left origin
+    Rect viewport{.position = Vec2{0.0F}, .size = Vec2{1.0F}};  // normalized, top-left origin
     i32 order = 0;
-    Color clearColor = Color::black();
-    RenderTargetHandle target;        // null = main scene target
+    Color clearColor{.r = 0.0F, .g = 0.0F, .b = 0.0F, .a = 1.0F};
+    // render target: with render targets (#95); the frame's target until then
 };
 ```
 
+`<teserra/renderer/camera.hpp>` builds a view from a camera and its world transform: `projectionMatrix(camera, aspect)`, `cameraData(camera, world, targetSize, time)` and `renderView(camera, world, targetSize, time)` (camera data plus order and clear color, for the `FramePacket`). `worldToScreen(cameraData, point)` and `screenToWorld(cameraData, pixel, depth)` convert between world points and viewport pixels (top-left origin, depth `[0, 1]`) through `viewProjection` and its inverse, for either projection.
+
 - The view matrix comes from the camera's world transform (`inverse(world)`); the projection from the variant and the target's aspect ratio. Matrices follow [ADR-0024](../adr/0024-coordinate-conventions.md): right-handed, depth `[0, 1]`.
-- `CameraData` (std140-compatible, set 0, binding 0): `view`, `projection`, `viewProjection`, `inverseViewProjection`, `cameraPosition`, `viewportSize`, `time`. A `static_assert` on size/offsets mirrors the shader-side block.
-- 2D helpers: `Camera2D` utilities for zoom, pixel-perfect snapping (`pixelsPerUnit`, integer zoom), `screenToWorld` / `worldToScreen`.
+- `CameraData` (std140-compatible, set 0, binding 0, 288 bytes): `view`, `projection`, `viewProjection`, `inverseViewProjection`, `position`, `viewportSize`, `time`. `static_assert`s on size and offsets mirror the shader-side block, which engine shaders include from `engine/renderer/shaders/teserra/camera.glsl` (`#include <teserra/camera.glsl>`); a test compiles a shader with it and compares the reflected std140 size with `sizeof(CameraData)`.
+- 2D helpers: `Camera2D { position, zoom, pixelsPerUnit, pixelSnap }` makes an orthographic camera (`camera(viewportSize)`, `world()`) whose height is `viewportSize.y / (pixelsPerUnit * zoom)`, so each texel of art drawn at `pixelsPerUnit` shows as `zoom` screen pixels. `pan(delta)`, `zoomAt(factor, cursor, viewportSize)` (the world point under the cursor stays put), `screenToWorld` / `worldToScreen`, and `pixelSnap`, which rounds the view position to whole screen pixels so pixel art does not shimmer while the camera moves.
 - Perspective is part of v1 **and covered by a unit test** (projection of known points, depth range) so 3D work starts from a verified camera.
 
 ## Sprite batcher
