@@ -63,7 +63,9 @@ flowchart LR
     F --> G[submit + present<br/>endFrame]
 ```
 
-- `Renderer::render(const FramePacket&)` runs prepare + passes and submits one command list per frame in v1.
+- `Renderer::render(const FramePacket&, const FrameTarget&, rhi::CommandList&)` records the frame into a command list it is given: `engine::App` owns `beginFrame()`, submission and present, so the renderer records between them. It starts the frame's upload memory, uploads each view's `CameraData`, then runs the passes. Views are sorted by `order` (stable).
+- **Upload ring** (`UploadRing`): one persistently mapped `Upload` buffer (`Uniform | Vertex | Index | CopySrc`) with a partition of `RendererConfig::uploadBytesPerFrame` (default 4 MiB, rounded up to 256) per frame slot. `beginFrame()` takes `Device::frameSlot()` and empties that partition, which the GPU no longer reads once the device's `beginFrame()` has waited for the slot; `allocate(size, alignment)` sub-allocates from it. It asserts when the partition is full and when the device has moved to another slot without the ring's `beginFrame()`, which would write into data still in flight.
+- **Frame bind group** (set 0, `rhi::kFrameGroup`): one group over the whole ring with the view's `CameraData` (288 bytes, std140) as a uniform buffer with a dynamic offset. `PassContext::bindView(cmd, view)` binds it with the view's offset; pipelines of passes put `Renderer::frameGroupLayout()` at set 0.
 - **Frame context** per frame slot (`kMaxFramesInFlight = 2`): an upload ring buffer partition, the frame's view uniform data, transient bind groups. Reset in `beginFrame()` after the RHI fence for that slot completes.
 - **Passes** implement a small interface:
 
@@ -77,7 +79,7 @@ flowchart LR
   };
   ```
 
-  In v1 passes run in the order they were added and `declare()` is used only for validation and debug labeling. A future render graph uses the same declarations to order passes, alias transient targets and insert barriers, so v1 passes do not need rewriting.
+  In v1 passes run in the order they were added and `declare()` is used only for validation and debug labeling: `PassBuilder::reads()` / `writes()` take a `PassResource` (v1: `SceneColor`, the frame's `FrameTarget`), and `PassContext::target(resource)` asserts that the running pass declared it. A future render graph uses the same declarations to order passes, alias transient targets and insert barriers, so v1 passes do not need rewriting.
 - Every pass wraps its commands in `cmd.pushDebugGroup(name())` for GPU debuggers and profiling.
 
 ## Cameras

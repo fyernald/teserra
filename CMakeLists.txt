@@ -57,6 +57,7 @@ add_subdirectory(engine/core)
 add_subdirectory(engine/platform)
 add_subdirectory(engine/rhi)
 add_subdirectory(engine/assets)
+add_subdirectory(engine/renderer)
 add_subdirectory(engine/engine)
 
 if(TESERRA_BUILD_EXAMPLES)

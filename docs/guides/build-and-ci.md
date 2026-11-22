@@ -205,7 +205,7 @@ Run locally with `cmake --build --preset <preset> --target check` (or one of `la
 | Check | Tool | Fails when |
 |---|---|---|
 | Layer rule at configure time | `teserra_add_module(... LAYER n DEPENDS ...)` | A module depends on a module in the same or a higher layer |
-| Include rule (`layer-include`) | `tools/scripts/check_layers.py` | A module includes `<teserra/<x>/...>` and `x` is neither the module itself nor a **direct** `DEPENDS` entry (transitive dependencies do not count). `<teserra/test/...>` is allowed only under a module's `tests/` |
+| Include rule (`layer-include`) | `tools/scripts/check_layers.py` | A module includes `<teserra/<x>/...>` and `x` is neither the module itself nor a **direct** `DEPENDS` entry (transitive dependencies do not count). `<teserra/test/...>` is allowed only under a module's `tests/`, and so are the modules its `teserra_add_test(... DEPENDS ...)` links (the null backend in renderer tests, for example), which the module itself may not depend on |
 | Backend leak (`gl-leak`, `vulkan-leak`) | `tools/scripts/check_gl_leaks.py` | GL names (`GL_*`, `gl[A-Z][a-z]*`, `GLuint`-style types, `GLAD_*`) or headers (`glad/`, `GL/`, `KHR/`, ...) outside `engine/rhi/backends/opengl/`; Vulkan names (`Vk*`, `vk*`) or headers outside `engine/rhi/backends/vulkan/` |
 | Platform leak (`glfw-leak`, `win32-leak`) | same script | GLFW names or headers outside `engine/platform/src/glfw/`; Win32 headers (`<windows.h>`, ...) outside Windows-only platform files (a `windows/` directory or a `*_windows` file under `engine/platform/`) |
 | glm leak (`glm-leak`) | same script | `glm::`, `GLM_*` or `<glm/...>` outside `engine/core/` |
