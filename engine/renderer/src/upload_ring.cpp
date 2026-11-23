@@ -76,14 +76,14 @@ UploadRing::~UploadRing() {
     }
 }
 
-// SCRATCH (#204, never merged): `slot` appears only in the assertion, so a Release build, where assertions
-// are off, warns about an unused parameter.
-static void scratchCheckSlot(u32 slot) {
-    TESERRA_ASSERT(slot < rhi::kMaxFramesInFlight, "frame slot {} out of range", slot);
+// SCRATCH (#204, never merged): `caller` appears only in the assertion's message, which a Release build
+// (assertions off) does not compile, so it warns about an unused parameter.
+static void scratchCheckSlot(u32 slot, const char* caller) {
+    TESERRA_ASSERT(slot < rhi::kMaxFramesInFlight, "{}: frame slot out of range", caller);
 }
 
 void UploadRing::beginFrame() {
-    scratchCheckSlot(m_device->frameSlot());
+    scratchCheckSlot(m_device->frameSlot(), "beginFrame");
     m_slot = m_device->frameSlot();
     m_used = 0;
 }
