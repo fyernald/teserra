@@ -163,6 +163,11 @@ schedule.add(Phase::Update, "player_movement", playerMovement)
   - The App advances the active scene's `Time` once per frame, so each scene keeps its own play time.
   - The scene's Schedule comes with #75. Until then, `run(scene, callbacks)` runs the game's callbacks.
   - The module depends only on `core` and `ecs`, so the portable Linux build includes it.
+  - **Transforms are 3D** (renderer.md, 3D readiness #1):
+    - `scene::Transform` is `Vec3 position`, `Quat rotation`, `Vec3 scale`; `matrix()` is translate × rotate × scale.
+    - 2D helpers work in the XY plane and keep z: `position2D` / `setPosition2D`, `rotation2D` / `setRotation2D` (radians, counter-clockwise around +Z, in (-π, π], ADR-0024), `scale2D` / `setScale2D`.
+    - `scene::updateGlobalTransforms(world)` gives every entity with a `Transform` a `GlobalTransform` (`Mat4`) and sets it. Every entity is a root until hierarchies (iteration 13). The Schedule runs it in PostUpdate (#75).
+    - `Transform` describes its fields for the editor (`ComponentFields`).
 - Engine-provided systems (transform propagation, render extraction, tilemap chunk updates) are added to every scene by the engine; games add their own.
 
 ## Roadmap: from simple and correct to benchmarked and optimized
