@@ -128,6 +128,9 @@ void spawnBullets(SystemContext& ctx) {
 
 - `Commands` records creates, destroys, adds and removes into a reused buffer. Entities created through commands get reserved IDs immediately (usable in the same buffer).
 - Commands are applied at **sync points**: after each schedule phase, in recording order. This makes structural changes deterministic.
+- `ecs::Commands` (`<teserra/ecs/commands.hpp>`) records for one World; until the Schedule exists, the caller calls `apply()`. Each applied command has the checks of the World call it makes (adding twice, removing what is missing, destroying a dead entity, a pool locked by a view all assert); recording asserts that the entity is alive or reserved.
+- **Reserved entities:** `create()` returns the entity `World::create()` would have, from the same free list, marked pending. It is not alive (`isAlive()`, `entityCount()` and `forEachEntity()` skip it) until the buffer is applied; `clear()` or destroying the buffer releases it with a new generation. Reserving is allowed during `forEachEntity()`, where `World::create()` is not.
+- **Storage:** records in a vector, and components constructed at record time in 16 KiB chunks that never move (so `std::string` and other types that are not trivially relocatable stay valid), aligned to 64 bytes at most. Both are kept between applies: recording and applying allocate nothing in steady state.
 
 ## Resources and events
 

@@ -18,6 +18,8 @@
 
 namespace teserra::ecs {
 
+class Commands;
+
 /// A set of entities and their components. Several worlds can coexist (tests, editor previews); each hands
 /// out its own entities. Not thread-safe.
 ///
@@ -44,16 +46,23 @@ public:
     /// is a programmer error (asserted).
     void destroy(Entity entity);
     /// Whether `entity` was created by this world and not destroyed since. Never asserts.
-    [[nodiscard]] bool isAlive(Entity entity) const noexcept { return m_entities.contains(entity); }
+    [[nodiscard]] bool isAlive(Entity entity) const noexcept {
+        const EntityRecord* record = m_entities.tryGet(entity);
+        return record != nullptr && !record->pending;
+    }
     /// The number of live entities.
-    [[nodiscard]] usize entityCount() const noexcept { return m_entities.size(); }
+    [[nodiscard]] usize entityCount() const noexcept { return m_entities.size() - m_pendingCount; }
 
     /// Calls `function(entity)` for every live entity, in index order. The function must not create or
-    /// destroy entities (asserted); structural changes during iteration go through Commands (iteration 10).
+    /// destroy entities (asserted); structural changes during iteration go through Commands.
     template <typename Function>
     void forEachEntity(Function&& function) const {
         const IterationScope scope(m_iterating);
-        m_entities.forEach([&](Entity entity, const Alive& /*alive*/) { function(entity); });
+        m_entities.forEach([&](Entity entity, const EntityRecord& record) {
+            if (!record.pending) {
+                function(entity);
+            }
+        });
     }
 
     // Components. The entity must be alive, and it must have (get, remove) or lack (add) the component; both
@@ -142,8 +151,27 @@ public:
     [[nodiscard]] usize poolCount() const noexcept { return m_pools.size(); }
 
 private:
-    // The registry stores nothing per entity yet; the pool provides the generations and the free list.
-    struct Alive {};
+    friend class Commands;
+
+    // The pool provides the generations and the free list. A pending entity was reserved by Commands and is
+    // not alive until the commands are applied.
+    struct EntityRecord {
+        bool pending = false;
+    };
+
+    // Commands (docs/architecture/ecs.md#structural-changes-commands). reserve() returns the entity create()
+    // would have, from the same free list, but pending. It is allowed during forEachEntity(): HandlePool
+    // walks its slots by index, and the callback above holds no reference across the user's function.
+    [[nodiscard]] Entity reserve();
+    // Makes a reserved entity alive.
+    void commitReserved(Entity entity);
+    // Releases a reserved entity that was never committed; copies of it become stale.
+    void releaseReserved(Entity entity);
+    // Whether `entity` is a reserved entity that is not alive yet.
+    [[nodiscard]] bool isReserved(Entity entity) const noexcept {
+        const EntityRecord* record = m_entities.tryGet(entity);
+        return record != nullptr && record->pending;
+    }
 
     // Counts nested forEachEntity() calls, also when the function throws (test assert handlers do).
     class IterationScope {
@@ -183,7 +211,8 @@ private:
         TESERRA_ASSERT(!target.has(entity), "Entity {} already has {}", entity, target.meta().name);
     }
 
-    HandlePool<Alive, EntityTag> m_entities;
+    HandlePool<EntityRecord, EntityTag> m_entities;
+    usize m_pendingCount = 0;
     mutable u32 m_iterating = 0;
     // Sorted by key: a world has a few dozen component types, views cache their pools, and a vector moves
     // without allocating, unlike a hash map.
