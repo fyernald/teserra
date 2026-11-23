@@ -38,6 +38,7 @@ flowchart LR
 - `create()` pops a free index (or appends) and returns `{index, generation}`. Live generations start at 1.
 - `destroy(e)` removes all of the entity's components, increments the generation and enqueues the index. Destroying a stale entity is a programmer error (assert); `isAlive(e)` checks without asserting.
 - v1 destroys by asking each pool to remove the entity (O(number of pools)). A per-entity component bitmask is a planned optimization if benchmarks show it matters.
+- `World` (`<teserra/ecs/world.hpp>`): `create()`, `destroy(e)`, `isAlive(e)`, `entityCount()` and `forEachEntity(f)` over the live entities in index order. `ecs::Entity` (`<teserra/ecs/entity.hpp>`) is `Handle<EntityTag>`, and the registry is core's `HandlePool` (FIFO reuse, generations from 1, an index retired at the maximum generation instead of wrapping). `create()` and `destroy()` assert while `forEachEntity()` runs: structural changes during iteration go through `Commands`.
 
 ## Component storage
 

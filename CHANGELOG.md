@@ -70,6 +70,7 @@ All notable user-visible changes to Teserra are documented here. The format foll
 - `teserra_sprite_stress` example, the first public feedback build: 1 000 or 10 000 moving, spinning sprites with 16 textures, a top-left orientation marker, `Camera2D` pan and zoom, and sprites / FPS / draws / batches in the window title; vsync off. Smoke run `--frames 600 --hidden-window`.
 - `tools/setup/setup.sh`: one script, run from Git Bash, that checks everything a Windows machine needs to build Teserra (Visual Studio Build Tools with the C++ workload, CMake, Ninja, vcpkg, the Windows SDK, Python, clang-format / clang-tidy), downloads and installs what is missing with a progress bar (size, speed, time left) after checking each installer's signature, prints every problem with a fix, then configures, builds and tests the project. `--check` only reports. CI lints it with shellcheck and runs its check on Windows.
 - CI builds and tests Release too: the `ci-windows-release` preset (Release, warnings as errors, JUnit) runs as the `windows-msvc-release` job beside `windows-msvc`, so warnings only Release shows fail the PR.
+- `teserra_ecs` (layer 4, depends only on core) with the entity registry: `ecs::World` with `create()`, `destroy()`, `isAlive()`, `entityCount()` and `forEachEntity()`; `ecs::Entity` is a generational handle; destroyed entities are never alive again, indices are reused in FIFO order, and structural changes during iteration assert. Several worlds coexist. A randomized test compares 10 000 operations per seed with a reference model.
 
 ### Changed
 
