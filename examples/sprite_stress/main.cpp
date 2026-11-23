@@ -206,11 +206,12 @@ public:
         const UVec2 size = app.device().swapchain()->size();
         m_packet.clear();
         m_packet.views.push_back(renderer::renderView(m_camera.camera(size), m_camera.world(), size));
+        // One sort depth for all, so sprites batch by texture: 16 draws. Sorting by -y would interleave the
+        // textures and break a batch at nearly every sprite, the cost that texture atlases avoid in games.
         for (const Mover& mover : m_movers) {
             m_packet.sprites.push_back({.world = spriteWorld(mover.position, mover.angle),
                                         .size = Vec2{mover.size},
-                                        .texture = m_textures[mover.texture],
-                                        .sortDepth = -mover.position.y}); // lower sprites in front
+                                        .texture = m_textures[mover.texture]});
         }
         // The orientation marker: a red square in the window's top-left corner, above every sprite.
         const Vec2 corner = m_camera.screenToWorld(Vec2{kMarkerPixels}, size);
