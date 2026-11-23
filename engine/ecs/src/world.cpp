@@ -15,7 +15,9 @@ void World::destroy(Entity entity) {
     if (!isAlive(entity)) {
         return;
     }
-    // Components are removed here once the world has pools (#66).
+    for (const PoolEntry& entry : m_pools) {
+        entry.pool->removeIfPresent(entity);
+    }
     m_entities.destroy(entity);
 }
 
