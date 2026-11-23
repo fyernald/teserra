@@ -7,10 +7,12 @@ teserra_add_module(renderer LAYER 3
         include/teserra/renderer/frame_packet.hpp
         include/teserra/renderer/render_pass.hpp
         include/teserra/renderer/renderer.hpp
+        include/teserra/renderer/sprite_batcher.hpp
         include/teserra/renderer/upload_ring.hpp
     SOURCES
         src/camera.cpp
         src/renderer.cpp
+        src/sprite_batcher.cpp
         src/upload_ring.cpp
 )
 
