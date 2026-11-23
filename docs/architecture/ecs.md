@@ -76,6 +76,8 @@ flowchart LR
 - Membership checks also compare the stored entity's generation, so stale entities never match.
 - Pointers/references to components are valid until the next structural change **of that pool**. Code must not hold component pointers across frames; hold the `Entity` instead.
 - Iteration order is unspecified and changes after removals.
+- `ComponentPool<T>` (`<teserra/ecs/component_pool.hpp>`): `add`, `remove`, `has`, `get`, `tryGet`, and `entities()` / `components()` spans in dense order. **Tags** (empty types) keep only their entities: no component array, no `get`. `lock()` returns an RAII `ComponentPoolBase::Lock`; adding or removing while one lives asserts (views take one). `allocatedPages()` reports the sparse pages in use.
+- `World` component API: `add<T>(e, args...)` (returns `T&`; nothing for tags), `remove<T>(e)`, `has<T>(e)`, `get<T>(e)`, `tryGet<T>(e)`, `pool<T>()` (created on first use) and `tryPool<T>()`. Adding a component the entity has, removing or getting one it lacks, or using a dead entity asserts. `destroy(e)` removes the entity from every pool. Pools are kept in a vector sorted by `TypeKey` (a world has a few dozen types, and views cache their pools), which keeps `World`'s move `noexcept`.
 
 ### Component types and metadata
 
@@ -83,12 +85,12 @@ flowchart LR
 struct Velocity { Vec3 value; };
 struct Enemy {};                       // tag
 
-TESERRA_COMPONENT(Velocity, "Velocity")   // optional explicit registration with a stable name
+TESERRA_COMPONENT(Velocity, "Velocity");  // optional explicit registration with a stable name, at global scope
 ```
 
-- Each component type has a `TypeKey`: a 64-bit hash of a stable type name (explicit name if registered, otherwise a compiler-derived name). TypeKeys are stable across builds and across shared-library boundaries (no reliance on static counters or RTTI).
+- Each component type has a `TypeKey` (`<teserra/ecs/type_key.hpp>`): the 64-bit FNV-1a hash of a stable type name (explicit name if registered through `ComponentName<T>::kName`, otherwise the compiler's spelling from `std::source_location` without `struct ` / `class ` / `enum `, namespaces kept). A golden test pins `typeKey("Velocity")`. Register the name of anything that is saved or sent: compilers may spell templates differently. TypeKeys are stable across builds and across shared-library boundaries (no reliance on static counters or RTTI).
 - The world maps `TypeKey` → pool. Views cache pool pointers once at creation, so iteration never hashes.
-- `ComponentMeta` records name, size, alignment, and type-erased construct/move/destroy functions. Optional **field descriptors** (`name`, `offset`, `FieldType`) can be registered for a type. v1 does not consume them yet; they exist so that serialization, the editor inspector and scripting bindings can be added without changing component definitions ([ADR-0014](../adr/0014-scripting-deferred.md)).
+- `ComponentMeta` (`componentMeta<T>()`, `<teserra/ecs/component_meta.hpp>`) records key, name, size, alignment, whether the type is a tag, and type-erased move-construct and destroy functions. Optional **field descriptors** (`name`, `offset`, `FieldType`) are registered by specializing `ComponentFields<T>` with `static constexpr std::array<FieldDescriptor, N> kFields`. v1 does not consume them yet; they exist so that serialization, the editor inspector and scripting bindings can be added without changing component definitions ([ADR-0014](../adr/0014-scripting-deferred.md)).
 
 ## Views
 
