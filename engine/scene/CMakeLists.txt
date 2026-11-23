@@ -6,8 +6,10 @@ teserra_add_module(scene LAYER 5
         include/teserra/scene/scene.hpp
         include/teserra/scene/scene_manager.hpp
         include/teserra/scene/time.hpp
+        include/teserra/scene/transform.hpp
     SOURCES
         src/scene.cpp
+        src/transform.cpp
 )
 
 if(TESERRA_BUILD_TESTS)

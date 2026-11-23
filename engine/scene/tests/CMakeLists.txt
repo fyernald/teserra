@@ -1,6 +1,7 @@
 teserra_add_test(scene
     SOURCES
         scene_test.cpp
+        transform_test.cpp
     DEPENDS scene
 )
 

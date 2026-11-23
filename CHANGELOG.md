@@ -78,6 +78,7 @@ All notable user-visible changes to Teserra are documented here. The format foll
 - ECS commands: `ecs::Commands` records creates, destroys, adds and removes during iteration and applies them later in recording order. Entities created through it are reserved at once and usable in the same buffer; discarded buffers release them. Steady-state recording and applying allocate nothing.
 - ECS resources: `World::insertResource<T>(args...)`, `resource<T>()`, `tryResource<T>()`, `hasResource<T>()` and `removeResource<T>()` hold typed per-world singletons, destroyed in reverse insertion order before the components; missing or duplicate resources assert with the type name.
 - `teserra_scene` module (layer 5): `scene::Scene` owns an `ecs::World` with a `Time` resource, and `scene::SceneManager` switches the active scene at frame boundaries. `engine::App` owns the manager (`app.scenes()`) and `App::run(scene)` activates a scene before the first frame and advances its `Time` every frame. The portable Linux build includes the module.
+- `scene::Transform` (`Vec3` position, `Quat` rotation, `Vec3` scale) with 2D helpers that keep z and use counter-clockwise radians around +Z, and `scene::GlobalTransform` (`Mat4`), set by `scene::updateGlobalTransforms(world)` for every entity with a Transform.
 
 ### Changed
 
