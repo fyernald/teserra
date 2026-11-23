@@ -13,12 +13,19 @@
 
 #include <algorithm>
 #include <memory>
+#include <string_view>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
 namespace teserra::ecs {
 
 class Commands;
+
+/// A type a World can hold as a resource (a typed per-world singleton): any object type that is not
+/// cv-qualified. It need not be movable; resources never move.
+template <typename T>
+concept Resource = std::is_object_v<T> && std::is_same_v<T, std::remove_cv_t<T>>;
 
 /// A set of entities and their components. Several worlds can coexist (tests, editor previews); each hands
 /// out its own entities. Not thread-safe.
@@ -32,12 +39,23 @@ class Commands;
 class World {
 public:
     World() = default;
-    ~World() = default;
+    /// Destroys the resources in reverse insertion order, then the entities and their components.
+    ~World() { clearResources(); }
 
     World(const World&) = delete;
     World& operator=(const World&) = delete;
     World(World&&) noexcept = default;
-    World& operator=(World&&) noexcept = default;
+    World& operator=(World&& other) noexcept {
+        if (this != &other) {
+            clearResources(); // in reverse insertion order, before the pools, as in the destructor
+            m_entities = std::move(other.m_entities);
+            m_pendingCount = std::exchange(other.m_pendingCount, 0);
+            m_iterating = std::exchange(other.m_iterating, 0);
+            m_pools = std::move(other.m_pools);
+            m_resources = std::move(other.m_resources);
+        }
+        return *this;
+    }
 
     /// A new live entity. Indices of destroyed entities are reused in the order they were freed, with a new
     /// generation, so stale entities stay detectable for as long as possible.
@@ -150,6 +168,67 @@ public:
     /// The number of component pools, one per component type this world has seen.
     [[nodiscard]] usize poolCount() const noexcept { return m_pools.size(); }
 
+    // Resources: typed per-world singletons (docs/architecture/ecs.md#resources-and-events), named like
+    // components (TESERRA_COMPONENT registers a stable name for either). References stay valid until the
+    // resource is removed or the World is destroyed.
+
+    /// Constructs a T from `args` as this world's T resource and returns it. The world must not have one yet
+    /// (asserted); replacing is removeResource() followed by insertResource(), or an assignment through
+    /// resource().
+    template <Resource T, typename... Args>
+    T& insertResource(Args&&... args) {
+        TESERRA_ASSERT(findResource(typeKey<T>(), componentName<T>()) == nullptr,
+                       "World already has resource {}", componentName<T>());
+        auto holder = std::make_unique<ResourceHolder<T>>(std::forward<Args>(args)...);
+        T& value = holder->value;
+        m_resources.push_back({.key = typeKey<T>(), .name = componentName<T>(), .holder = std::move(holder)});
+        return value;
+    }
+
+    /// This world's T resource, which must exist (asserted).
+    template <Resource T>
+    [[nodiscard]] T& resource() {
+        T* found = tryResource<T>();
+        TESERRA_ASSERT(found != nullptr, "World has no resource {}", componentName<T>());
+        return *found;
+    }
+    template <Resource T>
+    [[nodiscard]] const T& resource() const {
+        const T* found = tryResource<T>();
+        TESERRA_ASSERT(found != nullptr, "World has no resource {}", componentName<T>());
+        return *found;
+    }
+
+    /// This world's T resource, or nullptr.
+    template <Resource T>
+    [[nodiscard]] T* tryResource() {
+        ResourceBase* found = findResource(typeKey<T>(), componentName<T>());
+        return found != nullptr ? &static_cast<ResourceHolder<T>*>(found)->value : nullptr;
+    }
+    template <Resource T>
+    [[nodiscard]] const T* tryResource() const {
+        const ResourceBase* found = findResource(typeKey<T>(), componentName<T>());
+        return found != nullptr ? &static_cast<const ResourceHolder<T>*>(found)->value : nullptr;
+    }
+
+    template <Resource T>
+    [[nodiscard]] bool hasResource() const {
+        return findResource(typeKey<T>(), componentName<T>()) != nullptr;
+    }
+
+    /// Destroys this world's T resource, which must exist (asserted).
+    template <Resource T>
+    void removeResource() {
+        const auto found = std::ranges::find(m_resources, typeKey<T>(), &ResourceEntry::key);
+        TESERRA_ASSERT(found != m_resources.end(), "World has no resource {}", componentName<T>());
+        if (found != m_resources.end()) {
+            m_resources.erase(found);
+        }
+    }
+
+    /// The number of resources.
+    [[nodiscard]] usize resourceCount() const noexcept { return m_resources.size(); }
+
 private:
     friend class Commands;
 
@@ -221,6 +300,48 @@ private:
         std::unique_ptr<ComponentPoolBase> pool;
     };
     std::vector<PoolEntry> m_pools;
+
+    struct ResourceBase {
+        ResourceBase() = default;
+        virtual ~ResourceBase() = default;
+        ResourceBase(const ResourceBase&) = delete;
+        ResourceBase& operator=(const ResourceBase&) = delete;
+        ResourceBase(ResourceBase&&) = delete;
+        ResourceBase& operator=(ResourceBase&&) = delete;
+    };
+    template <typename T>
+    struct ResourceHolder final : ResourceBase {
+        template <typename... Args>
+        explicit ResourceHolder(Args&&... args)
+            : value(std::forward<Args>(args)...) {}
+        T value;
+    };
+    // In insertion order, searched linearly: a world has a handful of resources.
+    struct ResourceEntry {
+        TypeKey key;
+        std::string_view name;
+        std::unique_ptr<ResourceBase> holder;
+    };
+    std::vector<ResourceEntry> m_resources;
+
+    // The resource with `key`, or nullptr. Asserts if a different type has the same key, as findPool() does.
+    [[nodiscard]] ResourceBase* findResource(TypeKey key, [[maybe_unused]] std::string_view name) const {
+        const auto found = std::ranges::find(m_resources, key, &ResourceEntry::key);
+        if (found == m_resources.end()) {
+            return nullptr;
+        }
+        TESERRA_ASSERT(found->name == name,
+                       "Resource types {} and {} have the same TypeKey; register a different name for one",
+                       found->name, name);
+        return found->holder.get();
+    }
+
+    // Destroys the resources in reverse insertion order.
+    void clearResources() noexcept {
+        while (!m_resources.empty()) {
+            m_resources.pop_back();
+        }
+    }
 };
 
 } // namespace teserra::ecs
