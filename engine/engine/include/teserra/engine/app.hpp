@@ -12,6 +12,7 @@
 #include <teserra/platform/input.hpp>
 #include <teserra/platform/platform.hpp>
 #include <teserra/platform/window.hpp>
+#include <teserra/renderer/renderer.hpp>
 #include <teserra/rhi/command_list.hpp>
 #include <teserra/rhi/device.hpp>
 #include <teserra/rhi/handles.hpp>
@@ -70,7 +71,8 @@ struct AppCallbacks {
     /// Called once per frame with the frame's real time.
     std::function<void(App& app, f32 deltaSeconds)> update{};
     /// Records the frame's GPU work, after update(); the App submits it and presents App::backbuffer().
-    /// Not called while the window has no image (minimized). Without it, the App clears the image to black.
+    /// Not called while the window has no image (minimized). Without it, the App renders the active scene
+    /// (what its Extract phase put in its scene::RenderExtraction), or clears the image to black without one.
     std::function<void(App& app, rhi::CommandList& commands)> render{};
 };
 
@@ -108,7 +110,10 @@ public:
     /// scenes() (asserted). Each frame runs the active scene's phases, with the callbacks next to them:
     /// frame boundary (scene switch; Startup the first time a scene runs) -> events -> PreUpdate ->
     /// FixedUpdate and fixedUpdate x N -> Update -> update -> PostUpdate -> Extract -> render -> Last.
-    /// The active scene's Time resource advances every frame before PreUpdate; switches requested with
+    /// The active scene's Time resource advances every frame before PreUpdate, and its platform::Input
+    /// resource (inserted the first frame) is set to input() after the events. Before Extract, its
+    /// scene::RenderExtraction gets the swapchain's size; without a render callback, the App renders what
+    /// extraction produced with its own renderer and sprite pass. Switches requested with
     /// scenes().switchTo() take effect at the next frame boundary.
     [[nodiscard]] int run(scene::Scene& scene, const AppCallbacks& callbacks = {});
 
@@ -148,7 +153,9 @@ private:
     void start(Result<std::unique_ptr<platform::Platform>> platform);
     Result<void> initialize(Result<std::unique_ptr<platform::Platform>> platform);
     void runFrame(const AppCallbacks& callbacks);
-    void render(const AppCallbacks& callbacks);
+    void render(const AppCallbacks& callbacks, scene::Scene* active);
+    // The renderer that draws scenes, created the first time a scene is rendered; nullptr if that failed.
+    renderer::Renderer* sceneRenderer();
 
     AppConfig m_config;
     std::optional<Error> m_initError;
@@ -157,6 +164,9 @@ private:
     std::unique_ptr<platform::Platform> m_platform;
     std::unique_ptr<platform::Window> m_window;
     std::unique_ptr<rhi::Device> m_device;
+    // After the device, so it is destroyed before it.
+    std::unique_ptr<renderer::Renderer> m_renderer;
+    bool m_rendererFailed = false;
     // After the device: scenes are destroyed first, so GPU resources they hold go before the device.
     scene::SceneManager m_scenes;
     rhi::TextureHandle m_backbuffer;

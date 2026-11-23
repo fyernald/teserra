@@ -180,6 +180,12 @@ level.systems().add(ecs::Phase::Update, "move_player", movePlayer)
     - 2D helpers work in the XY plane and keep z: `position2D` / `setPosition2D`, `rotation2D` / `setRotation2D` (radians, counter-clockwise around +Z, in (-π, π], ADR-0024), `scale2D` / `setScale2D`.
     - The transform system (`scene::transformSystem`, named `scene::kTransformSystemName` = `"teserra.transforms"`) runs in every scene's PostUpdate: it sets every `GlobalTransform` (`Mat4`) from its `Transform`, and gives entities without one a `GlobalTransform` with the right matrix through commands, so it exists after PostUpdate's sync point and is correct for Extract. Every entity is a root until hierarchies (iteration 13). Order gameplay systems that move things in PostUpdate with `.before(scene::kTransformSystemName)`.
     - `scene::updateGlobalTransforms(world)` does the same directly on a World, outside a Schedule.
+  - **Input:** the App keeps a `platform::Input` resource in the active scene's World, inserted the first frame and set after the events of every frame. Systems read it with `.readsResource<platform::Input>()`.
+  - **Rendering** (with the renderer; the portable build leaves these headers out, `OPTIONAL_DEPENDS renderer`):
+    - `scene::Camera` is `renderer::Camera` used as a component, and `scene::SpriteRenderer` holds the fields of a `SpriteDrawItem` except the world matrix, plus `visible` (`<teserra/scene/render_components.hpp>`).
+    - Every scene has a `scene::RenderExtraction` resource and the extraction system (`scene::kRenderExtractionSystemName` = `"teserra.render_extraction"`, Extract). It refills the resource's `FramePacket`: a view per entity with a `Camera` and a `GlobalTransform`, and a `SpriteDrawItem` per visible `SpriteRenderer` whose 3D bounds (`spriteBounds()`) intersect a view's bounds (`viewBounds()`, the frustum corners through `inverseViewProjection`). Culled sprites are counted in `culledSprites`. Nothing is extracted while `targetSize` is zero.
+    - The App sets `targetSize` to the swapchain's size before Extract and, without a render callback, renders the packet with its own renderer and sprite pass, created the first time a scene is drawn.
+    - A steady-state Extract allocates nothing (tested with 10 000 sprites), and so does a whole App frame of a rendered scene.
     - `Transform` describes its fields for the editor (`ComponentFields`).
 - Engine-provided systems (transform propagation, render extraction, tilemap chunk updates) are added to every scene by the engine; games add their own.
 

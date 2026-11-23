@@ -3,7 +3,9 @@
 #include <teserra/core/assert.hpp>
 #include <teserra/core/log.hpp>
 #include <teserra/core/profile.hpp>
+#include <teserra/renderer/sprite_pass.hpp>
 #include <teserra/rhi_null/null_device.hpp>
+#include <teserra/scene/render_extraction.hpp>
 #if TESERRA_HAS_RHI_OPENGL
 #include <teserra/rhi_opengl/opengl_backend.hpp>
 #endif
@@ -168,6 +170,12 @@ void App::runFrame(const AppCallbacks& callbacks) {
     m_frameTimer.tick(m_platform->clock().now());
     if (active != nullptr) {
         active->time().advance(m_frameTimer.deltaSeconds(), m_fixedStep.stepSeconds());
+        ecs::World& world = active->world();
+        if (platform::Input* input = world.tryResource<platform::Input>()) {
+            *input = m_input; // keeps the capacity of its text
+        } else {
+            world.insertResource<platform::Input>(m_input);
+        }
     }
     runPhase(ecs::Phase::PreUpdate);
 
@@ -189,13 +197,19 @@ void App::runFrame(const AppCallbacks& callbacks) {
         callbacks.update(*this, m_frameTimer.deltaSeconds());
     }
     runPhase(ecs::Phase::PostUpdate);
+    if (active != nullptr) {
+        if (auto* extraction = active->world().tryResource<scene::RenderExtraction>()) {
+            const rhi::Swapchain* swapchain = m_device ? m_device->swapchain() : nullptr;
+            extraction->targetSize = swapchain != nullptr ? swapchain->size() : UVec2{0U};
+        }
+    }
     runPhase(ecs::Phase::Extract);
 
-    render(callbacks);
+    render(callbacks, active);
     runPhase(ecs::Phase::Last);
 }
 
-void App::render(const AppCallbacks& callbacks) {
+void App::render(const AppCallbacks& callbacks, scene::Scene* active) {
     if (!m_device) {
         return;
     }
@@ -206,8 +220,17 @@ void App::render(const AppCallbacks& callbacks) {
     // Without an image (minimized window), there is nothing to render into or present this frame.
     if (!m_backbuffer.isNull()) {
         rhi::CommandList& commands = device.acquireCommandList();
+        const scene::RenderExtraction* extraction =
+            active != nullptr ? active->world().tryResource<scene::RenderExtraction>() : nullptr;
+        renderer::Renderer* sceneDrawer =
+            !callbacks.render && extraction != nullptr ? sceneRenderer() : nullptr;
         if (callbacks.render) {
             callbacks.render(*this, commands);
+        } else if (sceneDrawer != nullptr) {
+            sceneDrawer->render(
+                extraction->packet,
+                {.texture = m_backbuffer, .format = swapchain->format(), .size = swapchain->size()},
+                commands);
         } else {
             commands.beginRenderPass(
                 {.colorAttachments = {{.texture = m_backbuffer, .loadOp = rhi::LoadOp::Clear}}});
@@ -219,6 +242,29 @@ void App::render(const AppCallbacks& callbacks) {
     }
     m_backbuffer = {};
     device.endFrame();
+}
+
+renderer::Renderer* App::sceneRenderer() {
+    if (m_renderer != nullptr || m_rendererFailed) {
+        return m_renderer.get();
+    }
+    const auto create = [&]() -> Result<std::unique_ptr<renderer::Renderer>> {
+        TESERRA_TRY_ASSIGN(std::unique_ptr<renderer::Renderer> created,
+                           renderer::Renderer::create(*m_device));
+        TESERRA_TRY_ASSIGN(std::unique_ptr<renderer::SpritePass> sprites,
+                           renderer::SpritePass::create(*m_device, created->frameGroupLayout()));
+        created->addPass(std::move(sprites));
+        return created;
+    };
+    if (Result<std::unique_ptr<renderer::Renderer>> created = create(); created) {
+        m_renderer = std::move(*created);
+    } else {
+        // A game that cannot draw its scene ends with an error instead of showing a black window.
+        TESERRA_LOG_ERROR(LogCategory::App, "Cannot create the scene renderer: {}", created.error());
+        m_rendererFailed = true;
+        quit(1);
+    }
+    return m_renderer.get();
 }
 
 void App::quit(int exitCode) noexcept {

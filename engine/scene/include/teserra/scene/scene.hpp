@@ -14,8 +14,9 @@ namespace teserra::scene {
 
 /// A level, a menu: one World of entities, components and resources, and the Schedule of systems that run
 /// on it. Every scene's World has a Time resource, and every scene's Schedule has the engine's transform
-/// system (kTransformSystemName, PostUpdate). Scenes are created by the App's SceneManager, which hands out
-/// references; the App runs the active scene's phases every frame.
+/// system (kTransformSystemName, PostUpdate). With the renderer, every scene also has a RenderExtraction
+/// resource and the render extraction system (kRenderExtractionSystemName, Extract). Scenes are created by
+/// the App's SceneManager, which hands out references; the App runs the active scene's phases every frame.
 ///
 ///     scene::Scene& level = app.scenes().create("level");
 ///     const ecs::Entity hero = level.spawn();
