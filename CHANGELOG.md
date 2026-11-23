@@ -72,6 +72,8 @@ All notable user-visible changes to Teserra are documented here. The format foll
 - CI builds and tests Release too: the `ci-windows-release` preset (Release, warnings as errors, JUnit) runs as the `windows-msvc-release` job beside `windows-msvc`, so warnings only Release shows fail the PR.
 - `teserra_ecs` (layer 4, depends only on core) with the entity registry: `ecs::World` with `create()`, `destroy()`, `isAlive()`, `entityCount()` and `forEachEntity()`; `ecs::Entity` is a generational handle; destroyed entities are never alive again, indices are reused in FIFO order, and structural changes during iteration assert. Several worlds coexist. A randomized test compares 10 000 operations per seed with a reference model.
 - ECS components: `ComponentPool<T>` sparse sets (paged sparse arrays, swap-and-pop, tags without component storage, iteration locks); `TypeKey` from stable names with `TESERRA_COMPONENT(Type, "Name")`; `ComponentMeta` with name, size, alignment, tag flag, type-erased lifecycle and optional field descriptors; and the `World` API `add`, `remove`, `has`, `get`, `tryGet`, `pool`, with `destroy` removing every component. A randomized test compares 10 000 operations per seed with `std::map` / `std::set` models.
+- ECS views: `world.view<A, const B>(exclude<C>)` iterates the entities with A and B and without C as `[entity, a, b]` structured bindings (const components are read-only at compile time), and `each()` takes a function. Views walk their smallest pool, lock their pools against structural changes, and allocate nothing.
+- `teserra_ecs_sandbox` example: 100 000 entities moved through views, with timings of each step; smoke run in CTest.
 
 ### Changed
 

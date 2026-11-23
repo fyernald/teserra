@@ -9,6 +9,7 @@
 #include <teserra/ecs/component_pool.hpp>
 #include <teserra/ecs/entity.hpp>
 #include <teserra/ecs/type_key.hpp>
+#include <teserra/ecs/view.hpp>
 
 #include <algorithm>
 #include <memory>
@@ -125,6 +126,18 @@ public:
     [[nodiscard]] const ComponentPool<T>* tryPool() const {
         return static_cast<const ComponentPool<T>*>(findPool(componentMeta<T>()));
     }
+    /// The entities with all of `Included` and none of `Excluded` (docs/architecture/ecs.md#views):
+    ///
+    ///     for (auto [entity, transform, velocity] : world.view<Transform, const Velocity>(exclude<Frozen>))
+    ///
+    /// const types are read-only. Creates the pools of types this world has not seen yet, so that the view
+    /// never looks them up while it iterates.
+    template <ViewComponent... Included, Component... Excluded>
+    [[nodiscard]] View<TypeList<Included...>, TypeList<Excluded...>>
+    view(Exclude<Excluded...> /*exclude*/ = {}) {
+        return {std::tuple{&pool<std::remove_const_t<Included>>()...}, std::tuple{&pool<Excluded>()...}};
+    }
+
     /// The number of component pools, one per component type this world has seen.
     [[nodiscard]] usize poolCount() const noexcept { return m_pools.size(); }
 
