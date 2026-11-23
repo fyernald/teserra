@@ -1,8 +1,11 @@
 teserra_add_module(assets LAYER 2
     DEPENDS core
     PUBLIC_HEADERS
+        include/teserra/assets/asset_id.hpp
+        include/teserra/assets/asset_registry.hpp
         include/teserra/assets/image.hpp
     SOURCES
+        src/asset_registry.cpp
         src/image.cpp
 )
 
