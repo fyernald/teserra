@@ -76,6 +76,7 @@ All notable user-visible changes to Teserra are documented here. The format foll
 - `teserra_ecs_sandbox` example: 100 000 entities moved through views, with timings of each step; smoke run in CTest.
 - `linux-portable` CI job (non-blocking): builds and tests core, ecs, rhi with the null backend and the portable part of platform on Linux with GCC and Clang, warnings as errors, through the new `TESERRA_PORTABLE_ONLY` option and `linux-*-portable` presets.
 - ECS commands: `ecs::Commands` records creates, destroys, adds and removes during iteration and applies them later in recording order. Entities created through it are reserved at once and usable in the same buffer; discarded buffers release them. Steady-state recording and applying allocate nothing.
+- ECS resources: `World::insertResource<T>(args...)`, `resource<T>()`, `tryResource<T>()`, `hasResource<T>()` and `removeResource<T>()` hold typed per-world singletons, destroyed in reverse insertion order before the components; missing or duplicate resources assert with the type name.
 
 ### Changed
 

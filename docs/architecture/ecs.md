@@ -135,6 +135,7 @@ void spawnBullets(SystemContext& ctx) {
 ## Resources and events
 
 - `world.insertResource<T>(value)`, `world.resource<T>()`, `world.tryResource<T>()`. Engine services exposed to gameplay (time, input state, asset registry access, debug draw) are resources or members of `SystemContext`, never globals.
+- Resources (`World::insertResource`, `resource`, `tryResource`, `hasResource`, `removeResource`) can be any object type that is not cv-qualified, movable or not: they are constructed in place and never move, so references stay valid until the resource is removed. They are named and keyed like components. A missing resource, or inserting one twice, asserts with the type name. The World destroys its resources in reverse insertion order, before its entities and components; move-assigning a World over another does the same for the old one.
 - `Events<T>` is double-buffered: events sent in frame N can be read during frames N and N+1, then are dropped. Each reader keeps a cursor, so several systems can read the same events once each.
 
 ## Systems and scheduling
