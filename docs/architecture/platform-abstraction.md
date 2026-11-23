@@ -151,6 +151,17 @@ Use this list when adding Linux (or any platform). If a step requires touching c
 9. **Docs:** update build instructions, supported platforms table in README, this checklist with lessons learned.
 10. **Release:** add platform artifacts to the release workflow.
 
+### Findings so far (Linux)
+
+The non-blocking `linux-portable` CI job (#68) builds `TESERRA_PORTABLE_ONLY` with GCC and Clang on `ubuntu-latest`, warnings as errors: `core`, `ecs`, `rhi` + null backend, and the portable part of `platform` (no OS services, no window backend). What it found:
+
+- **`std::mt19937::result_type` is 64 bits on Linux** (`uint_fast32_t`), 32 on Windows. Storing `random() % n` in a `u32` compiles on MSVC and fails `-Wconversion` on GCC; cast explicitly.
+- **GCC's `-Wshadow` flags a constructor parameter named like the member it initializes** (`Scene(Device& device) : device(device)`), which MSVC and Clang accept. Name the parameter differently.
+- **GCC does not evaluate `consteval` calls in a discarded `if constexpr` branch,** where MSVC and Clang do. Log calls removed by `TESERRA_LOG_LEVEL_MIN` sat in such a branch, so on GCC their `std::format_string` check never ran and a wrong format string compiled (the compile-fail test `core.log.removed_call_format_string_is_checked` caught it). The check now runs in the branch that is taken, inside a lambda that is never called.
+- **Clang found nothing** that MSVC and clang-tidy had not. The runner had GCC 15.2 and Clang 21.1 (November 2026); the job uses whatever `ubuntu-latest` ships.
+- **Already portable:** `config.hpp`'s `TESERRA_PLATFORM_LINUX`, `assert.cpp`'s `SIGTRAP` debug break and `/proc/self/status` debugger check, the vcpkg toolchain file, and the GCC/Clang warning flags.
+- **Still Windows-only** (step 2 and 3 above): `file_system_windows.cpp` and `glfw_native_windows.cpp`. `engine/platform/CMakeLists.txt` stops configuration on other hosts unless `TESERRA_PORTABLE_ONLY` is set.
+
 ## Anti-patterns specific to this layer
 
 - Exposing `GLFWwindow*`, `HWND` or GLFW key codes in a public header (use `NativeWindowHandle` and engine enums).

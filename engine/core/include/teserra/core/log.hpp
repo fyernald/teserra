@@ -165,6 +165,11 @@ void write(LogLevel level, LogCategory category, std::source_location location,
     vwrite(level, category, location, format.get(), std::make_format_args(args...));
 }
 
+/// Checks a removed call's format string against its arguments at compile time and does nothing else.
+template <typename... Args>
+constexpr void checkFormat(std::format_string<Args...> /*format*/, Args&&... /*args*/) noexcept {
+}
+
 } // namespace detail
 
 } // namespace log
@@ -172,7 +177,10 @@ void write(LogLevel level, LogCategory category, std::source_location location,
 } // namespace teserra
 
 // Shared implementation of the level macros. `levelValue` is the TESERRA_LOG_LEVEL_* number, compared
-// with `if constexpr` so that removed calls still have their format string checked.
+// with `if constexpr` to remove calls below TESERRA_LOG_LEVEL_MIN. A removed call still has its format
+// string checked, in the branch that is taken: GCC does not evaluate the consteval std::format_string
+// check in a discarded statement, as MSVC and Clang do. The check sits in a lambda that is never called,
+// so the arguments are not evaluated and no code is generated.
 #define TESERRA_DETAIL_LOG_AT(levelValue, logLevel, category, ...)                                           \
     do {                                                                                                     \
         if constexpr ((levelValue) >= TESERRA_LOG_LEVEL_MIN) {                                               \
@@ -181,6 +189,8 @@ void write(LogLevel level, LogCategory category, std::source_location location,
                 ::teserra::log::detail::write((logLevel), teserraLogCategory,                                \
                                               ::std::source_location::current(), __VA_ARGS__);               \
             }                                                                                                \
+        } else {                                                                                             \
+            static_cast<void>([&] { ::teserra::log::detail::checkFormat(__VA_ARGS__); });                    \
         }                                                                                                    \
     } while (false)
 
