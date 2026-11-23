@@ -51,6 +51,8 @@ struct FramePacket {
 
 This keeps the renderer testable (fill a packet by hand, render with the null backend, inspect commands) and lets extraction move to another thread later.
 
+Today the scene layer's extraction system fills the views and sprites from `scene::Camera` and `scene::SpriteRenderer` components, culling sprites whose 3D bounds miss every view's bounds, and `engine::App` renders the active scene's packet ([ECS: scenes own worlds](ecs.md#scenes-own-worlds)). The renderer itself still sees no entity: the layer check keeps ECS types out of it.
+
 ## Frame structure
 
 ```mermaid

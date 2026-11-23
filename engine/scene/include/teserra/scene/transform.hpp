@@ -6,6 +6,7 @@
 #include <teserra/core/types.hpp>
 #include <teserra/ecs/component_meta.hpp>
 #include <teserra/ecs/system_context.hpp>
+#include <teserra/ecs/type_key.hpp>
 #include <teserra/ecs/world.hpp>
 
 #include <array>
@@ -72,6 +73,9 @@ void transformSystem(ecs::SystemContext& context);
 void updateGlobalTransforms(ecs::World& world);
 
 } // namespace teserra::scene
+
+TESERRA_COMPONENT(teserra::scene::Transform, "Transform");
+TESERRA_COMPONENT(teserra::scene::GlobalTransform, "GlobalTransform");
 
 template <>
 struct teserra::ecs::ComponentFields<teserra::scene::Transform> {

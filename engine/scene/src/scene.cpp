@@ -3,6 +3,9 @@
 #include <teserra/core/assert.hpp>
 #include <teserra/scene/scene_manager.hpp>
 #include <teserra/scene/transform.hpp>
+#if TESERRA_HAS_RENDERER
+#include <teserra/scene/render_extraction.hpp>
+#endif
 
 #include <algorithm>
 #include <utility>
@@ -15,6 +18,15 @@ Scene::Scene(std::string name)
     m_schedule.add(ecs::Phase::PostUpdate, std::string(kTransformSystemName), transformSystem)
         .reads<Transform>()
         .writes<GlobalTransform>();
+#if TESERRA_HAS_RENDERER
+    m_world.insertResource<RenderExtraction>();
+    m_schedule.add(ecs::Phase::Extract, std::string(kRenderExtractionSystemName), renderExtractionSystem)
+        .reads<Camera>()
+        .reads<GlobalTransform>()
+        .reads<SpriteRenderer>()
+        .readsResource<Time>()
+        .writesResource<RenderExtraction>();
+#endif
 }
 
 void Scene::run(ecs::Phase phase) {
