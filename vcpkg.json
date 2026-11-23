@@ -6,15 +6,23 @@
   "homepage": "https://github.com/fyernald/teserra",
   "license": "MIT",
   "dependencies": [
-    "glfw3",
     "glm",
-    "glslang",
     "spdlog",
-    "spirv-cross",
-    "stb",
     "tl-expected"
   ],
+  "default-features": [
+    "engine"
+  ],
   "features": {
+    "engine": {
+      "description": "Windows, the shader compiler and image decoding: everything but the portable modules (TESERRA_PORTABLE_ONLY=OFF)",
+      "dependencies": [
+        "glfw3",
+        "glslang",
+        "spirv-cross",
+        "stb"
+      ]
+    },
     "tests": {
       "description": "Unit, integration and GPU tests (TESERRA_BUILD_TESTS)",
       "dependencies": [

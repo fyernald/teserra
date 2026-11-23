@@ -1,13 +1,14 @@
 set(platform_test_sources
-    clock_test.cpp
     event_queue_test.cpp
-    file_system_test.cpp
     fixed_step_accumulator_test.cpp
     frame_timer_test.cpp
     input_test.cpp
     key_test.cpp
-    window_test.cpp
 )
+# These need a Platform, which the portable build (#68) does not have.
+if(NOT TESERRA_PORTABLE_ONLY)
+    list(APPEND platform_test_sources clock_test.cpp file_system_test.cpp window_test.cpp)
+endif()
 # OS-specific tests are selected here, like OS-specific sources (no #ifdef in shared code).
 if(WIN32)
     list(APPEND platform_test_sources windows/window_events_windows_test.cpp)

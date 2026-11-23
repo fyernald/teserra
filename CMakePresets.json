@@ -127,6 +127,26 @@
         "CMAKE_CXX_COMPILER": "clang++",
         "CMAKE_BUILD_TYPE": "Debug"
       }
+    },
+    {
+      "name": "linux-gcc-portable",
+      "displayName": "Linux GCC portable",
+      "description": "GitHub Actions: core, ecs, rhi + null backend with GCC, warnings as errors (TESERRA_PORTABLE_ONLY)",
+      "inherits": "linux-gcc-debug",
+      "cacheVariables": {
+        "TESERRA_PORTABLE_ONLY": "ON",
+        "TESERRA_WARNINGS_AS_ERRORS": "ON"
+      }
+    },
+    {
+      "name": "linux-clang-portable",
+      "displayName": "Linux Clang portable",
+      "description": "GitHub Actions: core, ecs, rhi + null backend with Clang, warnings as errors (TESERRA_PORTABLE_ONLY)",
+      "inherits": "linux-clang-debug",
+      "cacheVariables": {
+        "TESERRA_PORTABLE_ONLY": "ON",
+        "TESERRA_WARNINGS_AS_ERRORS": "ON"
+      }
     }
   ],
   "buildPresets": [
@@ -136,7 +156,9 @@
     { "name": "ci-windows", "configurePreset": "ci-windows" },
     { "name": "ci-windows-release", "configurePreset": "ci-windows-release" },
     { "name": "linux-gcc-debug", "configurePreset": "linux-gcc-debug" },
-    { "name": "linux-clang-debug", "configurePreset": "linux-clang-debug" }
+    { "name": "linux-clang-debug", "configurePreset": "linux-clang-debug" },
+    { "name": "linux-gcc-portable", "configurePreset": "linux-gcc-portable" },
+    { "name": "linux-clang-portable", "configurePreset": "linux-clang-portable" }
   ],
   "testPresets": [
     {
@@ -171,7 +193,9 @@
       }
     },
     { "name": "linux-gcc-debug", "inherits": "test-base", "configurePreset": "linux-gcc-debug" },
-    { "name": "linux-clang-debug", "inherits": "test-base", "configurePreset": "linux-clang-debug" }
+    { "name": "linux-clang-debug", "inherits": "test-base", "configurePreset": "linux-clang-debug" },
+    { "name": "linux-gcc-portable", "inherits": "test-base", "configurePreset": "linux-gcc-portable" },
+    { "name": "linux-clang-portable", "inherits": "test-base", "configurePreset": "linux-clang-portable" }
   ],
   "workflowPresets": [
     {

@@ -1,6 +1,9 @@
 # Cross-module tests. Unit tests of a single module live in engine/<module>/tests/.
 
-add_subdirectory(cmake)
+# The build-system tests configure the whole engine, which the portable build cannot.
+if(NOT TESERRA_PORTABLE_ONLY)
+    add_subdirectory(cmake)
+endif()
 
 # Unit tests of the source checks in tools/scripts (check_layers, check_gl_leaks); CI's checks job runs
 # them on Linux, this runs them with the build's platform.
