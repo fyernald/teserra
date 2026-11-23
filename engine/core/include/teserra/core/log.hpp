@@ -179,8 +179,9 @@ constexpr void checkFormat(std::format_string<Args...> /*format*/, Args&&... /*a
 // Shared implementation of the level macros. `levelValue` is the TESERRA_LOG_LEVEL_* number, compared
 // with `if constexpr` to remove calls below TESERRA_LOG_LEVEL_MIN. A removed call still has its format
 // string checked, in the branch that is taken: GCC does not evaluate the consteval std::format_string
-// check in a discarded statement, as MSVC and Clang do. The check sits in a lambda that is never called,
-// so the arguments are not evaluated and no code is generated.
+// check in a discarded statement, as MSVC and Clang do. Nor in a lambda: since P2564 its call operator
+// becomes consteval instead of failing. The check sits behind a plain `if (false)`, so it is compiled in
+// the caller's own function, but the arguments are never evaluated and the optimizer removes it.
 #define TESERRA_DETAIL_LOG_AT(levelValue, logLevel, category, ...)                                           \
     do {                                                                                                     \
         if constexpr ((levelValue) >= TESERRA_LOG_LEVEL_MIN) {                                               \
@@ -189,8 +190,8 @@ constexpr void checkFormat(std::format_string<Args...> /*format*/, Args&&... /*a
                 ::teserra::log::detail::write((logLevel), teserraLogCategory,                                \
                                               ::std::source_location::current(), __VA_ARGS__);               \
             }                                                                                                \
-        } else {                                                                                             \
-            static_cast<void>([&] { ::teserra::log::detail::checkFormat(__VA_ARGS__); });                    \
+        } else if (false) {                                                                                  \
+            ::teserra::log::detail::checkFormat(__VA_ARGS__);                                                \
         }                                                                                                    \
     } while (false)
 
