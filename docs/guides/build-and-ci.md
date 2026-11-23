@@ -115,6 +115,7 @@ The include check reads `OPTIONAL_DEPENDS` like `DEPENDS`.
 | `profile` | MSVC, `RelWithDebInfo`, profiling on | Tracy sessions (added with profiling) |
 | `asan` | MSVC or clang-cl, sanitizers on | Memory error hunting (added with sanitizers) |
 | `ci-windows` | MSVC Debug, warnings as errors, SPIR-V validation, JUnit output | GitHub Actions |
+| `ci-windows-release` | MSVC Release, warnings as errors, JUnit output: warnings only Release shows, such as a parameter used only in an assertion message | GitHub Actions |
 | `linux-gcc-debug`, `linux-clang-debug` | GCC 13 / Clang 17 + Ninja | Prepared for the Linux port; used by the non-blocking Linux job |
 
 Every preset builds into `build/<preset>/` and exists as a configure, build, test and workflow preset with the same name. Windows presets use the `x64-windows` vcpkg triplet, Linux presets `x64-linux`; presets only show up on their host OS.
@@ -231,7 +232,7 @@ Workflows live in `.github/workflows/`.
 
 | Workflow / job | Trigger | Blocking | Content |
 |---|---|---|---|
-| `ci.yml` → `windows-msvc` | push to `main`, PRs | **Yes** | Configure (`ci-windows`), build all targets, run unit + integration tests, upload JUnit |
+| `ci.yml` → `windows-msvc`, `windows-msvc-release` | push to `main`, PRs | **Yes** | Configure (`ci-windows` / `ci-windows-release`), build all targets, run unit + integration tests, upload JUnit; in parallel |
 | `ci.yml` → `checks` | push, PRs | **Yes** | format check, layer/leak checks |
 | `ci.yml` → `linux-portable` | push, PRs | No (until the Linux port) | Build and test `core`, `ecs`, `rhi` + null backend on `ubuntu-latest` with GCC 13 and Clang 17 |
 | `ci.yml` → `sanitizers` | push to `main`, nightly, PRs labeled `needs-asan` | No → Yes once stable | `asan` preset, unit tests |
@@ -240,7 +241,7 @@ Workflows live in `.github/workflows/`.
 | `bench.yml` | manual, weekly | No | Benchmarks in Release, results as artifact |
 | `release.yml` | tag `v*` | - | Build release artifacts, attach to GitHub Release ([release process](../process/release-process.md)) |
 
-The `windows-msvc` job runs on `windows-latest`: it runs `vcvars64.bat` of the newest Visual Studio on the runner (found with `vswhere`) and exports the resulting environment, uses the runner's preinstalled vcpkg as `VCPKG_ROOT`, then configures, builds and tests with the `ci-windows` preset. A failed Catch2 check is annotated on its source line through a problem matcher (`.github/problem-matchers/catch2.json`); CTest's JUnit report (`build/ci-windows/junit.xml`) becomes the `windows-msvc tests` check run with a summary and is uploaded as an artifact. A newer push to the same branch or PR cancels the run in progress. Third-party actions are pinned to a commit SHA.
+The `windows-msvc` job runs on `windows-latest`: it runs `vcvars64.bat` of the newest Visual Studio on the runner (found with `vswhere`) and exports the resulting environment, uses the runner's preinstalled vcpkg as `VCPKG_ROOT`, then configures, builds and tests with the `ci-windows` preset. A matrix runs the same steps with `ci-windows-release` as `windows-msvc-release` in parallel: local work builds only `windows-msvc-debug`, so CI is where Release builds and runs its tests. A failed Catch2 check is annotated on its source line through a problem matcher (`.github/problem-matchers/catch2.json`); CTest's JUnit report (`build/ci-windows/junit.xml`) becomes the `windows-msvc tests` check run with a summary and is uploaded as an artifact. A newer push to the same branch or PR cancels the run in progress. Third-party actions are pinned to a commit SHA.
 
 **Caching.** vcpkg's `files` binary-cache provider writes compiled packages to a directory that `actions/cache` restores before configuring and saves right after (also when the build or tests fail). The key is triplet + runner image version (which fixes the compiler) + hash of `vcpkg.json` and `vcpkg-configuration.json`; a key miss falls back to the newest cache of the same triplet, so a manifest change only rebuilds the packages that changed. vcpkg's former GitHub Actions cache provider (`x-gha`) no longer exists, and a GitHub Packages NuGet feed would need package write permissions and NuGet setup for the same result.
 
