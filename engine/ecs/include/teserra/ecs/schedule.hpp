@@ -20,7 +20,15 @@ namespace teserra::ecs {
 /// The phases of a frame, in the order the App runs them: Startup once, then every frame PreUpdate,
 /// FixedUpdate once per fixed step (zero or more times), Update, PostUpdate, Extract (render extraction),
 /// and Last after rendering.
-enum class Phase : u8 { Startup, PreUpdate, FixedUpdate, Update, PostUpdate, Extract, Last };
+enum class Phase : u8 {
+    Startup,
+    PreUpdate,
+    FixedUpdate,
+    Update,
+    PostUpdate,
+    Extract,
+    Last
+};
 
 inline constexpr usize kPhaseCount = 7;
 

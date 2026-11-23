@@ -1,6 +1,7 @@
 #pragma once
 
-// What a system sees while it runs, checked against what it declared (docs/architecture/ecs.md#systems-and-scheduling).
+// What a system sees while it runs, checked against what it declared
+// (docs/architecture/ecs.md#systems-and-scheduling).
 
 #include <teserra/core/assert.hpp>
 #include <teserra/core/types.hpp>
@@ -65,7 +66,8 @@ public:
     /// world.view<Included...>(exclude<Excluded...>). A const included type needs reads<T>() or writes<T>(),
     /// a mutable one writes<T>(), an excluded one reads<T>() (asserted).
     template <ViewComponent... Included, Component... Excluded>
-    [[nodiscard]] View<TypeList<Included...>, TypeList<Excluded...>> view(Exclude<Excluded...> excluded = {}) {
+    [[nodiscard]] View<TypeList<Included...>, TypeList<Excluded...>>
+    view(Exclude<Excluded...> excluded = {}) {
         (requireComponent<Included>(), ...);
         (requireComponent<const Excluded>(), ...);
         return m_world->view<Included...>(excluded);

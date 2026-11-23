@@ -2,6 +2,7 @@
 
 #include <teserra/core/assert.hpp>
 #include <teserra/scene/scene_manager.hpp>
+#include <teserra/scene/transform.hpp>
 
 #include <algorithm>
 #include <utility>
@@ -11,6 +12,19 @@ namespace teserra::scene {
 Scene::Scene(std::string name)
     : m_name(std::move(name)) {
     m_world.insertResource<Time>();
+    m_schedule.add(ecs::Phase::PostUpdate, std::string(kTransformSystemName), transformSystem)
+        .reads<Transform>()
+        .writes<GlobalTransform>();
+}
+
+void Scene::run(ecs::Phase phase) {
+    if (phase == ecs::Phase::Startup) {
+        if (m_started) {
+            return;
+        }
+        m_started = true;
+    }
+    m_schedule.run(phase, m_world);
 }
 
 Scene& SceneManager::create(std::string name) {

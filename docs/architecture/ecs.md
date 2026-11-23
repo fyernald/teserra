@@ -141,32 +141,45 @@ void spawnBullets(SystemContext& ctx) {
 ## Systems and scheduling
 
 ```cpp
-schedule.add(Phase::Update, "player_movement", playerMovement)
-    .reads<Input>().reads<Player>().writes<Transform>()
+void movePlayer(ecs::SystemContext& ctx) {
+    const f32 dt = ctx.resource<const scene::Time>().deltaSeconds();
+    for (auto [entity, transform, player] : ctx.view<scene::Transform, const Player>()) { ... }
+}
+
+level.systems().add(ecs::Phase::Update, "move_player", movePlayer)
+    .reads<Player>().writes<scene::Transform>().readsResource<scene::Time>()
     .after("input_mapping");
 ```
 
-- `ecs::Schedule` holds systems grouped by **phase**. The scene layer defines the standard phases: `Startup`, `PreUpdate`, `FixedUpdate`, `Update`, `PostUpdate`, `Extract` (render extraction), `Last`.
-- Within a phase, systems run in registration order, adjusted by explicit `before()`/`after()` constraints (topological sort; cycles are a configuration error reported at schedule build time).
-- **Declared access** (`reads<T>`, `writes<T>`, resources and events) is mandatory. In debug builds, views and resource accessors obtained through `SystemContext` assert if a system touches data it did not declare. v1 executes systems **sequentially** on the main thread; the declarations are the contract that a future parallel executor relies on.
-- `FixedUpdate` runs zero or more times per frame from the fixed-step accumulator (platform `Clock` + engine loop).
-- Systems are plain callables, so a future script-defined system registers the same way.
+- `ecs::Schedule` (`<teserra/ecs/schedule.hpp>`) holds systems grouped by **phase**: `Startup`, `PreUpdate`, `FixedUpdate`, `Update`, `PostUpdate`, `Extract` (render extraction), `Last`. The enum lives in `ecs` next to the Schedule; the scene layer and the App decide when each phase runs.
+- A system is a plain callable, `std::function<void(SystemContext&)>`, with a name unique in the schedule. It allocates at registration only, never per frame, and a future script-defined system registers the same way.
+- **Ordering:** within a phase, systems run in registration order, adjusted by `before(name)` / `after(name)`: a topological sort that always picks the earliest registered ready system, so unconstrained systems keep their order. `build()` returns an `Error` for a cycle (naming two systems on it: "Systems 'a' and 'b' form an ordering cycle in Update") and for a constraint on a system that is not in the same phase. `run()` builds when systems were added; a build error asserts, and with asserts off it is logged and the phase runs in registration order.
+- **Declared access** is mandatory: `reads<T>()`, `writes<T>()` (implies reads), `readsResource<T>()`, `writesResource<T>()`. The system's `SystemContext` (`<teserra/ecs/system_context.hpp>`) checks every access in debug builds:
+  - `view<const T>()` and excluded types need a read, `view<T>()` a write;
+  - `resource<const T>()` needs a resource read, `resource<T>()` a write;
+  - a failure asserts naming the system, the type and the missing declaration: "System 'move' reads Velocity without declaring it (.reads<Velocity>())".
+  The declarations are kept in every build: v1 executes systems **sequentially** on the main thread, and they are the contract a future parallel executor relies on.
+- **Sync points:** the Schedule owns one `Commands` for the World it runs. Every system of a phase records into `ctx.commands()`, and the buffer is applied after the phase, so structural changes never happen in the middle of one and every system of a phase sees the same entities.
+- `FixedUpdate` runs zero or more times per frame from the fixed-step accumulator (platform `Clock` + engine loop); its commands apply after each step.
+- Events, run conditions and the parallel executor come later. Time and input are resources (`scene::Time`), not `SystemContext` members: the context lives in `ecs`, which cannot see scene or platform types.
 
 ## Scenes own worlds
 
-- `scene::Scene` owns one `ecs::World`, one `ecs::Schedule` configured with the standard phases, and scene-level resources.
+- `scene::Scene` owns one `ecs::World`, one `ecs::Schedule`, and scene-level resources (in its World).
 - `scene::SceneManager` (owned by `App`) holds the active scene and switches scenes **at frame boundaries** (never in the middle of a schedule).
 - Today (`teserra_scene`, layer 5, iteration 10):
   - `Scene` owns its `ecs::World` and has `spawn()` and `add<T>()` shortcuts. Every scene's World has a `scene::Time` resource: `deltaSeconds()`, `fixedStepSeconds()`, and `elapsedSeconds()` and `frame()` while the scene was active.
   - `App::scenes()` creates scenes (unique names, stable references) and `App::run(scene)` activates one before the first frame.
   - `scenes().switchTo(other)` takes effect at the start of the next frame, wherever in a frame it is called.
   - The App advances the active scene's `Time` once per frame, so each scene keeps its own play time.
-  - The scene's Schedule comes with #75. Until then, `run(scene, callbacks)` runs the game's callbacks.
+  - `Scene::systems()` is the scene's Schedule, and `Scene::run(phase)` runs a phase on its world; Startup runs only the first time.
+  - Each frame the App runs the active scene's phases, with the `AppCallbacks` next to them: frame boundary (switch; Startup the first frame a scene is active) → events → `Time` advances → PreUpdate → FixedUpdate × steps → Update → PostUpdate → Extract → render → Last.
   - The module depends only on `core` and `ecs`, so the portable Linux build includes it.
   - **Transforms are 3D** (renderer.md, 3D readiness #1):
     - `scene::Transform` is `Vec3 position`, `Quat rotation`, `Vec3 scale`; `matrix()` is translate × rotate × scale.
     - 2D helpers work in the XY plane and keep z: `position2D` / `setPosition2D`, `rotation2D` / `setRotation2D` (radians, counter-clockwise around +Z, in (-π, π], ADR-0024), `scale2D` / `setScale2D`.
-    - `scene::updateGlobalTransforms(world)` gives every entity with a `Transform` a `GlobalTransform` (`Mat4`) and sets it. Every entity is a root until hierarchies (iteration 13). The Schedule runs it in PostUpdate (#75).
+    - The transform system (`scene::transformSystem`, named `scene::kTransformSystemName` = `"teserra.transforms"`) runs in every scene's PostUpdate: it sets every `GlobalTransform` (`Mat4`) from its `Transform`, and gives entities without one a `GlobalTransform` with the right matrix through commands, so it exists after PostUpdate's sync point and is correct for Extract. Every entity is a root until hierarchies (iteration 13). Order gameplay systems that move things in PostUpdate with `.before(scene::kTransformSystemName)`.
+    - `scene::updateGlobalTransforms(world)` does the same directly on a World, outside a Schedule.
     - `Transform` describes its fields for the editor (`ComponentFields`).
 - Engine-provided systems (transform propagation, render extraction, tilemap chunk updates) are added to every scene by the engine; games add their own.
 

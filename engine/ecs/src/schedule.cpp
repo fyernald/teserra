@@ -75,17 +75,20 @@ Result<void> Schedule::buildPhase(Phase phase) {
         }
     }
     const auto positionOf = [&](std::string_view name) -> usize {
-        const auto found = std::ranges::find_if(members, [&](usize index) { return m_systems[index].name == name; });
+        const auto found =
+            std::ranges::find_if(members, [&](usize index) { return m_systems[index].name == name; });
         return static_cast<usize>(found - members.begin());
     };
 
-    // successors[a] holds b for every "a runs before b".
+    // successors[a] holds b and predecessors[b] holds a for every "a runs before b".
     std::vector<std::vector<usize>> successors(members.size());
+    std::vector<std::vector<usize>> predecessors(members.size());
     std::vector<usize> predecessorCount(members.size(), 0);
     for (usize position = 0; position < members.size(); ++position) {
         const System& system = m_systems[members[position]];
         const auto link = [&](usize from, usize to) {
             successors[from].push_back(to);
+            predecessors[to].push_back(from);
             ++predecessorCount[to];
         };
         for (const std::string& name : system.before) {
@@ -121,18 +124,23 @@ Result<void> Schedule::buildPhase(Phase phase) {
             }
         }
         if (next == members.size()) {
-            // Every remaining system waits for another: walk predecessors-first from one of them until a system
-            // repeats, and name the two systems on the cycle where it closes.
-            std::vector<usize> path;
-            std::vector<bool> onPath(members.size(), false);
+            // Every remaining system waits for another remaining one, so walking from one of them to a
+            // remaining predecessor, again and again, must repeat a system: the walk has entered a cycle.
+            // Name the last two systems of the walk, which are both on it. (Successors would not do: a system
+            // after a cycle may have none left.)
+            std::vector<bool> visited(members.size(), false);
             usize current = static_cast<usize>(std::ranges::find(placed, false) - placed.begin());
-            while (!onPath[current]) {
-                onPath[current] = true;
-                path.push_back(current);
-                current = *std::ranges::find_if(successors[current], [&](usize to) { return !placed[to]; });
+            usize previous = current;
+            while (!visited[current]) {
+                visited[current] = true;
+                previous = current;
+                current =
+                    *std::ranges::find_if(predecessors[current], [&](usize from) { return !placed[from]; });
             }
-            return fail(ErrorCode::InvalidArgument, Module::Ecs, "Systems '{}' and '{}' form an ordering cycle in {}",
-                        m_systems[members[path.back()]].name, m_systems[members[current]].name, phaseName(phase));
+            // `current` runs before `previous`.
+            return fail(
+                ErrorCode::InvalidArgument, Module::Ecs, "Systems '{}' and '{}' form an ordering cycle in {}",
+                m_systems[members[current]].name, m_systems[members[previous]].name, phaseName(phase));
         }
         placed[next] = true;
         order.push_back(members[next]);
@@ -150,7 +158,8 @@ void Schedule::ensureBuilt() {
     }
     if (Result<void> built = build(); !built) {
         TESERRA_ASSERT(false, "{}", built.error().message);
-        TESERRA_LOG_ERROR(LogCategory::Core, "{}; running systems in registration order", built.error().message);
+        TESERRA_LOG_ERROR(LogCategory::Ecs, "{}; running systems in registration order",
+                          built.error().message);
         for (usize phase = 0; phase < kPhaseCount; ++phase) {
             m_order[phase].clear();
         }
@@ -172,16 +181,22 @@ void Schedule::run(Phase phase, World& world) {
     TESERRA_ASSERT(!m_running, "Schedule::run() inside a system of the same schedule");
     ensureBuilt();
     Commands& commands = commandsFor(world);
-    m_running = true;
     // Reset also when a system throws (test assert handlers do).
-    struct RunningScope {
-        bool& running;
+    class RunningScope {
+    public:
+        explicit RunningScope(bool& running) noexcept
+            : m_running(running) {
+            m_running = true;
+        }
         RunningScope(const RunningScope&) = delete;
         RunningScope& operator=(const RunningScope&) = delete;
         RunningScope(RunningScope&&) = delete;
         RunningScope& operator=(RunningScope&&) = delete;
-        ~RunningScope() { running = false; }
-    } scope{m_running};
+        ~RunningScope() { m_running = false; }
+
+    private:
+        bool& m_running;
+    } scope(m_running);
     for (const usize index : m_order[static_cast<usize>(phase)]) {
         System& system = m_systems[index];
         SystemContext context(world, commands, system.name, system.access);
