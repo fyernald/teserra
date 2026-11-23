@@ -21,4 +21,25 @@ void World::destroy(Entity entity) {
     m_entities.destroy(entity);
 }
 
+Entity World::reserve() {
+    ++m_pendingCount;
+    return m_entities.create(EntityRecord{.pending = true});
+}
+
+void World::commitReserved(Entity entity) {
+    TESERRA_ASSERT(isReserved(entity), "Entity {} is not reserved", entity);
+    if (EntityRecord* record = m_entities.tryGet(entity); record != nullptr && record->pending) {
+        record->pending = false;
+        --m_pendingCount;
+    }
+}
+
+void World::releaseReserved(Entity entity) {
+    TESERRA_ASSERT(isReserved(entity), "Entity {} is not reserved", entity);
+    if (isReserved(entity)) {
+        --m_pendingCount;
+        m_entities.destroy(entity);
+    }
+}
+
 } // namespace teserra::ecs

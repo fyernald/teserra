@@ -75,6 +75,7 @@ All notable user-visible changes to Teserra are documented here. The format foll
 - ECS views: `world.view<A, const B>(exclude<C>)` iterates the entities with A and B and without C as `[entity, a, b]` structured bindings (const components are read-only at compile time), and `each()` takes a function. Views walk their smallest pool, lock their pools against structural changes, and allocate nothing.
 - `teserra_ecs_sandbox` example: 100 000 entities moved through views, with timings of each step; smoke run in CTest.
 - `linux-portable` CI job (non-blocking): builds and tests core, ecs, rhi with the null backend and the portable part of platform on Linux with GCC and Clang, warnings as errors, through the new `TESERRA_PORTABLE_ONLY` option and `linux-*-portable` presets.
+- ECS commands: `ecs::Commands` records creates, destroys, adds and removes during iteration and applies them later in recording order. Entities created through it are reserved at once and usable in the same buffer; discarded buffers release them. Steady-state recording and applying allocate nothing.
 
 ### Changed
 
