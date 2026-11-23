@@ -27,13 +27,14 @@ AssetId id = AssetId::fromPath("assets://sprites/hero.png");
 Asset<Texture> hero = assets.load<Texture>("assets://sprites/hero.png");
 
 if (hero.isReady()) { /* use */ }
-const Texture& tex = assets.get(hero);   // asserts if not ready
+const Texture& tex = hero.get();         // asserts if not ready
 ```
 
 - **`AssetId`** is the persistent identity (what scenes and maps store). In v1 it is the FNV-1a hash of the normalized virtual path (lowercase scheme, forward slashes, no `..`). The registry keeps the reverse map and **asserts on hash collisions** in debug builds.
 - **`Asset<T>`** is the runtime handle: a generational slot handle plus a reference count in the registry's slot (non-atomic in v1 because loading is single-threaded; atomic when async loading arrives).
 - **Unloading** happens at the end of the frame for slots whose count reached zero, after the renderer's deferred destruction rules for GPU objects.
 - Loading the same path twice returns the same slot.
+- **Today** (`<teserra/assets/asset_id.hpp>`, `<teserra/assets/asset_registry.hpp>`, #80): `AssetId::fromPath()` and `normalizeAssetPath()`; `AssetRegistry::load<T>(path, create)`, where `create` returns `Result<T>` and runs only when the path is not loaded yet, and `endFrame()`; `Asset<T>` with `isReady()`, `get()` and `id()`. A failed `create` is logged once with the path and leaves a slot that is not ready, deduplicated like a loaded one, so a missing file logs one error. `create` may load other assets (dependencies); an asset that loads itself asserts. Unloading an asset releases the assets it holds, and the same `endFrame()` unloads those too. Slot types are checked in debug builds through the address of a per-type tag variable, which needs no RTTI and no `ecs::TypeKey`. The registry must outlive its `Asset<T>`s (asserted when it is destroyed). `load<T>(path)` with registered loaders (#81) reads the bytes through the mount points (#82) and passes the loader to the same path.
 
 ## Loaders
 
