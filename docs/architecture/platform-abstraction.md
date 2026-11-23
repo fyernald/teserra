@@ -25,6 +25,7 @@ classDiagram
         +create(PlatformDesc) Result~unique_ptr~Platform~~$
         +createWindow(WindowDesc) Result~unique_ptr~Window~~
         +pollEvents(EventQueue&)
+        +waitEvents(EventQueue&, timeout)
         +fileSystem() FileSystem&
         +clock() const Clock&
     }
@@ -78,6 +79,7 @@ classDiagram
 - **`Window`** exposes sizes in two units: window size (screen coordinates) and framebuffer size (pixels). The renderer only uses framebuffer size. `nativeHandle()` returns a tagged `NativeWindowHandle` (`{ kind; void* window; void* display; }`) so future backends (Vulkan surface creation) do not need GLFW.
 - **`OpenGlContext`** is the only GL-aware interface outside the RHI backend. It contains no GL types (function pointers only) and is `nullptr` when the window was created without an OpenGL context (`WindowDesc::graphicsApi = GraphicsApi::None` for Vulkan/headless later).
 - **Events.** `pollEvents()` translates OS/GLFW callbacks into engine `Event`s (`WindowResized`, `WindowCloseRequested`, `FocusChanged`, `KeyChanged`, `TextEntered`, `MouseButtonChanged`, `MouseMoved`, `MouseScrolled`) and appends them to an `EventQueue` (a reused vector of `std::variant`s). Nothing is delivered through user callbacks from inside GLFW.
+- **Waiting.** `waitEvents(queue, timeout)` sleeps until a window system message arrives or `timeout` passes, then works like `pollEvents()`; the GLFW backend uses `glfwWaitEventsTimeout`. The App calls it while the window is minimized, so a loop with nothing to draw does not spin. The default implementation does not wait.
 - **`Input`** is backend-independent: it consumes `Event`s and records key and button edges per event, so `wasPressed()` means "went down since the last `beginFrame()`", and a tap shorter than a frame still reports both `wasPressed()` and `wasReleased()`. Key repeat creates no edges; `FocusChanged{false}` releases everything held. It also tracks the mouse position and per-frame movement, scrolling and typed text (UTF-8), and offers `axis2D()` for WASD-style movement. It is a copyable value, and tests drive it with synthetic events.
 - **Keys** are an engine enum `platform::Key` based on *physical* key positions (US layout names, like `Key::W`), plus `TextEntered` events for text; mouse buttons are `platform::MouseButton`. The GLFW backend translates codes in one table, `src/glfw/glfw_key_table.cpp`, whose `static_assert` fails the build if a `Key` has no mapping.
 - **`Clock`** returns monotonic time as `std::chrono::nanoseconds`. `SteadyClock` wraps `std::chrono::steady_clock` (high resolution and monotonic on all supported platforms) and is what `Platform::clock()` returns. It is an interface for testability (a `ManualClock`, advanced by hand, drives loop and fixed-step tests, and a test platform can return one), not for portability.

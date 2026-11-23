@@ -5,6 +5,7 @@
 
 #include "common/main_thread.hpp"
 
+#include <chrono>
 #include <vector>
 
 namespace teserra::platform {
@@ -18,6 +19,7 @@ public:
 
     [[nodiscard]] Result<std::unique_ptr<Window>> createWindow(const WindowDesc& desc) override;
     void pollEvents(EventQueue& queue) override;
+    void waitEvents(EventQueue& queue, std::chrono::nanoseconds timeout) override;
     [[nodiscard]] const Clock& clock() const noexcept override { return m_clock; }
     [[nodiscard]] FileSystem& fileSystem() noexcept override { return m_fileSystem; }
 

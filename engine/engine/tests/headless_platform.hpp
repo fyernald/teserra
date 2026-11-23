@@ -1,7 +1,9 @@
 #pragma once
 
 // A platform without a window system for App tests: time comes from a ManualClock that advances by a
-// scripted frame time on every pollEvents(), and events are scripted per poll.
+// scripted frame time on every pollEvents(), and events are scripted per poll. waitEvents() counts as a
+// poll too; when that poll has no scripted events, it advances the clock by the whole timeout, as if
+// nothing arrived.
 
 #include <teserra/platform/clock.hpp>
 #include <teserra/platform/file_system.hpp>
@@ -86,10 +88,20 @@ public:
         }
     }
 
+    void waitEvents(platform::EventQueue& queue, std::chrono::nanoseconds timeout) override {
+        ++m_waits;
+        if (!m_scriptedEvents.contains(m_polls + 1)) {
+            m_clock.advance(timeout);
+        }
+        pollEvents(queue);
+    }
+
     [[nodiscard]] const platform::Clock& clock() const noexcept override { return m_clock; }
     [[nodiscard]] platform::FileSystem& fileSystem() noexcept override { return m_fileSystem; }
 
     [[nodiscard]] u64 polls() const noexcept { return m_polls; }
+    /// How many of the polls were waitEvents() calls.
+    [[nodiscard]] u64 waits() const noexcept { return m_waits; }
     [[nodiscard]] const platform::WindowDesc& lastWindowDesc() const noexcept { return m_lastWindowDesc; }
 
 private:
@@ -100,6 +112,7 @@ private:
     std::map<u64, std::vector<platform::Event>> m_scriptedEvents;
     platform::WindowDesc m_lastWindowDesc;
     u64 m_polls = 0;
+    u64 m_waits = 0;
 };
 
 } // namespace teserra::test
