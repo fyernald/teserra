@@ -51,7 +51,12 @@ SystemConfig Schedule::add(Phase phase, std::string name, SystemFunction functio
     TESERRA_ASSERT(!m_running, "Schedule::add() while the schedule runs");
     TESERRA_ASSERT(std::ranges::none_of(m_systems, [&](const System& system) { return system.name == name; }),
                    "A system named '{}' already exists", name);
-    m_systems.push_back({.phase = phase, .name = std::move(name), .function = std::move(function)});
+    m_systems.push_back({.phase = phase,
+                         .name = std::move(name),
+                         .function = std::move(function),
+                         .access = {},
+                         .before = {},
+                         .after = {}});
     m_dirty = true;
     return {*this, m_systems.size() - 1};
 }
@@ -185,17 +190,17 @@ void Schedule::run(Phase phase, World& world) {
     class RunningScope {
     public:
         explicit RunningScope(bool& running) noexcept
-            : m_running(running) {
-            m_running = true;
+            : m_flag(running) {
+            m_flag = true;
         }
         RunningScope(const RunningScope&) = delete;
         RunningScope& operator=(const RunningScope&) = delete;
         RunningScope(RunningScope&&) = delete;
         RunningScope& operator=(RunningScope&&) = delete;
-        ~RunningScope() { m_running = false; }
+        ~RunningScope() { m_flag = false; }
 
     private:
-        bool& m_running;
+        bool& m_flag;
     } scope(m_running);
     for (const usize index : m_order[static_cast<usize>(phase)]) {
         System& system = m_systems[index];

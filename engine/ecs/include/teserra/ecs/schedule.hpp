@@ -127,9 +127,9 @@ private:
         Phase phase = Phase::Update;
         std::string name;
         SystemFunction function;
-        SystemAccess access;
-        std::vector<std::string> before;
-        std::vector<std::string> after;
+        SystemAccess access{};
+        std::vector<std::string> before{};
+        std::vector<std::string> after{};
     };
 
     void ensureBuilt();
