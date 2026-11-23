@@ -74,6 +74,7 @@ All notable user-visible changes to Teserra are documented here. The format foll
 - ECS components: `ComponentPool<T>` sparse sets (paged sparse arrays, swap-and-pop, tags without component storage, iteration locks); `TypeKey` from stable names with `TESERRA_COMPONENT(Type, "Name")`; `ComponentMeta` with name, size, alignment, tag flag, type-erased lifecycle and optional field descriptors; and the `World` API `add`, `remove`, `has`, `get`, `tryGet`, `pool`, with `destroy` removing every component. A randomized test compares 10 000 operations per seed with `std::map` / `std::set` models.
 - ECS views: `world.view<A, const B>(exclude<C>)` iterates the entities with A and B and without C as `[entity, a, b]` structured bindings (const components are read-only at compile time), and `each()` takes a function. Views walk their smallest pool, lock their pools against structural changes, and allocate nothing.
 - `teserra_ecs_sandbox` example: 100 000 entities moved through views, with timings of each step; smoke run in CTest.
+- `linux-portable` CI job (non-blocking): builds and tests core, ecs, rhi with the null backend and the portable part of platform on Linux with GCC and Clang, warnings as errors, through the new `TESERRA_PORTABLE_ONLY` option and `linux-*-portable` presets.
 
 ### Changed
 

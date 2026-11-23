@@ -226,8 +226,9 @@ jobs:
           path: ${{ env.VCPKG_BINARY_CACHE }}
           key: ${{ steps.vcpkg-cache.outputs.cache-primary-key }}
 
+      # -k 0: keep going after a failure, so one run shows every error GCC or Clang finds.
       - name: Build
-        run: cmake --build --preset linux-${{ matrix.compiler }}-portable
+        run: cmake --build --preset linux-${{ matrix.compiler }}-portable -- -k 0
 
       - name: Test
         run: ctest --preset linux-${{ matrix.compiler }}-portable
