@@ -6,6 +6,15 @@ How Teserra is built locally and in GitHub Actions. Decisions: [ADR-0003](../adr
 
 ## Prerequisites (Windows)
 
+`tools/setup/setup.sh` checks and installs all of these. Run it from Git Bash in the clone (Git for Windows is its one prerequisite):
+
+- It checks the system (Windows and Git Bash, about 10 GB free, internet access), git, Python 3.10+ (and recognizes the Microsoft Store `python` shortcut), Visual Studio 2022 17.8+ or 2026 with the C++ tools and CMake (through `vswhere`), vcpkg (the Visual Studio component or `VCPKG_ROOT`), a Windows SDK, and clang-format 22.1.3 / clang-tidy 22.1 (from Visual Studio or pip).
+- It installs what is missing: Python 3.13 from python.org for the current user, the Visual Studio 2022 Build Tools (C++ workload, CMake, vcpkg, SDK) through Microsoft's bootstrapper, and the LLVM tools with pip. Downloads show the item, a progress bar, the size, the speed and the time left; installers run only with a valid Authenticode signature of their publisher (Python Software Foundation, Microsoft Corporation).
+- Each problem is printed with a fix and repeated in a summary; the exit code is 1 if anything is missing. Then it configures, builds and tests the `windows-msvc-debug` preset in the Visual Studio developer environment.
+- Options: `--check` (report only), `--yes` (no questions), `--skip-llvm`, `--skip-configure`, `--skip-tests`. Running it again is safe. CI lints it with `shellcheck` and runs `--check --skip-llvm` on `windows-latest`.
+
+By hand:
+
 - Visual Studio 2022 17.8+ (or Visual Studio 2026) with "Desktop development with C++" (includes MSVC, CMake, Ninja, and vcpkg), **or** standalone MSVC Build Tools + CMake ≥ 3.28 + Ninja.
 - vcpkg: either the copy bundled with Visual Studio or a standalone clone. Set `VCPKG_ROOT` to its directory. The Visual Studio developer prompts set it to the bundled copy automatically.
 - git on `PATH` (vcpkg fetches the pinned port versions with it).

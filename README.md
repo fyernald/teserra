@@ -30,7 +30,17 @@ The detailed roadmap, iterations and backlog live **only** in the [GitHub Projec
 
 ## Quickstart
 
-Requirements: Windows 10/11 x64, Visual Studio 2022 17.8+ or 2026 with "Desktop development with C++" (or MSVC Build Tools + CMake 3.28 + Ninja + vcpkg), and git. From a **Developer PowerShell for VS**:
+**New machine?** Install [Git for Windows](https://git-scm.com), then in Git Bash:
+
+```bash
+git clone https://github.com/fyernald/teserra.git
+cd teserra
+bash tools/setup/setup.sh
+```
+
+It checks what the build needs (Visual Studio Build Tools with the C++ workload, CMake, Ninja, vcpkg, the Windows SDK, Python, clang-format / clang-tidy), downloads and installs what is missing with a progress bar, explains any problem with a fix, then configures, builds and runs the tests. `--check` only reports; `--help` lists the options.
+
+**By hand:** Requirements: Windows 10/11 x64, Visual Studio 2022 17.8+ or 2026 with "Desktop development with C++" (or MSVC Build Tools + CMake 3.28 + Ninja + vcpkg), and git. From a **Developer PowerShell for VS**:
 
 ```bash
 git clone https://github.com/fyernald/teserra.git
