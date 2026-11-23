@@ -64,6 +64,8 @@ private:
 class PassContext {
 public:
     [[nodiscard]] rhi::Device& device() const noexcept { return *m_device; }
+    /// The frame's render data, such as its sprites.
+    [[nodiscard]] const FramePacket& packet() const noexcept { return *m_packet; }
     /// Upload memory of the current frame, for vertices, indices and uniforms.
     [[nodiscard]] UploadRing& uploads() const noexcept { return *m_uploads; }
     /// The frame's views, sorted by RenderView::order.
@@ -81,6 +83,7 @@ private:
     PassContext() = default;
 
     rhi::Device* m_device = nullptr;
+    const FramePacket* m_packet = nullptr;
     UploadRing* m_uploads = nullptr;
     std::span<const RenderView> m_views{};
     std::span<const u32> m_viewOffsets{};

@@ -49,6 +49,11 @@ DESCRIPTIONS = {
         "Resizing the window keeps the triangle in the middle of it."
     ),
     "rhi_clear": "What you should see: a window whose color slowly cycles through the hues.",
+    "sprite_stress": (
+        "What you should see: colored discs moving and spinning on a black window, and a small red square in\n"
+        "the top-left corner. The title shows the sprite count, FPS, draw calls and batches. Press 1 or 2 for\n"
+        "1000 or 10 000 sprites; WASD or the arrows pan; the mouse wheel zooms; R resets; Escape quits."
+    ),
     "textured_quad": (
         "What you should see: a square picture in the middle of a dark window: a blue tile with a dark border,\n"
         "a red block in its top-left corner and a large upright letter F. Press Space to switch between sharp\n"

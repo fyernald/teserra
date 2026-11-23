@@ -52,7 +52,7 @@ struct Camera {
 [[nodiscard]] CameraData cameraData(const Camera& camera, const Mat4& world, UVec2 targetSize,
                                     f32 time = 0.0F) noexcept;
 
-/// A view for the FramePacket: cameraData() with the camera's clear color and order.
+/// A view for the FramePacket: cameraData() with the camera's clear color, order and viewport.
 [[nodiscard]] RenderView renderView(const Camera& camera, const Mat4& world, UVec2 targetSize,
                                     f32 time = 0.0F) noexcept;
 
