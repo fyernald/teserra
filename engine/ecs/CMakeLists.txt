@@ -6,6 +6,7 @@ teserra_add_module(ecs LAYER 4
         include/teserra/ecs/component_pool.hpp
         include/teserra/ecs/entity.hpp
         include/teserra/ecs/type_key.hpp
+        include/teserra/ecs/view.hpp
         include/teserra/ecs/world.hpp
     SOURCES
         src/world.cpp

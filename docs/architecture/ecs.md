@@ -108,6 +108,8 @@ world.each<Transform, const Velocity>([dt](Entity, Transform& t, const Velocity&
 - A view iterates the **smallest** included pool and checks membership in the others and non-membership in excluded pools.
 - `const` component types in the view express read-only access (used by access validation).
 - **No structural changes during iteration** to pools touched by the view. Debug builds keep an iteration lock count per pool and assert on add/remove/destroy while locked. Use `Commands` instead.
+- `World::view<Included...>(exclude<Excluded...>)` returns a `View` (`<teserra/ecs/view.hpp>`). Each element is a `std::tuple<Entity, Included&...>` for structured bindings; a `const` type gives a `const&`, so writing to it does not compile; a tag in the included list binds to a shared empty object. The view picks its smallest included pool as leader when it is created, holds a `ComponentPoolBase::Lock` on every included and excluded pool for its lifetime, and is neither copyable nor movable. It creates missing pools up front, so iteration never looks them up, and iterating allocates nothing. `each(f)` calls `f(entity, components...)`.
+- `examples/ecs_sandbox` (console) creates 100 000 entities and prints the time of creating them, of views with two and three components and with an exclusion, of `each()`, and of removing and destroying.
 
 ## Structural changes: Commands
 

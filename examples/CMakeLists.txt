@@ -1,5 +1,6 @@
 add_subdirectory(hello)
 add_subdirectory(core_sandbox)
+add_subdirectory(ecs_sandbox)
 add_subdirectory(window_input)
 add_subdirectory(rhi_clear)
 add_subdirectory(rhi_triangle)
