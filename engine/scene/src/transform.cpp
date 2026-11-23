@@ -26,6 +26,17 @@ void Transform::setRotation2D(f32 radians) noexcept {
     rotation = math::angleAxis(radians, Vec3{0.0F, 0.0F, 1.0F});
 }
 
+void transformSystem(ecs::SystemContext& context) {
+    // Commands only record, so adding while the view iterates is fine; the components appear at the sync
+    // point after PostUpdate.
+    for (const auto& [entity, transform] : context.view<const Transform>(ecs::exclude<GlobalTransform>)) {
+        context.commands().add<GlobalTransform>(entity, GlobalTransform{.matrix = transform.matrix()});
+    }
+    for (auto [entity, transform, global] : context.view<const Transform, GlobalTransform>()) {
+        global.matrix = transform.matrix();
+    }
+}
+
 void updateGlobalTransforms(ecs::World& world) {
     // Entities that got a Transform since the last update get a GlobalTransform first. Adding to the pool
     // while the view locks it would assert, so they are collected; this allocates only in frames with such

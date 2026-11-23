@@ -136,8 +136,16 @@ int App::run(scene::Scene& scene, const AppCallbacks& callbacks) {
 void App::runFrame(const AppCallbacks& callbacks) {
     TESERRA_PROFILE_FRAME_MARK();
 
-    // The frame boundary: a scene switch requested during the previous frame takes effect here.
+    // The frame boundary: a scene switch requested during the previous frame takes effect here. The active
+    // scene stays the same for the rest of the frame, whatever is requested during it.
     m_scenes.beginFrame();
+    scene::Scene* const active = m_scenes.active();
+    const auto runPhase = [active](ecs::Phase phase) {
+        if (active != nullptr) {
+            active->run(phase);
+        }
+    };
+    runPhase(ecs::Phase::Startup); // only the first frame this scene runs
 
     m_input.beginFrame();
     m_events.clear();
@@ -158,9 +166,10 @@ void App::runFrame(const AppCallbacks& callbacks) {
     }
 
     m_frameTimer.tick(m_platform->clock().now());
-    if (scene::Scene* active = m_scenes.active()) {
+    if (active != nullptr) {
         active->time().advance(m_frameTimer.deltaSeconds(), m_fixedStep.stepSeconds());
     }
+    runPhase(ecs::Phase::PreUpdate);
 
     const u32 steps = m_fixedStep.advance(m_frameTimer.delta());
     if (m_fixedStep.lastDroppedSteps() != 0) {
@@ -168,17 +177,22 @@ void App::runFrame(const AppCallbacks& callbacks) {
                          std::chrono::duration_cast<std::chrono::milliseconds>(m_frameTimer.delta()).count(),
                          m_fixedStep.lastDroppedSteps());
     }
-    if (callbacks.fixedUpdate) {
-        for (u32 step = 0; step < steps; ++step) {
+    for (u32 step = 0; step < steps; ++step) {
+        runPhase(ecs::Phase::FixedUpdate);
+        if (callbacks.fixedUpdate) {
             callbacks.fixedUpdate(*this, m_fixedStep.stepSeconds());
         }
     }
 
+    runPhase(ecs::Phase::Update);
     if (callbacks.update) {
         callbacks.update(*this, m_frameTimer.deltaSeconds());
     }
+    runPhase(ecs::Phase::PostUpdate);
+    runPhase(ecs::Phase::Extract);
 
     render(callbacks);
+    runPhase(ecs::Phase::Last);
 }
 
 void App::render(const AppCallbacks& callbacks) {

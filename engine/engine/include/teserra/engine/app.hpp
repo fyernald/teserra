@@ -60,8 +60,8 @@ struct AppConfig {
 
 class App;
 
-/// What the game does each frame, until scenes and systems take over (iteration 10). Every callback is
-/// optional.
+/// What the game does each frame outside a scene's systems, e.g. in examples without scenes. Every callback
+/// is optional.
 struct AppCallbacks {
     /// Called for every event of the frame, after App::input() has processed it.
     std::function<void(App& app, const platform::Event& event)> onEvent{};
@@ -105,9 +105,11 @@ public:
     [[nodiscard]] int run(const AppCallbacks& callbacks = {});
 
     /// Runs frames like run(callbacks), with `scene` active from the first frame. `scene` must come from
-    /// scenes() (asserted). The active scene's Time resource advances every frame; switches requested with
-    /// scenes().switchTo() take effect at the next frame boundary. Until scenes have schedules (#75), the
-    /// game's per-frame code is still `callbacks`.
+    /// scenes() (asserted). Each frame runs the active scene's phases, with the callbacks next to them:
+    /// frame boundary (scene switch; Startup the first time a scene runs) -> events -> PreUpdate ->
+    /// FixedUpdate and fixedUpdate x N -> Update -> update -> PostUpdate -> Extract -> render -> Last.
+    /// The active scene's Time resource advances every frame before PreUpdate; switches requested with
+    /// scenes().switchTo() take effect at the next frame boundary.
     [[nodiscard]] int run(scene::Scene& scene, const AppCallbacks& callbacks = {});
 
     /// Ends run() after the current frame, which returns `exitCode`; the last call wins. A close

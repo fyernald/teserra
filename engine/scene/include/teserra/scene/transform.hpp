@@ -5,10 +5,12 @@
 #include <teserra/core/math.hpp>
 #include <teserra/core/types.hpp>
 #include <teserra/ecs/component_meta.hpp>
+#include <teserra/ecs/system_context.hpp>
 #include <teserra/ecs/world.hpp>
 
 #include <array>
 #include <cstddef>
+#include <string_view>
 
 namespace teserra::scene {
 
@@ -56,9 +58,17 @@ struct GlobalTransform {
     [[nodiscard]] Vec3 translation() const noexcept { return Vec3{matrix[3]}; }
 };
 
-/// The transform system: gives every entity with a Transform a GlobalTransform and sets it to the
-/// Transform's matrix. Without hierarchies (iteration 13) every entity is a root. The Schedule runs it in
-/// PostUpdate (#75); until then, call it once per frame after gameplay code moved things.
+/// The name every scene's Schedule gives transformSystem(), for before()/after() constraints.
+inline constexpr std::string_view kTransformSystemName = "teserra.transforms";
+
+/// The transform system, which every Scene runs in PostUpdate: sets each GlobalTransform to its Transform's
+/// matrix, and gives entities with a Transform but no GlobalTransform one with the right matrix through
+/// commands, so it exists after PostUpdate's sync point and is correct for Extract. Without hierarchies
+/// (iteration 13) every entity is a root. Reads Transform, writes GlobalTransform.
+void transformSystem(ecs::SystemContext& context);
+
+/// What transformSystem() does, directly on a World outside a Schedule, e.g. in tools and tests: new
+/// GlobalTransforms are added at once.
 void updateGlobalTransforms(ecs::World& world);
 
 } // namespace teserra::scene
