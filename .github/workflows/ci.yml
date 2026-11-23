@@ -56,6 +56,11 @@ jobs:
           echo "::add-matcher::.github/problem-matchers/teserra-checks.json"
           python tools/scripts/check_gl_leaks.py
 
+      # The machine setup script (tools/setup/setup.sh); shellcheck is part of the runner image.
+      - name: Lint shell scripts
+        if: success() || failure()
+        run: shellcheck --format=gcc tools/setup/setup.sh
+
   windows-msvc:
     name: windows-msvc
     runs-on: windows-latest
@@ -105,6 +110,12 @@ jobs:
           key: vcpkg-${{ env.VCPKG_TRIPLET }}-${{ env.RUNNER_IMAGE }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
           restore-keys: |
             vcpkg-${{ env.VCPKG_TRIPLET }}-
+
+      # The setup script must recognize a machine that has everything (#210). The LLVM tools are not on the
+      # runner (the checks job pins its own clang-format), so they are skipped.
+      - name: Setup script check
+        shell: bash
+        run: bash tools/setup/setup.sh --check --skip-llvm
 
       - name: Configure
         run: cmake --preset ci-windows
