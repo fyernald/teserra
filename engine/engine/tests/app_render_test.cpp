@@ -12,6 +12,7 @@
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cstddef>
 #include <format>
 #include <memory>
@@ -106,10 +107,62 @@ TEST_CASE("App on the Null backend: resizes reach the swapchain, minimized frame
         commands.endRenderPass();
     }}) == 0);
 
-    // Frame 3 is minimized: nothing rendered or presented.
+    // Frame 3 is minimized: paused, nothing rendered or presented, no device frame. Frame 4 waited for its
+    // events instead of polling, and resumed with them.
     CHECK(renderedSizes == std::vector<UVec2>{{640, 360}, {800, 600}, {320, 200}});
     CHECK(fixture.swapchain().presentCount() == 3);
-    CHECK(fixture.device().frameCount() == 4);
+    CHECK(fixture.device().frameCount() == 3);
+    CHECK(fixture.headless.waits() == 1);
+}
+
+TEST_CASE("App on the Null backend: a minimized window pauses the loop, which waits for events",
+          "[engine][app][render]") {
+    using namespace std::chrono_literals;
+    auto platform = std::make_unique<test::HeadlessPlatform>();
+    platform->setFrameTimes({10ms});
+    platform->queueEvent(2, platform::WindowResized{.windowSize = {0, 0}, .framebufferSize = {0, 0}});
+    platform->queueEvent(6, platform::WindowResized{.windowSize = {640, 360}, .framebufferSize = {640, 360}});
+    AppConfig config = nullConfig(8);
+    config.fixedStep = 10ms;
+    config.minimizedEventWait = 100ms;
+    NullApp fixture(std::move(config), std::move(platform));
+
+    std::vector<u64> updatedFrames;
+    std::vector<f32> deltas;
+    std::vector<bool> paused;
+    u32 fixedSteps = 0;
+    CHECK(fixture.app.run({
+              .onEvent = [&](App& app, const platform::Event&) { paused.push_back(app.isPaused()); },
+              .fixedUpdate = [&](App&, f32) { ++fixedSteps; },
+              .update =
+                  [&](App& app, f32 deltaSeconds) {
+                      updatedFrames.push_back(app.frameCount());
+                      deltas.push_back(deltaSeconds);
+                  },
+          }) == 0);
+
+    // Frame 2 (index 1) gets the minimize and pauses; frames 3 to 6 wait, and frame 6 gets the restore.
+    CHECK(fixture.headless.polls() == 8);
+    CHECK(fixture.headless.waits() == 4);
+    CHECK(updatedFrames == std::vector<u64>{0, 5, 6, 7});
+    CHECK(fixedSteps == 4); // one 10 ms step per running frame, none for the 330 ms spent minimized
+    // The frame that resumes does not catch up the pause: it sees one frame time.
+    REQUIRE(deltas.size() == 4);
+    CHECK(deltas[1] < 0.011F);
+    CHECK(fixture.swapchain().presentCount() == 4);
+    CHECK(paused == std::vector<bool>{false, true}); // as each event was handled
+    CHECK_FALSE(fixture.app.isPaused());
+}
+
+TEST_CASE("App on the Null backend: a close request while minimized ends the run", "[engine][app][render]") {
+    auto platform = std::make_unique<test::HeadlessPlatform>();
+    platform->queueEvent(1, platform::WindowResized{.windowSize = {0, 0}, .framebufferSize = {0, 0}});
+    platform->queueEvent(3, platform::WindowCloseRequested{});
+    NullApp fixture(nullConfig(0), std::move(platform));
+    CHECK(fixture.app.run() == 0);
+    CHECK(fixture.app.frameCount() == 3);
+    CHECK(fixture.headless.waits() == 2);
+    CHECK(fixture.swapchain().presentCount() == 0);
 }
 
 TEST_CASE("App on the Null backend: steady-state frames do not allocate",

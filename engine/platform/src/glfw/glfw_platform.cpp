@@ -7,6 +7,7 @@
 #include <GLFW/glfw3.h>
 
 #include <atomic>
+#include <chrono>
 #include <string_view>
 
 namespace teserra::platform {
@@ -106,6 +107,15 @@ void GlfwPlatform::pollEvents(EventQueue& queue) {
         queue.push(event);
     }
     m_pending.clear();
+}
+
+void GlfwPlatform::waitEvents(EventQueue& queue, std::chrono::nanoseconds timeout) {
+    TESERRA_ASSERT(m_mainThread.isCurrent(), "Events must be polled on the main thread");
+    const double seconds = std::chrono::duration<double>(timeout).count();
+    if (seconds > 0.0) {
+        glfwWaitEventsTimeout(seconds);
+    }
+    pollEvents(queue); // hands over what the wait received, and anything that came right after
 }
 
 void GlfwPlatform::enqueue(const Event& event) {

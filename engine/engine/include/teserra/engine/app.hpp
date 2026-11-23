@@ -56,6 +56,11 @@ struct AppConfig {
     u32 maxFixedStepsPerFrame = platform::FixedStepAccumulator::kDefaultMaxStepsPerFrame;
     /// Number of frames after which run() returns; 0 runs until quit() or the window closes.
     u64 maxFrames = 0;
+    /// While the window has no image to render into (minimized), the App is paused: each frame waits up to
+    /// this long for window events instead of spinning, handles them (closing and quit() still work), and
+    /// runs nothing else: no fixed steps, updates, scene phases or rendering, and scene Time stands still.
+    /// The frame after it gets an image back resumes with at most this much time to catch up.
+    std::chrono::nanoseconds minimizedEventWait = std::chrono::milliseconds{100};
     CommandLine args{};
 };
 
@@ -102,7 +107,8 @@ public:
     App& operator=(App&&) = delete;
 
     /// Runs frames until quit(), a close request or maxFrames:
-    /// events -> fixedUpdate x N -> update -> render -> submit and present. Returns the exit code given to
+    /// events -> fixedUpdate x N -> update -> render -> submit and present. While the window is minimized,
+    /// frames only wait for and handle events (AppConfig::minimizedEventWait). Returns the exit code given to
     /// quit() (0 by default), or 1 at once if initialization failed.
     [[nodiscard]] int run(const AppCallbacks& callbacks = {});
 
@@ -143,6 +149,8 @@ public:
     [[nodiscard]] const platform::Input& input() const noexcept { return m_input; }
     [[nodiscard]] const platform::FrameTimer& frameTimer() const noexcept { return m_frameTimer; }
     [[nodiscard]] const platform::FixedStepAccumulator& fixedStep() const noexcept { return m_fixedStep; }
+    /// Whether the last frame was paused because the window had no image (minimized).
+    [[nodiscard]] bool isPaused() const noexcept { return m_paused; }
 
     /// The scenes of this App and the active one. Available before initialization too, so that a game can
     /// build its scenes first.
@@ -154,6 +162,8 @@ private:
     Result<void> initialize(Result<std::unique_ptr<platform::Platform>> platform);
     void runFrame(const AppCallbacks& callbacks);
     void render(const AppCallbacks& callbacks, scene::Scene* active);
+    // Whether the window has no image to render into: a device with a swapchain of zero size.
+    [[nodiscard]] bool hasNoImage() const noexcept;
     // The renderer that draws scenes, created the first time a scene is rendered; nullptr if that failed.
     renderer::Renderer* sceneRenderer();
 
@@ -175,6 +185,7 @@ private:
     platform::FrameTimer m_frameTimer;
     platform::FixedStepAccumulator m_fixedStep;
     u64 m_frameCount = 0;
+    bool m_paused = false;
     bool m_quitting = false;
     int m_exitCode = 0;
 };

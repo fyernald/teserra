@@ -151,7 +151,11 @@ void App::runFrame(const AppCallbacks& callbacks) {
 
     m_input.beginFrame();
     m_events.clear();
-    m_platform->pollEvents(m_events);
+    if (m_paused) {
+        m_platform->waitEvents(m_events, m_config.minimizedEventWait); // nothing to draw: do not spin
+    } else {
+        m_platform->pollEvents(m_events);
+    }
     for (const platform::Event& event : m_events) {
         m_input.processEvent(event);
         if (callbacks.onEvent) {
@@ -168,6 +172,11 @@ void App::runFrame(const AppCallbacks& callbacks) {
     }
 
     m_frameTimer.tick(m_platform->clock().now());
+    // Without an image, the frame stops here: the simulation pauses until the window is restored.
+    m_paused = hasNoImage();
+    if (m_paused) {
+        return;
+    }
     if (active != nullptr) {
         active->time().advance(m_frameTimer.deltaSeconds(), m_fixedStep.stepSeconds());
         ecs::World& world = active->world();
@@ -242,6 +251,11 @@ void App::render(const AppCallbacks& callbacks, scene::Scene* active) {
     }
     m_backbuffer = {};
     device.endFrame();
+}
+
+bool App::hasNoImage() const noexcept {
+    const rhi::Swapchain* swapchain = m_device ? m_device->swapchain() : nullptr;
+    return swapchain != nullptr && (swapchain->size().x == 0 || swapchain->size().y == 0);
 }
 
 renderer::Renderer* App::sceneRenderer() {

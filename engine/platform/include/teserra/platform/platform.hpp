@@ -8,6 +8,7 @@
 #include <teserra/platform/file_system.hpp>
 #include <teserra/platform/window.hpp>
 
+#include <chrono>
 #include <memory>
 
 namespace teserra::platform {
@@ -37,6 +38,14 @@ public:
     /// Processes pending window system messages and appends the resulting events to `queue` (which is not
     /// cleared first). Call once per frame.
     virtual void pollEvents(EventQueue& queue) = 0;
+
+    /// Like pollEvents(), but first sleeps until a window system message arrives or `timeout` has passed,
+    /// so a loop with nothing to draw (a minimized window) does not spin. The default implementation does
+    /// not wait; platforms with a window system override it.
+    virtual void waitEvents(EventQueue& queue, std::chrono::nanoseconds timeout) {
+        static_cast<void>(timeout);
+        pollEvents(queue);
+    }
 
     /// The monotonic clock that drives the main loop: real time (SteadyClock) here, a ManualClock in a
     /// test platform. Thread-safe, unlike the rest of the platform.
