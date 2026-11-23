@@ -175,7 +175,7 @@ jobs:
             ${{ env.VCPKG_INSTALLATION_ROOT }}/buildtrees/**/*.log
           if-no-files-found: ignore
 
-  # The portable modules on Linux (#68): core, ecs, rhi with the null backend and the portable part of
+  # The portable modules on Linux (#68): core, ecs, scene, rhi with the null backend and the portable part of
   # platform, with GCC and Clang (TESERRA_PORTABLE_ONLY). It catches Windows-only code before it spreads
   # (ADR-0015). Non-blocking until the Linux port (#127): a failure shows on the PR without failing the run.
   linux-portable:

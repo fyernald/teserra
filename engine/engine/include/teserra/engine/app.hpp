@@ -15,6 +15,8 @@
 #include <teserra/rhi/command_list.hpp>
 #include <teserra/rhi/device.hpp>
 #include <teserra/rhi/handles.hpp>
+#include <teserra/scene/scene.hpp>
+#include <teserra/scene/scene_manager.hpp>
 
 #include <chrono>
 #include <functional>
@@ -102,6 +104,12 @@ public:
     /// quit() (0 by default), or 1 at once if initialization failed.
     [[nodiscard]] int run(const AppCallbacks& callbacks = {});
 
+    /// Runs frames like run(callbacks), with `scene` active from the first frame. `scene` must come from
+    /// scenes() (asserted). The active scene's Time resource advances every frame; switches requested with
+    /// scenes().switchTo() take effect at the next frame boundary. Until scenes have schedules (#75), the
+    /// game's per-frame code is still `callbacks`.
+    [[nodiscard]] int run(scene::Scene& scene, const AppCallbacks& callbacks = {});
+
     /// Ends run() after the current frame, which returns `exitCode`; the last call wins. A close
     /// request or reaching maxFrames calls quit(0) unless the game already quit.
     void quit(int exitCode = 0) noexcept;
@@ -129,6 +137,11 @@ public:
     [[nodiscard]] const platform::FrameTimer& frameTimer() const noexcept { return m_frameTimer; }
     [[nodiscard]] const platform::FixedStepAccumulator& fixedStep() const noexcept { return m_fixedStep; }
 
+    /// The scenes of this App and the active one. Available before initialization too, so that a game can
+    /// build its scenes first.
+    [[nodiscard]] scene::SceneManager& scenes() noexcept { return m_scenes; }
+    [[nodiscard]] const scene::SceneManager& scenes() const noexcept { return m_scenes; }
+
 private:
     void start(Result<std::unique_ptr<platform::Platform>> platform);
     Result<void> initialize(Result<std::unique_ptr<platform::Platform>> platform);
@@ -142,6 +155,8 @@ private:
     std::unique_ptr<platform::Platform> m_platform;
     std::unique_ptr<platform::Window> m_window;
     std::unique_ptr<rhi::Device> m_device;
+    // After the device: scenes are destroyed first, so GPU resources they hold go before the device.
+    scene::SceneManager m_scenes;
     rhi::TextureHandle m_backbuffer;
     platform::Input m_input;
     platform::EventQueue m_events;
