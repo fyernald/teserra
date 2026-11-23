@@ -62,8 +62,8 @@ std::vector<std::byte> bytes(std::initializer_list<u8> values) {
 
 // Resources for a pipeline that renders into an Rgba8Srgb target.
 struct Scene {
-    explicit Scene(null::NullDevice& device)
-        : device(device) {
+    explicit Scene(null::NullDevice& nullDevice)
+        : device(nullDevice) {
         const std::vector<std::byte> vertexBlob = shaderBlob(ShaderStage::Vertex);
         const std::vector<std::byte> fragmentBlob = shaderBlob(ShaderStage::Fragment);
         vertexShader = *device.createShaderModule({.stage = ShaderStage::Vertex, .blob = vertexBlob});
