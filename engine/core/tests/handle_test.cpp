@@ -251,7 +251,8 @@ TEST_CASE("HandlePool: randomized operations match an unordered_map model", "[co
 
     for (int step = 0; step < 2000; ++step) {
         INFO("step " << step);
-        const u32 operation = random() % 10;
+        // result_type is uint_fast32_t: 64 bits on Linux, so the cast is not redundant there.
+        const auto operation = static_cast<u32>(random() % 10);
         if (operation < 5 || model.empty()) {
             const BufferHandle handle = pool.create(nextValue);
             // A new handle never equals any handle handed out before, live or stale.

@@ -65,6 +65,7 @@ tools/shaderc/                 # teserra_shaderc, the build-time shader compiler
 | `TESERRA_ENABLE_ASSERTS` | `DEFAULT` (on for Debug/RelWithDebInfo) | `TESERRA_ASSERT` active; `ON` / `OFF` force it for every configuration |
 | `TESERRA_ENABLE_PROFILING` | `OFF` | Tracy instrumentation |
 | `TESERRA_RHI_OPENGL` | `ON` | OpenGL backend |
+| `TESERRA_PORTABLE_ONLY` | `OFF`, `ON` in the `linux-*-portable` presets | Only the modules without OS or GPU code: `core`, `ecs`, `rhi` + null backend and the portable part of `platform` (no OS services, no window backend, no tests that need a `Platform`). Skips `teserra_shaderc`, `assets`, `renderer`, `engine`, the examples and the build-system tests, and turns off the default vcpkg feature `engine` (glfw3, glslang, spirv-cross, stb). For the Linux job before the Linux port |
 | `TESERRA_RHI_VULKAN` | `OFF` | Future Vulkan backend |
 | `TESERRA_SHADER_VALIDATION` | `OFF` locally, `ON` in `ci-windows` | SPIR-V validation of `teserra_shaderc`'s output in its tests (vcpkg feature `shader-validation`, SPIRV-Tools; about 15 minutes to build once) |
 | `TESERRA_WITH_DEBUG_DRAW` | `ON` | Debug draw API compiled in |
@@ -116,7 +117,8 @@ The include check reads `OPTIONAL_DEPENDS` like `DEPENDS`.
 | `asan` | MSVC or clang-cl, sanitizers on | Memory error hunting (added with sanitizers) |
 | `ci-windows` | MSVC Debug, warnings as errors, SPIR-V validation, JUnit output | GitHub Actions |
 | `ci-windows-release` | MSVC Release, warnings as errors, JUnit output: warnings only Release shows, such as a parameter used only in an assertion message | GitHub Actions |
-| `linux-gcc-debug`, `linux-clang-debug` | GCC 13 / Clang 17 + Ninja | Prepared for the Linux port; used by the non-blocking Linux job |
+| `linux-gcc-debug`, `linux-clang-debug` | GCC 13 / Clang 17 + Ninja | Prepared for the Linux port |
+| `linux-gcc-portable`, `linux-clang-portable` | GCC / Clang Debug, warnings as errors, `TESERRA_PORTABLE_ONLY` | The non-blocking `linux-portable` job |
 
 Every preset builds into `build/<preset>/` and exists as a configure, build, test and workflow preset with the same name. Windows presets use the `x64-windows` vcpkg triplet, Linux presets `x64-linux`; presets only show up on their host OS.
 
@@ -234,7 +236,7 @@ Workflows live in `.github/workflows/`.
 |---|---|---|---|
 | `ci.yml` → `windows-msvc`, `windows-msvc-release` | push to `main`, PRs | **Yes** | Configure (`ci-windows` / `ci-windows-release`), build all targets, run unit + integration tests, upload JUnit; in parallel |
 | `ci.yml` → `checks` | push, PRs | **Yes** | format check, layer/leak checks |
-| `ci.yml` → `linux-portable` | push, PRs | No (until the Linux port) | Build and test `core`, `ecs`, `rhi` + null backend on `ubuntu-latest` with GCC 13 and Clang 17 |
+| `ci.yml` → `linux-portable` | push to `main`, PRs | No (until the Linux port) | `linux-gcc-portable` and `linux-clang-portable`: build and test `core`, `ecs`, `rhi` + null backend and the portable part of `platform` on `ubuntu-latest`, with warnings as errors; a failure shows on the PR, but the run passes (`continue-on-error`) |
 | `ci.yml` → `sanitizers` | push to `main`, nightly, PRs labeled `needs-asan` | No → Yes once stable | `asan` preset, unit tests |
 | `ci.yml` → `clang-tidy` | PRs | Yes for changed files | clang-tidy on changed translation units |
 | `gpu.yml` → `gpu-software` | push to `main`, PRs touching `engine/rhi`, `engine/renderer`, `tests/gpu` | Yes once introduced | GPU tests on a software rasterizer (approach decided by the headless GPU testing spike) |

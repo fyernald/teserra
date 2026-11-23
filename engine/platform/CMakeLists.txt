@@ -25,40 +25,45 @@ target_sources(teserra_platform PRIVATE
     src/common/native_file_system.cpp
 )
 
-# OS services: the parts of the file system only the OS knows (executable and user-data directories).
-if(WIN32)
-    target_sources(teserra_platform PRIVATE src/windows/file_system_windows.cpp)
-    # SHGetKnownFolderPath (shell32), CoTaskMemFree (ole32) and the FOLDERID_* GUIDs (uuid).
-    target_link_libraries(teserra_platform PRIVATE shell32 ole32 uuid)
-else()
-    message(FATAL_ERROR "teserra_platform: no OS services for ${CMAKE_SYSTEM_NAME} yet (see the new "
-        "platform port checklist in platform-abstraction.md)")
-endif()
-
-# Window backend, chosen at configure time; shared code never uses #ifdef to pick it
-# (docs/architecture/platform-abstraction.md#selection-mechanism). GLFW is the only backend in v1.
-set(TESERRA_WINDOW_BACKEND "GLFW" CACHE STRING "Window backend of teserra_platform")
-set_property(CACHE TESERRA_WINDOW_BACKEND PROPERTY STRINGS GLFW)
-
-if(TESERRA_WINDOW_BACKEND STREQUAL "GLFW")
-    target_sources(teserra_platform PRIVATE
-        src/glfw/glfw_key_table.cpp
-        src/glfw/glfw_platform.cpp
-        src/glfw/glfw_window.cpp
-    )
+# The portable build (#68) stops here: the interfaces and the portable sources above, without OS services
+# or a window backend. Nothing in it creates a Platform; the null RHI backend only uses the Window
+# interface.
+if(NOT TESERRA_PORTABLE_ONLY)
+    # OS services: the parts of the file system only the OS knows (executable and user-data directories).
     if(WIN32)
-        target_sources(teserra_platform PRIVATE src/glfw/glfw_native_windows.cpp)
+        target_sources(teserra_platform PRIVATE src/windows/file_system_windows.cpp)
+        # SHGetKnownFolderPath (shell32), CoTaskMemFree (ole32) and the FOLDERID_* GUIDs (uuid).
+        target_link_libraries(teserra_platform PRIVATE shell32 ole32 uuid)
     else()
-        message(FATAL_ERROR "teserra_platform: the GLFW backend has no native-handle implementation for "
-            "${CMAKE_SYSTEM_NAME} yet (see the new platform port checklist in platform-abstraction.md)")
+        message(FATAL_ERROR "teserra_platform: no OS services for ${CMAKE_SYSTEM_NAME} yet (see the new "
+            "platform port checklist in platform-abstraction.md)")
     endif()
-    # GLFW is PRIVATE (ADR-0006). GLFW_INCLUDE_NONE keeps <GLFW/glfw3.h> from including OpenGL headers:
-    # GL belongs to the RHI's OpenGL backend.
-    find_package(glfw3 CONFIG REQUIRED)
-    teserra_link_third_party(platform PRIVATE glfw)
-    target_compile_definitions(teserra_platform PRIVATE GLFW_INCLUDE_NONE)
-else()
-    message(FATAL_ERROR "teserra_platform: unknown TESERRA_WINDOW_BACKEND '${TESERRA_WINDOW_BACKEND}'")
+
+    # Window backend, chosen at configure time; shared code never uses #ifdef to pick it
+    # (docs/architecture/platform-abstraction.md#selection-mechanism). GLFW is the only backend in v1.
+    set(TESERRA_WINDOW_BACKEND "GLFW" CACHE STRING "Window backend of teserra_platform")
+    set_property(CACHE TESERRA_WINDOW_BACKEND PROPERTY STRINGS GLFW)
+
+    if(TESERRA_WINDOW_BACKEND STREQUAL "GLFW")
+        target_sources(teserra_platform PRIVATE
+            src/glfw/glfw_key_table.cpp
+            src/glfw/glfw_platform.cpp
+            src/glfw/glfw_window.cpp
+        )
+        if(WIN32)
+            target_sources(teserra_platform PRIVATE src/glfw/glfw_native_windows.cpp)
+        else()
+            message(FATAL_ERROR "teserra_platform: the GLFW backend has no native-handle implementation for "
+                "${CMAKE_SYSTEM_NAME} yet (see the new platform port checklist in platform-abstraction.md)")
+        endif()
+        # GLFW is PRIVATE (ADR-0006). GLFW_INCLUDE_NONE keeps <GLFW/glfw3.h> from including OpenGL headers:
+        # GL belongs to the RHI's OpenGL backend.
+        find_package(glfw3 CONFIG REQUIRED)
+        teserra_link_third_party(platform PRIVATE glfw)
+        target_compile_definitions(teserra_platform PRIVATE GLFW_INCLUDE_NONE)
+    else()
+        message(FATAL_ERROR "teserra_platform: unknown TESERRA_WINDOW_BACKEND '${TESERRA_WINDOW_BACKEND}'")
+    endif()
 endif()
 
 if(TESERRA_BUILD_TESTS)

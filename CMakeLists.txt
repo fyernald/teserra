@@ -9,6 +9,10 @@ endif()
 if(TESERRA_SHADER_VALIDATION)
     list(APPEND VCPKG_MANIFEST_FEATURES "shader-validation")
 endif()
+# The portable build needs none of the libraries of the default "engine" feature.
+if(TESERRA_PORTABLE_ONLY)
+    set(VCPKG_MANIFEST_NO_DEFAULT_FEATURES ON)
+endif()
 
 project(Teserra
     VERSION 0.0.1
@@ -34,6 +38,13 @@ include(TeserraShaders)
 # when it is consumed through add_subdirectory().
 option(TESERRA_BUILD_TESTS "Build unit, integration and GPU test executables" ${PROJECT_IS_TOP_LEVEL})
 option(TESERRA_BUILD_EXAMPLES "Build the examples in examples/" ${PROJECT_IS_TOP_LEVEL})
+# Only the modules without OS or GPU code: core, ecs, rhi with the null backend, and the portable part of
+# platform. The Linux CI job builds this before the Linux port exists (#68, ADR-0015).
+option(TESERRA_PORTABLE_ONLY "Build only core, ecs, rhi + null backend and the portable part of platform" OFF)
+if(TESERRA_PORTABLE_ONLY)
+    set(TESERRA_BUILD_EXAMPLES OFF)
+    set(TESERRA_RHI_OPENGL OFF)
+endif()
 option(TESERRA_WARNINGS_AS_ERRORS "Treat compiler warnings as errors (/WX, -Werror)" OFF)
 set(TESERRA_ENABLE_ASSERTS "DEFAULT" CACHE STRING
     "Check TESERRA_ASSERT: DEFAULT (Debug and RelWithDebInfo builds), ON or OFF")
@@ -49,17 +60,23 @@ endif()
 
 # Host tools that the build runs: the shader compiler (ADR-0017). It links teserra_rhi, defined below, for
 # the .tshader format.
-add_subdirectory(tools/shaderc)
+if(NOT TESERRA_PORTABLE_ONLY)
+    add_subdirectory(tools/shaderc)
+endif()
 
 # Engine modules, in layer order (docs/architecture/overview.md#layers). A module can only depend on
 # modules that were added before it.
 add_subdirectory(engine/core)
 add_subdirectory(engine/platform)
 add_subdirectory(engine/rhi)
-add_subdirectory(engine/assets)
-add_subdirectory(engine/renderer)
+if(NOT TESERRA_PORTABLE_ONLY)
+    add_subdirectory(engine/assets)
+    add_subdirectory(engine/renderer)
+endif()
 add_subdirectory(engine/ecs)
-add_subdirectory(engine/engine)
+if(NOT TESERRA_PORTABLE_ONLY)
+    add_subdirectory(engine/engine)
+endif()
 
 if(TESERRA_BUILD_EXAMPLES)
     add_subdirectory(examples)

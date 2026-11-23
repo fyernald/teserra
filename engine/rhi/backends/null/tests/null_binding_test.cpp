@@ -47,8 +47,8 @@ constexpr std::array kDrawEntries{
 // A pipeline whose vertex shader uses a frame block at set 0 and a per-draw block at set 3, the layouts,
 // and bind groups for both.
 struct BindingScene {
-    explicit BindingScene(null::NullDevice& device)
-        : device(device) {
+    explicit BindingScene(null::NullDevice& nullDevice)
+        : device(nullDevice) {
         const std::vector<std::byte> vertexBlob = blob(ShaderStage::Vertex, {frameBlock(), drawBlock()});
         vertexShader =
             *device.createShaderModule({.stage = ShaderStage::Vertex, .blob = vertexBlob, .debugName = "VS"});
