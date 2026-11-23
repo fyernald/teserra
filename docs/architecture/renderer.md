@@ -32,10 +32,10 @@ struct SpriteDrawItem {
     Mat4 world;                 // full 3D transform (2D uses z = 0 plane)
     UvRect uv;                  // top-left origin
     Vec2 size;                  // world units
-    Vec2 pivot;                 // normalized
-    Color tint;
-    MaterialInstanceHandle material;   // default sprite material if null
+    Vec2 pivot;                 // normalized like UVs: {0, 0} = the image's top-left corner
+    Color tint;                 // linear
     TextureHandle texture;
+    SpriteBlend blend;          // Alpha, Premultiplied, Additive; a MaterialInstanceHandle replaces it (#97)
     i16 layer;                  // explicit sort layer
     f32 sortDepth;              // tie-breaker inside a layer (e.g. -y for top-down games)
 };
@@ -108,9 +108,9 @@ struct Camera {
 
 Goal: draw tens of thousands of sprites with few draw calls and **zero heap allocations per frame** after warm-up.
 
-1. **Sort.** Each `SpriteDrawItem` gets a 64-bit sort key: `layer (16 bits) | sortDepth quantized (24 bits) | material/texture batch id (24 bits)`. Sorting is a radix or `std::sort` over keys + indices in a reused array. Transparent sprites are drawn back-to-front by construction; the depth attachment exists (3D readiness) but sprite materials default to depth test off, depth write off.
+1. **Sort.** Each `SpriteDrawItem` gets a 64-bit sort key (`spriteSortKey()`): `layer (16 bits, biased so negative layers come first) | sortDepth quantized (24 bits, through the float's order-preserving bit pattern) | batch id (24 bits: texture slot index and blend)`. `SpriteBatcher::prepare()` sorts (key, index) pairs with `std::sort` in a reused array; the index breaks ties, so equal keys keep their input order and frames do not flicker. A radix sort stays a measured optimization. Transparent sprites are drawn back-to-front by construction; the depth attachment exists (3D readiness) but sprite materials default to depth test off, depth write off.
 2. **Batch.** Consecutive items with the same material instance and texture form a batch. A batch breaks when either changes or when the vertex budget of a batch is reached.
-3. **Expand.** For each sprite, four vertices are written directly into the frame's upload ring buffer: `position: Float3`, `uv: Float2`, `color: Unorm8x4` (24 bytes). Positions are transformed on the CPU from the full 3D world matrix.
+3. **Expand.** For each sprite, `SpriteBatcher::writeVertices()` writes four `SpriteVertex`es in draw order directly into the frame's upload ring buffer: `position: Float3`, `uv: Float2`, `color: Unorm8x4` (24 bytes; `kSpriteVertexBuffer` and `kSpriteVertexAttributes` describe it as RHI data). The corners go top-left, bottom-left, bottom-right, top-right, counter-clockwise with +Y up for the index pattern `0 1 2, 0 2 3`. Positions are transformed on the CPU from the full 3D world matrix; the tint is stored as linear bytes. `SpriteBatch { texture, blend, firstSprite, spriteCount }` gives each draw's first vertex as `firstSprite * 4`.
 4. **Draw.** A static index buffer holds the quad pattern for the maximum batch size (16-bit indices, 16 383 quads per batch). Each batch is one `drawIndexed` with a vertex offset.
 
 The vertex layout is declared as an RHI `VertexLayout`, never hard-coded in the RHI. CPU expansion is the simplest correct approach; **instanced** sprites (per-instance data + vertex pulling) are a benchmark-driven optimization in the backlog.
