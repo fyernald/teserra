@@ -19,6 +19,8 @@ struct RenderView {
     Color clearColor{.r = 0.0F, .g = 0.0F, .b = 0.0F, .a = 1.0F};
     /// Views render in ascending order; views with the same order keep the order of the packet.
     i32 order = 0;
+    /// The part of the target the view covers, normalized: {0, 0} is the top-left corner, {1, 1} the size.
+    Rect viewport{.position = Vec2{0.0F}, .size = Vec2{1.0F}};
 };
 
 /// How a sprite's color combines with what is behind it. It stands in for the material until materials

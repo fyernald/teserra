@@ -118,6 +118,7 @@ void Renderer::render(const FramePacket& packet, const FrameTarget& target, rhi:
 
     PassContext context;
     context.m_device = &m_device;
+    context.m_packet = &packet;
     context.m_uploads = &m_uploads;
     context.m_views = m_views;
     context.m_viewOffsets = m_viewOffsets;

@@ -48,7 +48,8 @@ CameraData cameraData(const Camera& camera, const Mat4& world, UVec2 targetSize,
 RenderView renderView(const Camera& camera, const Mat4& world, UVec2 targetSize, f32 time) noexcept {
     return {.camera = cameraData(camera, world, targetSize, time),
             .clearColor = camera.clearColor,
-            .order = camera.order};
+            .order = camera.order,
+            .viewport = camera.viewport};
 }
 
 Vec3 worldToScreen(const CameraData& camera, const Vec3& point) noexcept {

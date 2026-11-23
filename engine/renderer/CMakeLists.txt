@@ -8,12 +8,26 @@ teserra_add_module(renderer LAYER 3
         include/teserra/renderer/render_pass.hpp
         include/teserra/renderer/renderer.hpp
         include/teserra/renderer/sprite_batcher.hpp
+        include/teserra/renderer/sprite_pass.hpp
         include/teserra/renderer/upload_ring.hpp
     SOURCES
         src/camera.cpp
         src/renderer.cpp
         src/sprite_batcher.cpp
+        src/sprite_pass.cpp
         src/upload_ring.cpp
+)
+
+# The built-in materials' shaders, compiled at build time and embedded: <teserra_renderer/shaders.hpp>
+# declares teserra::renderer::shaders::kSpriteUnlitVert and kSpriteUnlitFrag. shaders/ also holds the includes
+# every engine shader uses (teserra/camera.glsl).
+teserra_add_shaders(teserra_renderer EMBED
+    NAMESPACE teserra::renderer::shaders
+    HEADER teserra_renderer/shaders.hpp
+    INCLUDE_DIRECTORIES shaders
+    SOURCES
+        shaders/sprite_unlit.vert
+        shaders/sprite_unlit.frag
 )
 
 if(TESERRA_BUILD_TESTS)
