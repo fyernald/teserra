@@ -38,9 +38,9 @@ include(TeserraShaders)
 # when it is consumed through add_subdirectory().
 option(TESERRA_BUILD_TESTS "Build unit, integration and GPU test executables" ${PROJECT_IS_TOP_LEVEL})
 option(TESERRA_BUILD_EXAMPLES "Build the examples in examples/" ${PROJECT_IS_TOP_LEVEL})
-# Only the modules without OS or GPU code: core, ecs, rhi with the null backend, and the portable part of
-# platform. The Linux CI job builds this before the Linux port exists (#68, ADR-0015).
-option(TESERRA_PORTABLE_ONLY "Build only core, ecs, rhi + null backend and the portable part of platform" OFF)
+# Only the modules without OS or GPU code: core, ecs, scene, rhi with the null backend, and the portable part
+# of platform. The Linux CI job builds this before the Linux port exists (#68, ADR-0015).
+option(TESERRA_PORTABLE_ONLY "Build only core, ecs, scene, rhi + null backend and the portable part of platform" OFF)
 if(TESERRA_PORTABLE_ONLY)
     set(TESERRA_BUILD_EXAMPLES OFF)
     set(TESERRA_RHI_OPENGL OFF)
@@ -74,6 +74,7 @@ if(NOT TESERRA_PORTABLE_ONLY)
     add_subdirectory(engine/renderer)
 endif()
 add_subdirectory(engine/ecs)
+add_subdirectory(engine/scene)
 if(NOT TESERRA_PORTABLE_ONLY)
     add_subdirectory(engine/engine)
 endif()

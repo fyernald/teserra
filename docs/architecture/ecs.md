@@ -156,6 +156,13 @@ schedule.add(Phase::Update, "player_movement", playerMovement)
 
 - `scene::Scene` owns one `ecs::World`, one `ecs::Schedule` configured with the standard phases, and scene-level resources.
 - `scene::SceneManager` (owned by `App`) holds the active scene and switches scenes **at frame boundaries** (never in the middle of a schedule).
+- Today (`teserra_scene`, layer 5, iteration 10):
+  - `Scene` owns its `ecs::World` and has `spawn()` and `add<T>()` shortcuts. Every scene's World has a `scene::Time` resource: `deltaSeconds()`, `fixedStepSeconds()`, and `elapsedSeconds()` and `frame()` while the scene was active.
+  - `App::scenes()` creates scenes (unique names, stable references) and `App::run(scene)` activates one before the first frame.
+  - `scenes().switchTo(other)` takes effect at the start of the next frame, wherever in a frame it is called.
+  - The App advances the active scene's `Time` once per frame, so each scene keeps its own play time.
+  - The scene's Schedule comes with #75. Until then, `run(scene, callbacks)` runs the game's callbacks.
+  - The module depends only on `core` and `ecs`, so the portable Linux build includes it.
 - Engine-provided systems (transform propagation, render extraction, tilemap chunk updates) are added to every scene by the engine; games add their own.
 
 ## Roadmap: from simple and correct to benchmarked and optimized
