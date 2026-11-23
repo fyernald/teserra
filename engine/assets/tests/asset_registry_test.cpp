@@ -43,10 +43,6 @@ struct Payload {
     static inline int alive = 0;
 };
 
-struct Other {
-    int value = 0;
-};
-
 // An asset that holds another one, like a material holds its textures.
 struct Holder {
     Asset<Payload> dependency;
@@ -65,10 +61,6 @@ struct Create {
 
 Result<Payload> failToLoad() {
     return fail(ErrorCode::NotFound, Module::Assets, "no such file");
-}
-
-u64 sameHashForEveryPath(std::string_view) {
-    return 42;
 }
 
 } // namespace
@@ -173,7 +165,6 @@ TEST_CASE("Asset<T>: a null asset is not ready and has no ID", "[assets][registr
     CHECK(none.id().isNull());
     CHECK(none.handle().isNull());
     CHECK(none == Asset<Payload>{});
-    CHECK_THAT(test::requireAssert([&] { (void)none.get(); }).message(), ContainsSubstring("null asset"));
 }
 
 TEST_CASE("AssetRegistry: a failed load is logged once and deduplicated", "[assets][registry]") {
@@ -193,35 +184,9 @@ TEST_CASE("AssetRegistry: a failed load is logged once and deduplicated", "[asse
     CHECK(log.records()[0].level == LogLevel::Error);
     CHECK_THAT(log.records()[0].message,
                ContainsSubstring("assets://missing.png") && ContainsSubstring("no such file"));
-    CHECK_THAT(test::requireAssert([&] { (void)first.get(); }).message(), ContainsSubstring("not ready"));
 }
 
-TEST_CASE("AssetRegistry: two paths with the same hash assert", "[assets][registry]") {
-    AssetRegistry assets({.hashPath = sameHashForEveryPath});
-    int calls = 0;
-
-    const Asset<Payload> hero = assets.load<Payload>("assets://hero.png", Create{&calls, 1});
-    const auto failure =
-        test::requireAssert([&] { (void)assets.load<Payload>("assets://enemy.png", Create{&calls, 2}); });
-
-    CHECK_THAT(failure.message(),
-               ContainsSubstring("assets://hero.png") && ContainsSubstring("assets://enemy.png"));
-    CHECK(calls == 1);
-    CHECK(hero.get().value == 1);
-}
-
-TEST_CASE("AssetRegistry: one path loaded or read as two types asserts", "[assets][registry]") {
-    AssetRegistry assets;
-    int calls = 0;
-    const Asset<Payload> hero = assets.load<Payload>("assets://hero.png", Create{&calls, 1});
-
-    const auto failure = test::requireAssert(
-        [&] { (void)assets.load<Other>("assets://hero.png", [] { return Result<Other>(Other{}); }); });
-    CHECK_THAT(failure.message(), ContainsSubstring("another type"));
-    CHECK(assets.size() == 1);
-}
-
-TEST_CASE("AssetRegistry: create may load dependencies, but not the asset itself", "[assets][registry]") {
+TEST_CASE("AssetRegistry: create may load dependencies", "[assets][registry]") {
     AssetRegistry assets;
     int calls = 0;
 
@@ -236,15 +201,6 @@ TEST_CASE("AssetRegistry: create may load dependencies, but not the asset itself
     assets.endFrame();
     CHECK(assets.size() == 0);
     CHECK(Payload::alive == 0);
-
-    const auto failure = test::requireAssert([&] {
-        (void)assets.load<Holder>("assets://loop.json", [&] {
-            return Result<Holder>(Holder{assets.load<Payload>("assets://loop.json", Create{&calls, 4})});
-        });
-    });
-    CHECK_THAT(failure.message(), ContainsSubstring("cycle"));
-    assets.endFrame();
-    CHECK(assets.size() == 0);
 }
 
 TEST_CASE("AssetRegistry: a steady-state endFrame allocates nothing", "[assets][registry]") {
@@ -268,3 +224,68 @@ TEST_CASE("AssetRegistry: a steady-state endFrame allocates nothing", "[assets][
     CHECK(allocations.count() == 0);
     CHECK(kept.isReady());
 }
+
+#if TESERRA_ENABLE_ASSERTS
+
+namespace {
+
+struct Other {
+    int value = 0;
+};
+
+u64 sameHashForEveryPath(std::string_view) {
+    return 42;
+}
+
+} // namespace
+
+TEST_CASE("Asset<T>: reading a null or failed asset asserts", "[assets][registry][validation]") {
+    const Asset<Payload> none;
+    CHECK_THAT(test::requireAssert([&] { (void)none.get(); }).message(), ContainsSubstring("null asset"));
+
+    AssetRegistry assets;
+    const test::LogCapture log;
+    const Asset<Payload> missing = assets.load<Payload>("assets://missing.png", failToLoad);
+    CHECK_THAT(test::requireAssert([&] { (void)missing.get(); }).message(), ContainsSubstring("not ready"));
+}
+
+TEST_CASE("AssetRegistry: two paths with the same hash assert", "[assets][registry][validation]") {
+    AssetRegistry assets({.hashPath = sameHashForEveryPath});
+    int calls = 0;
+
+    const Asset<Payload> hero = assets.load<Payload>("assets://hero.png", Create{&calls, 1});
+    const auto failure =
+        test::requireAssert([&] { (void)assets.load<Payload>("assets://enemy.png", Create{&calls, 2}); });
+
+    CHECK_THAT(failure.message(),
+               ContainsSubstring("assets://hero.png") && ContainsSubstring("assets://enemy.png"));
+    CHECK(calls == 1);
+    CHECK(hero.get().value == 1);
+}
+
+TEST_CASE("AssetRegistry: one path loaded or read as two types asserts", "[assets][registry][validation]") {
+    AssetRegistry assets;
+    int calls = 0;
+    const Asset<Payload> hero = assets.load<Payload>("assets://hero.png", Create{&calls, 1});
+
+    const auto failure = test::requireAssert(
+        [&] { (void)assets.load<Other>("assets://hero.png", [] { return Result<Other>(Other{}); }); });
+    CHECK_THAT(failure.message(), ContainsSubstring("another type"));
+    CHECK(assets.size() == 1);
+}
+
+TEST_CASE("AssetRegistry: an asset that loads itself asserts", "[assets][registry][validation]") {
+    AssetRegistry assets;
+    int calls = 0;
+
+    const auto failure = test::requireAssert([&] {
+        (void)assets.load<Holder>("assets://loop.json", [&] {
+            return Result<Holder>(Holder{assets.load<Payload>("assets://loop.json", Create{&calls, 4})});
+        });
+    });
+    CHECK_THAT(failure.message(), ContainsSubstring("cycle"));
+    assets.endFrame();
+    CHECK(assets.size() == 0);
+}
+
+#endif // TESERRA_ENABLE_ASSERTS

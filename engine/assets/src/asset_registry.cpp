@@ -32,7 +32,12 @@ void AssetRegistry::endFrame() {
             if (slot.references != 0) { // loaded again since it was released
                 continue;
             }
-            m_byId.erase(slot.id);
+            // Only when the ID maps to this slot: with assertions off, a dependency cycle leaves a second
+            // slot for one ID.
+            if (const auto mapped = m_byId.find(slot.id);
+                mapped != m_byId.end() && mapped->second == handle) {
+                m_byId.erase(mapped);
+            }
             m_slots.destroy(handle);
         }
         m_unloading.clear();
