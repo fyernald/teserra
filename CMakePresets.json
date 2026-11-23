@@ -100,6 +100,15 @@
       }
     },
     {
+      "name": "ci-windows-release",
+      "displayName": "CI Windows Release (MSVC)",
+      "description": "GitHub Actions: MSVC Release with warnings as errors, for warnings that only Release builds show",
+      "inherits": "windows-msvc-release",
+      "cacheVariables": {
+        "TESERRA_WARNINGS_AS_ERRORS": "ON"
+      }
+    },
+    {
       "name": "linux-gcc-debug",
       "displayName": "Linux GCC Debug",
       "description": "Prepared for the Linux port: GCC 13+, Ninja, Debug",
@@ -125,6 +134,7 @@
     { "name": "windows-msvc-release", "configurePreset": "windows-msvc-release" },
     { "name": "windows-clang-debug", "configurePreset": "windows-clang-debug" },
     { "name": "ci-windows", "configurePreset": "ci-windows" },
+    { "name": "ci-windows-release", "configurePreset": "ci-windows-release" },
     { "name": "linux-gcc-debug", "configurePreset": "linux-gcc-debug" },
     { "name": "linux-clang-debug", "configurePreset": "linux-clang-debug" }
   ],
@@ -146,6 +156,15 @@
       "name": "ci-windows",
       "inherits": "test-base",
       "configurePreset": "ci-windows",
+      "output": {
+        "outputOnFailure": true,
+        "outputJUnitFile": "junit.xml"
+      }
+    },
+    {
+      "name": "ci-windows-release",
+      "inherits": "test-base",
+      "configurePreset": "ci-windows-release",
       "output": {
         "outputOnFailure": true,
         "outputJUnitFile": "junit.xml"

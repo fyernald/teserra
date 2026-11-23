@@ -61,9 +61,20 @@ jobs:
         if: success() || failure()
         run: shellcheck --format=gcc tools/setup/setup.sh
 
+  # Debug with warnings as errors (ci-windows), and Release with warnings as errors (ci-windows-release) for
+  # warnings only Release shows, such as parameters used only in assertion messages (#204). In parallel, so a
+  # PR waits no longer than for one of them.
   windows-msvc:
-    name: windows-msvc
+    name: ${{ matrix.name }}
     runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: windows-msvc
+            preset: ci-windows
+          - name: windows-msvc-release
+            preset: ci-windows-release
     timeout-minutes: 60
     permissions:
       contents: read
@@ -114,11 +125,12 @@ jobs:
       # The setup script must recognize a machine that has everything (#210). The LLVM tools are not on the
       # runner (the checks job pins its own clang-format), so they are skipped.
       - name: Setup script check
+        if: matrix.preset == 'ci-windows'
         shell: bash
         run: bash tools/setup/setup.sh --check --skip-llvm
 
       - name: Configure
-        run: cmake --preset ci-windows
+        run: cmake --preset ${{ matrix.preset }}
 
       - name: Save vcpkg binary cache
         if: always() && steps.vcpkg-cache.outputs.cache-hit != 'true'
@@ -128,37 +140,37 @@ jobs:
           key: ${{ steps.vcpkg-cache.outputs.cache-primary-key }}
 
       - name: Build
-        run: cmake --build --preset ci-windows
+        run: cmake --build --preset ${{ matrix.preset }}
 
       # The matcher turns Catch2's "file(line): FAILED:" lines into annotations on the source line.
       - name: Test
         run: |
           echo "::add-matcher::.github/problem-matchers/catch2.json"
-          ctest --preset ci-windows
+          ctest --preset ${{ matrix.preset }}
 
       - name: Annotate test results
-        if: always() && hashFiles('build/ci-windows/junit.xml') != ''
+        if: always() && hashFiles('build/${{ matrix.preset }}/junit.xml') != ''
         uses: mikepenz/action-junit-report@6ef3fdcfcd5f0b5d14df3e659ef19b8c6820f93d # v6.6.1
         with:
-          report_paths: build/ci-windows/junit.xml
-          check_name: windows-msvc tests
+          report_paths: build/${{ matrix.preset }}/junit.xml
+          check_name: ${{ matrix.name }} tests
           annotate_only: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
           include_passed: false
           detailed_summary: true
 
       - name: Upload test results
-        if: always() && hashFiles('build/ci-windows/junit.xml') != ''
+        if: always() && hashFiles('build/${{ matrix.preset }}/junit.xml') != ''
         uses: actions/upload-artifact@v7
         with:
-          name: windows-msvc-junit
-          path: build/ci-windows/junit.xml
+          name: ${{ matrix.name }}-junit
+          path: build/${{ matrix.preset }}/junit.xml
 
       - name: Upload vcpkg logs
         if: failure()
         uses: actions/upload-artifact@v7
         with:
-          name: windows-msvc-vcpkg-logs
+          name: ${{ matrix.name }}-vcpkg-logs
           path: |
-            build/ci-windows/vcpkg-manifest-install.log
+            build/${{ matrix.preset }}/vcpkg-manifest-install.log
             ${{ env.VCPKG_INSTALLATION_ROOT }}/buildtrees/**/*.log
           if-no-files-found: ignore
