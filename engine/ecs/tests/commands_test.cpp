@@ -259,7 +259,7 @@ TEST_CASE("Commands for dead entities, and applying during iteration, assert",
     world.add<Position>(entity);
     commands.remove<Position>(entity);
     CHECK(test::requireAssert([&] {
-              for (auto [e, position] : world.view<Position>()) {
+              for ([[maybe_unused]] const auto& element : world.view<Position>()) {
                   commands.apply(); // the view locks the Position pool
               }
           }).message() == std::format("Cannot remove {} while the pool is iterated; use Commands to defer it",
