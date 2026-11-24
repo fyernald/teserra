@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <utility>
+#include <vector>
 
 namespace teserra::assets {
 
@@ -166,6 +167,48 @@ const MountTable::Mount* MountTable::find(std::string_view scheme) const noexcep
     const auto found = std::ranges::find_if(
         m_mounts, [&](const Mount& mounted) { return equalsIgnoringCase(mounted.scheme, scheme); });
     return found != m_mounts.end() ? &*found : nullptr;
+}
+
+Result<std::string> resolveRelativePath(std::string_view base, std::string_view relative) {
+    if (relative.find("://") != std::string_view::npos) {
+        return std::string(relative);
+    }
+    const usize schemeEnd = base.find("://");
+    const usize rootLength = schemeEnd == std::string_view::npos ? 0 : schemeEnd + 3;
+    std::vector<std::string_view> parts;
+    const auto split = [&](std::string_view path) -> Result<void> {
+        while (!path.empty()) {
+            const usize slash = path.find_first_of("/\\");
+            const std::string_view part = path.substr(0, slash);
+            path = slash == std::string_view::npos ? std::string_view{} : path.substr(slash + 1);
+            if (part.empty() || part == ".") {
+                continue;
+            }
+            if (part == "..") {
+                if (parts.empty()) {
+                    return fail(ErrorCode::InvalidData, Module::Assets,
+                                "Path '{}' from '{}' leaves the root of the mount point", relative, base);
+                }
+                parts.pop_back();
+                continue;
+            }
+            parts.push_back(part);
+        }
+        return {};
+    };
+    const std::string_view baseFile = base.substr(rootLength);
+    const usize lastSlash = baseFile.find_last_of("/\\");
+    TESERRA_TRY(
+        split(lastSlash == std::string_view::npos ? std::string_view{} : baseFile.substr(0, lastSlash)));
+    TESERRA_TRY(split(relative));
+    std::string resolved(base.substr(0, rootLength));
+    for (usize i = 0; i < parts.size(); ++i) {
+        if (i > 0) {
+            resolved += '/';
+        }
+        resolved += parts[i];
+    }
+    return resolved;
 }
 
 } // namespace teserra::assets

@@ -48,7 +48,7 @@ public:
 };
 ```
 
-- Loaders are registered per type: `assets.registerLoader<Texture>(std::make_unique<TextureLoader>(device))`. The **renderer** registers `Texture`, `Shader` and `Material` loaders (it owns the `rhi::Device`), the **scene** layer registers `Tileset` and `TilemapData` loaders. The asset module itself only provides `ImageData` (stb_image).
+- Loaders are registered per type: `assets.registerLoader<Texture>(std::make_unique<TextureLoader>(device))`. The **renderer** registers `Texture`, `Shader` and `Material` loaders (it owns the `rhi::Device`). The asset module itself provides `ImageData` (stb_image) and `TiledMap` ([Tiled maps](#tiled-maps)); the scene layer turns a `TiledMap` into a `Tilemap` and a `Tileset`.
 - `AssetLoadContext` provides file access through mount points, the ability to load dependencies (`ctx.load<Texture>(path)`), and the asset's import settings (sRGB, filtering, `pixelsPerUnit`) from an optional sidecar `<file>.asset.json` (v1: optional, defaults apply).
 - Loaders return `Result<T>`. A failure is logged once with the path, and the handle resolves to a **fallback asset** (magenta/black checkerboard texture, error shader, empty tileset), so a missing file never crashes a game in development.
 - **Today** (`<teserra/assets/asset_registry.hpp>`, #81): `AssetLoader<T>`, `AssetLoadContext` (`path()`, `load<T>()` for dependencies, `readFile()` for other files) and `AssetRegistry::registerLoader<T>()` / `load<T>(path)`.
@@ -56,7 +56,7 @@ public:
   - `load<T>(path)` reads the file through the registry's `MountTable` (`AssetRegistryConfig::mounts`) and goes through `load<T>(path, create)`, so deduplication and the single error log with the path work the same for both. A type without a loader for the extension, and a registry without a mount table, fail with `Unsupported`.
   - `assets::ImageLoader` makes `ImageData` from `.png` files. The renderer's `<teserra/renderer/assets.hpp>` has `renderer::Texture` (an `Rgba8Srgb` texture with one mip level, named after its path) with `TextureLoader` (`.png`), and `renderer::Shader` (a shader module and its stage) with `ShaderLoader` (`.tshader`); `renderer::registerAssetLoaders(registry, device)` registers both. Both asset types own their GPU object and destroy it when they unload; the device keeps it until no frame in flight uses it.
   - `engine::App` owns the registry (`app.assets()`), reading through `app.mounts()`, with `ImageLoader` and, when it has a device, the renderer's loaders. It calls `endFrame()` after each frame, and it is destroyed after the scenes and before the device.
-  - Not yet: the `<file>.asset.json` sidecar, which needs the JSON library of #90 (#228), so every asset loads with defaults.
+  - Not yet: the `<file>.asset.json` sidecar (#228), so every asset loads with defaults. The JSON view it needs exists (see [JSON](#json)).
 
 ### Fallback assets
 
@@ -90,7 +90,44 @@ level.add<SpriteRenderer>(hero, scene::spriteFromSheet(sheet, *sheet.find("hero3
 - **World size:** `worldSize(region)` is the region's texels divided by the sheet's `pixelsPerUnit` (default 16, `kDefaultPixelsPerUnit`), so 16-pixel art fills one world unit.
 - **Missing textures:** when the texture is a fallback, every region shows the whole fallback (`uv()` is the full texture), and a grid makes the `count` cells asked for (at least one), so a game whose sheet file is missing still runs and logs one error.
 - **Sprites:** `scene::spriteFromSheet(sheet, region)` (or by name) makes a `SpriteRenderer` with the region's texture, UVs and world size. `SpriteRenderer` stores the texture's `rhi::TextureHandle`, so the game keeps the sheet alive while sprites show it.
-- **Not yet:** sheets defined in a `.sheet.json` file (grid or named regions) need the JSON library of #90 (#231). Until then sheets are made in code, and the registry can share one with `load<SpriteSheet>(path, create)`.
+- **Not yet:** sheets defined in a `.sheet.json` file (grid or named regions), #231, which can read them through the [JSON view](#json). Until then sheets are made in code, and the registry can share one with `load<SpriteSheet>(path, create)`.
+
+## JSON
+
+JSON source formats are read through a read-only view in `<teserra/assets/json.hpp>`, over yyjson, which is private to `teserra_assets` ([ADR-0025](../adr/0025-json-yyjson.md)).
+
+- `JsonDocument::parse(bytes)` returns `Result<JsonDocument>`. Malformed input is `InvalidData` with the line, the column and what is wrong: `line 3, column 13: unexpected character`.
+- `JsonValue` views a value of a document while the document lives:
+  - type tests, and `asBool`, `asInt`, `asNumber` and `asString`, which return `std::nullopt` for a missing value or another type;
+  - `value["key"]` for members, where a missing member is a value that `exists()` says is not there;
+  - `size()`, plus `forEach` and `forEachMember`, whose callback can return `false` to stop;
+  - `typeName()` for messages.
+- Loaders report missing or mistyped fields in their own words, with the context they know: the layer, the tile, the object.
+
+## Tiled maps
+
+v1 imports maps saved by [Tiled](https://www.mapeditor.org/) in its JSON format (#90): `assets::TiledMap` (`<teserra/assets/tiled.hpp>`) from `.tmj` files, through `TiledMapLoader`, which the App registers.
+
+- **What loads:**
+  - orthogonal, finite maps with their size, tile size and custom properties;
+  - tilesets, embedded or external `.tsj` files read through the mount points, with their image as a virtual path resolved against the file that names it (`resolveRelativePath()`), grid (tile size, margin, spacing, columns, count) and per-tile properties;
+  - tile layers with CSV data (gids, top row first), visibility, opacity, offset and properties;
+  - object layers of rectangles with id, name, class, position, size, rotation and properties.
+- **Properties** keep Tiled's types:
+  - `bool`;
+  - `int` and `object` as `i64`;
+  - `float` as `f64`;
+  - `string` and `color` as strings;
+  - `file` as a resolved virtual path.
+
+  `TiledProperties::getBool/getInt/getNumber/getString(name)` read them.
+- **Errors name what they are about**, with Tiled's tile coordinates (column, row from the top): `layer 'ground': tile (3, 2) has id 11, which is in no tileset`.
+  - `Unsupported`: infinite maps, other orientations, base64 or compressed layer data, flipped or rotated tiles, group and image layers, objects that are not rectangles, TSX tilesets, image-collection tilesets, animated tiles and `class` properties.
+  - `InvalidData`: broken JSON, missing or mistyped fields, wrong data sizes, gids of no tileset, and paths that leave their mount point.
+- **Into a scene** (`<teserra/scene/tiled.hpp>`, with the renderer):
+  - `tilemapFromTiled(map, tilesetIndex, pixelsPerUnit)` makes a `scene::Tilemap`. Rows are flipped so the bottom-left tile is (0, 0) and +Y is up (ADR-0024); pixels are divided by `pixelsPerUnit`. A tilemap uses one tileset in v1, and a tile of another tileset is `Unsupported`.
+  - `tilesetFromTiled(tileset, registry)` makes a `scene::Tileset` from the tileset's image and grid; a tile's bool property `solid` becomes `TileProperties::solid`.
+  - `tiledObjectBounds(map, object)` places an object's rectangle in the map's local space.
 
 ## Image decoding
 
