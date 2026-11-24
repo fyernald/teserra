@@ -134,7 +134,7 @@ TEST_CASE("Tilemap: an edit marks exactly its chunk dirty", "[scene][tilemap]") 
 }
 
 TEST_CASE("Tilemap: layers are found by name and drawn in order", "[scene][tilemap]") {
-    Tilemap map{.tileSize = {0.5F, 0.5F}};
+    Tilemap map{.tileSize = {0.5F, 0.5F}, .layers = {}};
     map.addLayer("ground").setTile({0, 0}, 1);
     map.addLayer("decor");
     REQUIRE(map.layers.size() == 2);
@@ -152,7 +152,7 @@ TEST_CASE("Tilemap: layers are found by name and drawn in order", "[scene][tilem
 TEST_CASE("Tilemap: is a component", "[scene][tilemap]") {
     ecs::World world;
     const ecs::Entity entity = world.create();
-    Tilemap& map = world.add<Tilemap>(entity, Tilemap{.tileSize = {2.0F, 2.0F}});
+    Tilemap& map = world.add<Tilemap>(entity, Tilemap{.tileSize = {2.0F, 2.0F}, .layers = {}});
     map.addLayer("ground").setTile({-5, 7}, 4);
     CHECK(world.get<Tilemap>(entity).layers.front().tile({-5, 7}) == 4);
     CHECK(ecs::componentName<Tilemap>() == "Tilemap");

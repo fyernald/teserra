@@ -4,7 +4,7 @@
 // touches one chunk and the renderer rebuilds only the chunks that changed. Chunks without tiles are never
 // allocated, so sparse maps are cheap. This header is portable: it does not need the renderer.
 //
-//   Tilemap& map = level.add<Tilemap>(entity, Tilemap{.tileSize = {1.0F, 1.0F}});
+//   Tilemap& map = level.add<Tilemap>(entity, Tilemap{.tileSize = {1.0F, 1.0F}, .layers = {}});
 //   TilemapLayer& ground = map.addLayer("ground");
 //   ground.setTile({-3, 0}, 5);          // tile 4 of the tileset (ids count from 1)
 //   const TileId id = ground.tile({-3, 0});

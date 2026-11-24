@@ -63,7 +63,7 @@ TEST_CASE("Tileset: properties default for empty, unknown and unlisted tiles", "
     CHECK(tileset.properties(99) == TileProperties{});
 }
 
-TEST_CASE("Tileset: errors and misuse", "[scene][tilemap]") {
+TEST_CASE("Tileset: errors", "[scene][tilemap]") {
     TextureFixture fixture;
     const assets::Asset<renderer::Texture> texture = fixture.texture({32, 16});
 
@@ -75,10 +75,17 @@ TEST_CASE("Tileset: errors and misuse", "[scene][tilemap]") {
     const Result<Tileset> zeroCells = Tileset::grid(texture, {.cellSize = {0, 16}});
     REQUIRE_FALSE(zeroCells.has_value());
     CHECK(zeroCells.error().code == ErrorCode::InvalidArgument);
+}
 
-    const Tileset tileset = Tileset::grid(texture, {.cellSize = {16, 16}}).value();
+#if TESERRA_ENABLE_ASSERTS
+
+TEST_CASE("Tileset: uv() asserts for tiles it does not have", "[scene][tilemap][validation]") {
+    TextureFixture fixture;
+    const Tileset tileset = Tileset::grid(fixture.texture({32, 16}), {.cellSize = {16, 16}}).value();
     CHECK(test::requireAssert([&] { static_cast<void>(tileset.uv(kNoTile)); }).message() ==
           "Tile 0 is not in a tileset of 2 tiles");
     CHECK(test::requireAssert([&] { static_cast<void>(tileset.uv(3)); }).message() ==
           "Tile 3 is not in a tileset of 2 tiles");
 }
+
+#endif
