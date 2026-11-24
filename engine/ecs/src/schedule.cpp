@@ -56,7 +56,8 @@ SystemConfig Schedule::add(Phase phase, std::string name, SystemFunction functio
                          .function = std::move(function),
                          .access = {},
                          .before = {},
-                         .after = {}});
+                         .after = {},
+                         .cursors = {}});
     m_dirty = true;
     return {*this, m_systems.size() - 1};
 }
@@ -204,7 +205,7 @@ void Schedule::run(Phase phase, World& world) {
     } scope(m_running);
     for (const usize index : m_order[static_cast<usize>(phase)]) {
         System& system = m_systems[index];
-        SystemContext context(world, commands, system.name, system.access);
+        SystemContext context(world, commands, system.name, system.access, &system.cursors);
         system.function(context);
     }
     commands.apply(); // the sync point

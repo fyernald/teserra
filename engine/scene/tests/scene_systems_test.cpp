@@ -7,6 +7,7 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -88,4 +89,27 @@ TEST_CASE("Scene: a new entity has its GlobalTransform after the same PostUpdate
     level.world().get<Transform>(spawned).position.y = -2.0F;
     level.run(ecs::Phase::PostUpdate);
     CHECK(level.world().get<GlobalTransform>(spawned).translation().y == Catch::Approx(-2.0F));
+}
+
+namespace {
+struct Pickup {
+    int value = 0;
+};
+} // namespace
+
+TEST_CASE("Scene: events sent in a frame are readable in it and the next, swapped at PreUpdate",
+          "[scene][events]") {
+    Scene level("level");
+    ecs::Events<Pickup>& events = level.addEvents<Pickup>();
+    CHECK(&level.addEvents<Pickup>() == &events);
+    const auto frame = [&](std::optional<int> send) {
+        level.run(ecs::Phase::PreUpdate);
+        if (send) {
+            events.send(Pickup{.value = *send});
+        }
+        return events.size();
+    };
+    CHECK(frame(1) == 1);            // frame 0
+    CHECK(frame(std::nullopt) == 1); // frame 1: still readable
+    CHECK(frame(std::nullopt) == 0); // frame 2: dropped
 }
