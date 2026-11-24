@@ -32,10 +32,11 @@ TEST_CASE("Scene: Startup runs once, other phases every time", "[scene][schedule
     CHECK(updates == 2);
 }
 
-TEST_CASE("Scene: every scene has the transform system in PostUpdate", "[scene][schedule]") {
+TEST_CASE("Scene: every scene has the transform system first in PostUpdate", "[scene][schedule]") {
     Scene level("level");
-    CHECK(level.systems().order(ecs::Phase::PostUpdate) ==
-          std::vector<std::string_view>{kTransformSystemName});
+    const std::vector<std::string_view> order = level.systems().order(ecs::Phase::PostUpdate);
+    REQUIRE_FALSE(order.empty());
+    CHECK(order.front() == kTransformSystemName); // then collisions, which need the world positions
     CHECK(kTransformSystemName == "teserra.transforms");
 }
 

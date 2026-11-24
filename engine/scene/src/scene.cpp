@@ -2,9 +2,11 @@
 
 #include <teserra/core/assert.hpp>
 #include <teserra/ecs/events.hpp>
+#include <teserra/scene/collision.hpp>
 #include <teserra/scene/scene_manager.hpp>
 #include <teserra/scene/transform.hpp>
 #if TESERRA_HAS_RENDERER
+#include <teserra/scene/collision_debug.hpp>
 #include <teserra/scene/render_extraction.hpp>
 #endif
 
@@ -23,9 +25,27 @@ Scene::Scene(std::string name)
         .writes<GlobalTransform>()
         .writes<Children>()
         .writesResource<TransformHierarchyScratch>();
+    m_world.insertResource<CollisionState>();
+    ecs::addEvents<CollisionStarted>(m_world);
+    ecs::addEvents<CollisionEnded>(m_world);
+    m_schedule.add(ecs::Phase::PostUpdate, std::string(kCollisionSystemName), collisionSystem)
+        .reads<Collider>()
+        .reads<GlobalTransform>()
+        .writesResource<CollisionState>()
+        .sendsEvents<CollisionStarted>()
+        .sendsEvents<CollisionEnded>()
+        .after(kTransformSystemName);
 #if TESERRA_HAS_RENDERER
     m_world.insertResource<RenderExtraction>();
     m_world.insertResource<renderer::DebugDrawList>();
+    m_world.insertResource<CollisionDebug>();
+    m_schedule.add(ecs::Phase::PostUpdate, std::string(kCollisionDebugSystemName), collisionDebugSystem)
+        .reads<Collider>()
+        .reads<GlobalTransform>()
+        .readsResource<CollisionDebug>()
+        .readsResource<CollisionState>()
+        .writesResource<renderer::DebugDrawList>()
+        .after(kCollisionSystemName);
     m_schedule.add(ecs::Phase::Extract, std::string(kRenderExtractionSystemName), renderExtractionSystem)
         .reads<Camera>()
         .reads<GlobalTransform>()

@@ -5,6 +5,7 @@ endif()
 
 teserra_add_test(scene
     SOURCES
+        collision_test.cpp
         hierarchy_test.cpp
         scene_systems_test.cpp
         scene_test.cpp
