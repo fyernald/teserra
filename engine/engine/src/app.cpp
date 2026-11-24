@@ -10,7 +10,9 @@
 #include <teserra/rhi_opengl/opengl_backend.hpp>
 #endif
 
+#include <array>
 #include <charconv>
+#include <string>
 #include <string_view>
 #include <system_error>
 #include <utility>
@@ -54,6 +56,23 @@ std::vector<rhi::BackendFactory> compiledBackends() {
     return backends;
 }
 
+// The schemes mounted unless AppConfig::mounts lists them, each to `<executable dir>/<scheme>`.
+constexpr std::array<std::string_view, 2> kDefaultMounts{"assets", "engine"};
+
+// Whether `directory` is absolute: it starts with a separator ("/srv/game", "\\server\share") or a drive
+// letter ("C:/Games"). Anything else is relative to the executable's directory.
+[[nodiscard]] bool isAbsoluteDirectory(std::string_view directory) noexcept {
+    if (directory.empty()) {
+        return false;
+    }
+    if (directory.front() == '/' || directory.front() == '\\') {
+        return true;
+    }
+    const char drive = directory.front();
+    return directory.size() >= 2 && directory[1] == ':' &&
+           ((drive >= 'A' && drive <= 'Z') || (drive >= 'a' && drive <= 'z'));
+}
+
 // The graphics context a window needs for `backend`.
 platform::GraphicsApi graphicsApiFor(const std::optional<rhi::Backend>& backend) noexcept {
     return backend == rhi::Backend::OpenGL ? platform::GraphicsApi::OpenGL : platform::GraphicsApi::None;
@@ -88,6 +107,7 @@ Result<void> App::initialize(Result<std::unique_ptr<platform::Platform>> platfor
     // The App owns the platform from here on, even if a later step fails.
     TESERRA_TRY_ASSIGN(m_platform, std::move(platform));
     TESERRA_TRY(applyCommandLine(m_config));
+    TESERRA_TRY(mountAssets());
 
     TESERRA_TRY_ASSIGN(m_window, m_platform->createWindow({
                                      .title = m_config.title,
@@ -286,9 +306,38 @@ void App::quit(int exitCode) noexcept {
     m_exitCode = exitCode;
 }
 
+Result<void> App::mountAssets() {
+    platform::FileSystem& fileSystem = m_platform->fileSystem();
+    assets::MountTable& mounts = m_mounts.emplace(fileSystem);
+    TESERRA_TRY_ASSIGN(const std::string executableDirectory, fileSystem.executableDirectory());
+
+    for (const AssetMount& mount : m_config.mounts) {
+        // An empty directory stays empty, so that mount() reports it.
+        const std::string directory = mount.directory.empty() || isAbsoluteDirectory(mount.directory)
+                                          ? mount.directory
+                                          : executableDirectory + '/' + mount.directory;
+        TESERRA_TRY(mounts.mount(mount.scheme, directory));
+        if (!fileSystem.exists(directory)) {
+            return fail(ErrorCode::NotFound, Module::App,
+                        "The directory '{}' mounted as '{}://' does not exist", directory, mount.scheme);
+        }
+    }
+    for (const std::string_view scheme : kDefaultMounts) {
+        if (!mounts.directory(scheme).has_value()) {
+            TESERRA_TRY(mounts.mount(scheme, executableDirectory + '/' + std::string(scheme)));
+        }
+    }
+    return {};
+}
+
 platform::Platform& App::platform() {
     TESERRA_ASSERT(isInitialized(), "The App failed to initialize: {}", *m_initError);
     return *m_platform;
+}
+
+assets::MountTable& App::mounts() {
+    TESERRA_ASSERT(isInitialized(), "The App failed to initialize: {}", *m_initError);
+    return *m_mounts;
 }
 
 platform::Window& App::window() {

@@ -1,12 +1,15 @@
 teserra_add_module(assets LAYER 2
-    DEPENDS core
+    # platform for the FileSystem interface that mount points read through; no OS code is used.
+    DEPENDS core platform
     PUBLIC_HEADERS
         include/teserra/assets/asset_id.hpp
         include/teserra/assets/asset_registry.hpp
         include/teserra/assets/image.hpp
+        include/teserra/assets/mount_table.hpp
     SOURCES
         src/asset_registry.cpp
         src/image.cpp
+        src/mount_table.cpp
 )
 
 # stb_image decodes images (ADR-0010). It is PRIVATE: src/image.cpp is the one translation unit that
