@@ -129,6 +129,7 @@ The data model (`<teserra/scene/tilemap.hpp>`, #88):
 - A `TilemapLayer` stores `TileId`s (`u32`; 0 = `kNoTile`, n = tile n - 1 of the tileset, Tiled's gid without flip bits) in 32×32 `TilemapChunk`s in a hash map keyed by chunk coordinate (`chunkOf()`, floor division, so negative coordinates work). Chunks without tiles are never allocated; a chunk emptied by edits stays allocated so the renderer sees the change.
 - `setTile()` marks a chunk `dirty` only when a value changes; the renderer rebuilds dirty chunks and calls `clearDirty()`.
 - A `Tileset` (with the renderer) is a `SpriteSheet` plus per-tile `TileProperties` (`solid`); tiles without properties get the defaults.
+- Gameplay asks the map through a `TilemapQuery` (`<teserra/scene/tile_queries.hpp>`, #91): the map plus its entity's world matrix. `tileAt(layer, worldPos)` reads the tile under a point; `tilesOverlapping(layer, box, f)` visits the tiles whose inside a world box overlaps, chunk by chunk, with a callback, so queries never allocate. A box that only touches a tile's edge does not reach it, so a body resting on the ground does not overlap it. `isSolidAt()` and `overlapsSolid()` combine a query with a `Tileset`'s `solid` property.
 
 ## Materials, shaders and uniforms
 
