@@ -46,3 +46,4 @@ Small, reversible decisions belong in the issue's design note instead. A larger 
 | [0022](0022-iteration-and-process-model.md) | Two-week iterations with one headline feature | Accepted |
 | [0023](0023-profiling-tracy.md) | Profiling through Tracy behind engine macros | Accepted |
 | [0024](0024-coordinate-conventions.md) | Coordinate system and clip-space conventions | Accepted |
+| [0025](0025-json-yyjson.md) | yyjson for JSON parsing, behind an engine JSON view | Proposed |
