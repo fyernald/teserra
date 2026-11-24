@@ -73,6 +73,19 @@ public:
         return m_world->view<Included...>(excluded);
     }
 
+    /// The entity's T, or nullptr if it has none or is not alive: random access next to views, such as a
+    /// child reading its parent. tryGet<const T>() needs reads<T>() or writes<T>(), tryGet<T>() needs
+    /// writes<T>() (asserted).
+    template <typename T>
+        requires Component<std::remove_const_t<T>> && (!std::is_empty_v<std::remove_const_t<T>>)
+    [[nodiscard]] T* tryGet(Entity entity) {
+        requireComponent<T>();
+        return m_world->tryGet<std::remove_const_t<T>>(entity);
+    }
+
+    /// Whether `entity` is alive. Needs no declaration.
+    [[nodiscard]] bool isAlive(Entity entity) const noexcept { return m_world->isAlive(entity); }
+
     /// The world's resource T. resource<const T>() needs readsResource<T>() or writesResource<T>(),
     /// resource<T>() needs writesResource<T>() (asserted). The resource must exist (asserted).
     template <typename T>

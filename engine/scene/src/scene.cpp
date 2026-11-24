@@ -15,9 +15,13 @@ namespace teserra::scene {
 Scene::Scene(std::string name)
     : m_name(std::move(name)) {
     m_world.insertResource<Time>();
+    m_world.insertResource<TransformHierarchyScratch>();
     m_schedule.add(ecs::Phase::PostUpdate, std::string(kTransformSystemName), transformSystem)
         .reads<Transform>()
-        .writes<GlobalTransform>();
+        .reads<Parent>()
+        .writes<GlobalTransform>()
+        .writes<Children>()
+        .writesResource<TransformHierarchyScratch>();
 #if TESERRA_HAS_RENDERER
     m_world.insertResource<RenderExtraction>();
     m_schedule.add(ecs::Phase::Extract, std::string(kRenderExtractionSystemName), renderExtractionSystem)

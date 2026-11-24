@@ -18,6 +18,7 @@ teserra_add_module(scene LAYER 5
     DEPENDS core rhi ecs
     OPTIONAL_DEPENDS renderer assets
     PUBLIC_HEADERS
+        include/teserra/scene/hierarchy.hpp
         include/teserra/scene/scene.hpp
         include/teserra/scene/scene_manager.hpp
         include/teserra/scene/tile_queries.hpp
@@ -26,6 +27,7 @@ teserra_add_module(scene LAYER 5
         include/teserra/scene/transform.hpp
         ${scene_render_headers}
     SOURCES
+        src/hierarchy.cpp
         src/scene.cpp
         src/tile_queries.cpp
         src/tilemap.cpp

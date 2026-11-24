@@ -8,16 +8,18 @@
 #include <teserra/ecs/system_context.hpp>
 #include <teserra/ecs/type_key.hpp>
 #include <teserra/ecs/world.hpp>
+#include <teserra/scene/hierarchy.hpp>
 
 #include <array>
 #include <cstddef>
 #include <string_view>
+#include <vector>
 
 namespace teserra::scene {
 
-/// Where an entity is, relative to the world (hierarchies come in iteration 13): position, rotation and
-/// scale in 3D. 2D games use the helpers, which work in the XY plane and leave Z alone. World space is
-/// right-handed and +Y up; a positive 2D rotation is counter-clockwise around +Z (ADR-0024).
+/// Where an entity is, relative to its Parent's GlobalTransform or, without one, to the world: position,
+/// rotation and scale in 3D. 2D games use the helpers, which work in the XY plane and leave Z alone. World
+/// space is right-handed and +Y up; a positive 2D rotation is counter-clockwise around +Z (ADR-0024).
 ///
 ///     scene.add<Transform>(hero, Transform{.position = {2.0F, 1.0F, 0.0F}});
 ///     transform.setRotation2D(math::radians(90.0F)); // facing +Y
@@ -62,14 +64,35 @@ struct GlobalTransform {
 /// The name every scene's Schedule gives transformSystem(), for before()/after() constraints.
 inline constexpr std::string_view kTransformSystemName = "teserra.transforms";
 
-/// The transform system, which every Scene runs in PostUpdate: sets each GlobalTransform to its Transform's
-/// matrix, and gives entities with a Transform but no GlobalTransform one with the right matrix through
-/// commands, so it exists after PostUpdate's sync point and is correct for Extract. Without hierarchies
-/// (iteration 13) every entity is a root. Reads Transform, writes GlobalTransform.
+/// Reused memory of the transform system, so a steady-state frame allocates nothing: a resource of every
+/// scene's World.
+struct TransformHierarchyScratch {
+    struct Entry {
+        u32 depth = 0;
+        ecs::Entity entity{};
+    };
+    struct Link {
+        ecs::Entity parent{};
+        ecs::Entity child{};
+    };
+    std::vector<Entry> order;
+    std::vector<Link> missing;
+};
+
+/// The transform system, which every Scene runs in PostUpdate (docs/architecture/ecs.md#transform-
+/// hierarchies):
+/// - A root (no Parent) gets its Transform's matrix; a child its parent's world matrix times its own, in
+///   order of depth, so every parent is done before its children (full 3D matrices).
+/// - Entities with a Transform but no GlobalTransform get one with the right matrix through commands, so it
+///   exists after PostUpdate's sync point and is correct for Extract.
+/// - An entity whose parent (or any ancestor) is no longer alive is destroyed through commands: destroying a
+///   parent destroys its subtree at the next PostUpdate.
+/// - Children components follow the Parent components.
+/// Reads Transform and Parent; writes GlobalTransform, Children and the TransformHierarchyScratch resource.
 void transformSystem(ecs::SystemContext& context);
 
 /// What transformSystem() does, directly on a World outside a Schedule, e.g. in tools and tests: new
-/// GlobalTransforms are added at once.
+/// GlobalTransforms (and destroyed orphans) apply at once.
 void updateGlobalTransforms(ecs::World& world);
 
 } // namespace teserra::scene
