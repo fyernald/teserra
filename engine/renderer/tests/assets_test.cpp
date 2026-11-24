@@ -1,11 +1,12 @@
 // The renderer's asset loaders on the null device: textures from PNG files, shaders from .tshader blobs,
-// and GPU objects destroyed when their assets unload.
+// GPU objects destroyed when their assets unload, and the fallbacks of failed loads.
 
 #include <teserra/renderer/assets.hpp>
 
 #include <teserra/assets/asset_registry.hpp>
 #include <teserra/assets/mount_table.hpp>
 #include <teserra/core/log.hpp>
+#include <teserra/rhi/shader_blob.hpp>
 #include <teserra/rhi_null/null_device.hpp>
 #include <teserra/test/log_capture.hpp>
 #include <teserra/test/memory_file_system.hpp>
@@ -39,7 +40,7 @@ struct Fixture {
                       {test::shaders::kCameraBlockVert.begin(), test::shaders::kCameraBlockVert.end()});
         files.addTextFile("/game/assets/broken.png", "not a PNG");
         files.addTextFile("/game/assets/broken.tshader", "not a shader");
-        registerAssetLoaders(registry, *device);
+        REQUIRE(registerAssetLoaders(registry, *device));
     }
 
     std::unique_ptr<rhi::null::NullDevice> device =
@@ -112,11 +113,71 @@ TEST_CASE("Renderer assets: invalid files fail once and create no GPU object", "
     const assets::Asset<Texture> missing = fixture.registry.load<Texture>("assets://missing.png");
     const assets::Asset<Texture> again = fixture.registry.load<Texture>("assets://missing.png");
 
-    CHECK_FALSE(texture.isReady());
+    CHECK(texture.isFallback());
+    CHECK(missing.isFallback());
+    // A shader path without its stage has no fallback.
     CHECK_FALSE(shader.isReady());
-    CHECK_FALSE(missing.isReady());
     CHECK(fixture.device->liveObjectCount() == objects);
     CHECK(errorCount(logs) == 3);
+}
+
+TEST_CASE("Renderer assets: a missing texture resolves to the magenta checkerboard", "[renderer][assets]") {
+    Fixture fixture;
+
+    const assets::Asset<Texture> missing = fixture.registry.load<Texture>("assets://missing.png");
+    const assets::Asset<Texture> broken = fixture.registry.load<Texture>("assets://broken.png");
+
+    REQUIRE(missing.isFallback());
+    CHECK(&missing.get() == &broken.get()); // created once
+    CHECK(missing.get().size() == UVec2{kFallbackTextureSize});
+    const rhi::TextureDesc* desc = fixture.device->texture(missing.get().handle());
+    REQUIRE(desc != nullptr);
+    CHECK(desc->format == rhi::Format::Rgba8Srgb);
+    const std::span<const std::byte> texels = fixture.device->textureData(missing.get().handle());
+    REQUIRE(texels.size() == usize{kFallbackTextureSize} * kFallbackTextureSize * 4);
+    const auto texel = [&](u32 x, u32 y) {
+        const usize offset = (usize{y} * kFallbackTextureSize + x) * 4;
+        return std::array<u8, 4>{static_cast<u8>(texels[offset]), static_cast<u8>(texels[offset + 1]),
+                                 static_cast<u8>(texels[offset + 2]), static_cast<u8>(texels[offset + 3])};
+    };
+    constexpr std::array<u8, 4> kMagenta{255, 0, 255, 255};
+    constexpr std::array<u8, 4> kBlack{0, 0, 0, 255};
+    CHECK(texel(0, 0) == kMagenta);
+    CHECK(texel(kFallbackCheckSize - 1, kFallbackCheckSize - 1) == kMagenta);
+    CHECK(texel(kFallbackCheckSize, 0) == kBlack);
+    CHECK(texel(0, kFallbackCheckSize) == kBlack);
+    CHECK(texel(kFallbackCheckSize, kFallbackCheckSize) == kMagenta);
+    CHECK(texel(kFallbackTextureSize - 1, 0) == kBlack);
+
+    SECTION("the fallback outlives the failed slots") {
+        const rhi::TextureHandle handle = missing.get().handle();
+        fixture.registry.endFrame();
+        CHECK(fixture.device->texture(handle) != nullptr);
+    }
+}
+
+TEST_CASE("Renderer assets: missing shaders resolve to the error shader of their stage",
+          "[renderer][assets]") {
+    Fixture fixture;
+
+    const assets::Asset<Shader> vertex =
+        fixture.registry.load<Shader>("assets://shaders/sprite.vert.tshader");
+    const assets::Asset<Shader> fragment =
+        fixture.registry.load<Shader>("assets://shaders/sprite.frag.tshader");
+
+    REQUIRE(vertex.isFallback());
+    REQUIRE(fragment.isFallback());
+    CHECK(vertex.get().stage() == rhi::ShaderStage::Vertex);
+    CHECK(fragment.get().stage() == rhi::ShaderStage::Fragment);
+    const rhi::ShaderReflection* vertexReflection = fixture.device->shaderReflection(vertex.get().handle());
+    const rhi::ShaderReflection* fragmentReflection =
+        fixture.device->shaderReflection(fragment.get().handle());
+    REQUIRE(vertexReflection != nullptr);
+    REQUIRE(fragmentReflection != nullptr);
+    // No inputs or bindings, so they fit any vertex layout and pipeline layout.
+    CHECK(vertexReflection->vertexInputs.empty());
+    CHECK(vertexReflection->bindings.empty());
+    CHECK(fragmentReflection->bindings.empty());
 }
 
 TEST_CASE("Renderer assets: a shader file is not a texture", "[renderer][assets]") {
@@ -125,7 +186,7 @@ TEST_CASE("Renderer assets: a shader file is not a texture", "[renderer][assets]
 
     const assets::Asset<Texture> wrong = fixture.registry.load<Texture>("assets://camera.tshader");
 
-    CHECK_FALSE(wrong.isReady());
+    CHECK(wrong.isFallback());
     REQUIRE(errorCount(logs) == 1);
     CHECK(logs.records().front().message.find("'.tshader'") != std::string::npos);
 }

@@ -56,7 +56,24 @@ public:
   - `load<T>(path)` reads the file through the registry's `MountTable` (`AssetRegistryConfig::mounts`) and goes through `load<T>(path, create)`, so deduplication and the single error log with the path work the same for both. A type without a loader for the extension, and a registry without a mount table, fail with `Unsupported`.
   - `assets::ImageLoader` makes `ImageData` from `.png` files. The renderer's `<teserra/renderer/assets.hpp>` has `renderer::Texture` (an `Rgba8Srgb` texture with one mip level, named after its path) with `TextureLoader` (`.png`), and `renderer::Shader` (a shader module and its stage) with `ShaderLoader` (`.tshader`); `renderer::registerAssetLoaders(registry, device)` registers both. Both asset types own their GPU object and destroy it when they unload; the device keeps it until no frame in flight uses it.
   - `engine::App` owns the registry (`app.assets()`), reading through `app.mounts()`, with `ImageLoader` and, when it has a device, the renderer's loaders. It calls `endFrame()` after each frame, and it is destroyed after the scenes and before the device.
-  - Not yet: the `<file>.asset.json` sidecar, which needs the JSON library of #90 (#228), so every asset loads with defaults; fallback assets (#83).
+  - Not yet: the `<file>.asset.json` sidecar, which needs the JSON library of #90 (#228), so every asset loads with defaults.
+
+### Fallback assets
+
+A failed load (missing file, broken data, no loader) resolves to the **fallback** of its type, so the game shows something obviously wrong instead of crashing or drawing nothing (#83):
+
+```cpp
+registry.setFallback(std::move(checkerboard));               // every failed Texture
+registry.setFallback(std::move(errorVertex), ".vert.tshader"); // failed Shaders whose path ends so
+Asset<Texture> hero = registry.load<Texture>("assets://missing.png");
+hero.isReady();     // true: get() returns the fallback
+hero.isFallback();  // true; isLoaded() is false
+```
+
+- Fallbacks are registered per type with `AssetRegistry::setFallback<T>(fallback, pathSuffix)`, created once at startup and owned by the registry until it is destroyed. A path suffix (compared without case) lets one type have several: the longest matching suffix wins, and `""` matches every path. Failed slots that exist already are bound when a fallback is added.
+- `isReady()` means "`get()` may be called": the asset loaded or a fallback is bound. `isLoaded()` and `isFallback()` tell them apart. A failed load of a type without a fallback is not ready, and `get()` asserts.
+- The error is still logged once per failed load, with the path, so a game that keeps its handle logs one error for a missing file.
+- The renderer's `registerAssetLoaders()` creates its fallbacks: an 8×8 `Rgba8Srgb` texture of magenta and black 4×4 checks (magenta at the top left), an error vertex shader for `.vert.tshader` paths (no inputs, its triangles are empty) and an error fragment shader for `.frag.tshader` paths (opaque magenta, no inputs or bindings). `teserra_add_shaders()` names blobs after their sources, so the stage is in the path; other shader paths have no fallback.
 
 ## Image decoding
 

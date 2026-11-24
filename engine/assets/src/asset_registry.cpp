@@ -3,6 +3,7 @@
 #include <teserra/core/log.hpp>
 
 #include <algorithm>
+#include <iterator>
 #include <utility>
 
 namespace teserra::assets {
@@ -18,10 +19,12 @@ namespace {
     return dot == std::string_view::npos ? std::string_view{} : name.substr(dot + 1);
 }
 
+[[nodiscard]] constexpr char toLower(char character) noexcept {
+    return character >= 'A' && character <= 'Z' ? static_cast<char>(character - 'A' + 'a') : character;
+}
+
 [[nodiscard]] bool equalsIgnoringCase(std::string_view lowercase, std::string_view text) noexcept {
-    return std::ranges::equal(lowercase, text, [](char left, char right) {
-        return left == (right >= 'A' && right <= 'Z' ? static_cast<char>(right - 'A' + 'a') : right);
-    });
+    return std::ranges::equal(lowercase, text, [](char left, char right) { return left == toLower(right); });
 }
 
 } // namespace
@@ -92,10 +95,12 @@ AssetHandle AssetRegistry::insert(AssetId id, std::string normalizedPath, detail
     // `create` may have loaded other assets, but loading this one from inside its own `create` is a cycle.
     TESERRA_ASSERT(!m_byId.contains(id),
                    "Asset '{}' was loaded while it was being loaded (a dependency cycle)", normalizedPath);
+    const void* fallback = object.get() == nullptr ? findFallback(type, normalizedPath) : nullptr;
     const AssetHandle handle = m_slots.create(Slot{.id = id,
                                                    .path = std::move(normalizedPath),
                                                    .type = type,
                                                    .object = std::move(object),
+                                                   .fallback = fallback,
                                                    .references = 1});
     m_byId.emplace(id, handle);
     m_unreferenced.reserve(m_slots.size());
@@ -154,6 +159,39 @@ Result<std::vector<std::byte>> AssetRegistry::readFile(std::string_view virtualP
     return m_config.mounts->readFile(virtualPath);
 }
 
+void AssetRegistry::addFallback(detail::AssetTypeId type, std::string_view pathSuffix,
+                                detail::ErasedObject fallback) {
+    std::string suffix;
+    suffix.reserve(pathSuffix.size());
+    std::ranges::transform(pathSuffix, std::back_inserter(suffix), toLower);
+    TESERRA_ASSERT(std::ranges::none_of(m_fallbacks,
+                                        [&](const FallbackEntry& entry) {
+                                            return entry.type == type && entry.suffix == suffix;
+                                        }),
+                   "The asset type has a fallback for paths ending with '{}' already", pathSuffix);
+    m_fallbacks.push_back({.type = type, .suffix = std::move(suffix), .object = std::move(fallback)});
+    // Bind the failed slots that exist already, which may now have a better (longer) match.
+    m_slots.forEach([&](AssetHandle, Slot& slot) {
+        if (slot.type == type && slot.object.get() == nullptr) {
+            slot.fallback = findFallback(type, slot.path);
+        }
+    });
+}
+
+const void* AssetRegistry::findFallback(detail::AssetTypeId type,
+                                        std::string_view normalizedPath) const noexcept {
+    const FallbackEntry* best = nullptr;
+    for (const FallbackEntry& entry : m_fallbacks) {
+        const bool matches = entry.type == type && entry.suffix.size() <= normalizedPath.size() &&
+                             equalsIgnoringCase(entry.suffix, normalizedPath.substr(normalizedPath.size() -
+                                                                                    entry.suffix.size()));
+        if (matches && (best == nullptr || entry.suffix.size() > best->suffix.size())) {
+            best = &entry;
+        }
+    }
+    return best != nullptr ? best->object.get() : nullptr;
+}
+
 Result<std::vector<std::byte>> AssetLoadContext::readFile(std::string_view virtualPath) const {
     return m_registry->readFile(virtualPath);
 }
@@ -174,6 +212,11 @@ void AssetRegistry::release(AssetHandle handle) noexcept { // NOLINT(bugprone-ex
 
 bool AssetRegistry::isReady(AssetHandle handle) const noexcept {
     const Slot* const slot = m_slots.tryGet(handle);
+    return slot != nullptr && (slot->object.get() != nullptr || slot->fallback != nullptr);
+}
+
+bool AssetRegistry::isLoaded(AssetHandle handle) const noexcept {
+    const Slot* const slot = m_slots.tryGet(handle);
     return slot != nullptr && slot->object.get() != nullptr;
 }
 
@@ -185,8 +228,12 @@ AssetId AssetRegistry::idOf(AssetHandle handle) const noexcept {
 const void* AssetRegistry::object(AssetHandle handle, detail::AssetTypeId type) const {
     const Slot& slot = m_slots.get(handle);
     TESERRA_ASSERT(slot.type == type, "Asset '{}' read as another type than it was loaded as", slot.path);
-    TESERRA_ASSERT(slot.object.get() != nullptr, "Asset '{}' is not ready: its load failed", slot.path);
-    return slot.object.get();
+    if (slot.object.get() != nullptr) {
+        return slot.object.get();
+    }
+    TESERRA_ASSERT(slot.fallback != nullptr,
+                   "Asset '{}' is not ready: its load failed and its type has no fallback", slot.path);
+    return slot.fallback;
 }
 
 } // namespace teserra::assets

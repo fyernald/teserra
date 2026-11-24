@@ -132,7 +132,7 @@ Result<void> App::initialize(Result<std::unique_ptr<platform::Platform>> platfor
     m_assets.emplace(assets::AssetRegistryConfig{.mounts = &*m_mounts});
     m_assets->registerLoader<assets::ImageData>(std::make_unique<assets::ImageLoader>());
     if (m_device) {
-        renderer::registerAssetLoaders(*m_assets, *m_device);
+        TESERRA_TRY(renderer::registerAssetLoaders(*m_assets, *m_device));
     }
     return {};
 }

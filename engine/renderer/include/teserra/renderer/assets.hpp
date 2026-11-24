@@ -3,14 +3,15 @@
 // GPU asset types and their loaders (docs/architecture/assets.md#loaders). The renderer owns them because
 // it works on the rhi::Device; the asset system itself knows no GPU.
 //
-//   renderer::registerAssetLoaders(registry, device);
+//   TESERRA_TRY(renderer::registerAssetLoaders(registry, device));
 //   assets::Asset<renderer::Texture> hero = registry.load<renderer::Texture>("assets://sprites/hero.png");
-//   if (hero.isReady()) { sprite.texture = hero.get().handle(); }
+//   sprite.texture = hero.get().handle();   // the magenta checkerboard if hero.png is missing or broken
 
 #include <teserra/assets/asset_registry.hpp>
 #include <teserra/assets/image.hpp>
 #include <teserra/core/math.hpp>
 #include <teserra/core/result.hpp>
+#include <teserra/core/types.hpp>
 #include <teserra/rhi/device.hpp>
 #include <teserra/rhi/handles.hpp>
 #include <teserra/rhi/shader.hpp>
@@ -124,8 +125,17 @@ private:
     rhi::Device* m_device;
 };
 
-/// Registers the renderer's loaders (TextureLoader, ShaderLoader) for `device` with `registry`. `device`
-/// must outlive the registry.
-void registerAssetLoaders(assets::AssetRegistry& registry, rhi::Device& device);
+/// Side of the fallback texture in texels: magenta and black checks of kFallbackCheckSize texels.
+inline constexpr u32 kFallbackTextureSize = 8;
+inline constexpr u32 kFallbackCheckSize = 4;
+
+/// Registers the renderer's loaders (TextureLoader, ShaderLoader) for `device` with `registry`, and creates
+/// the fallbacks of their failed loads once:
+/// - Texture: kFallbackTextureSize² magenta and black checks (Rgba8Srgb), magenta at the top left.
+/// - Shader, for paths ending with ".vert.tshader": a vertex shader without inputs whose triangles are
+///   empty; ".frag.tshader": opaque magenta. teserra_add_shaders() names blobs after their sources, so the
+///   stage is in the path. Other shader paths have no fallback.
+/// `device` must outlive the registry. Fails if a fallback cannot be created on the device.
+[[nodiscard]] Result<void> registerAssetLoaders(assets::AssetRegistry& registry, rhi::Device& device);
 
 } // namespace teserra::renderer

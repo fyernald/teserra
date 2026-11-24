@@ -5,6 +5,7 @@
 #include <teserra/engine/app.hpp>
 #include <teserra/renderer/assets.hpp>
 #include <teserra/rhi_null/null_device.hpp>
+#include <teserra/test/log_capture.hpp>
 #include <teserra/test/memory_file_system.hpp>
 #include <teserra/test/png.hpp>
 
@@ -12,6 +13,7 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
 
+#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <functional>
@@ -190,4 +192,31 @@ TEST_CASE("App: assets nothing refers to are unloaded at the end of the frame", 
 
     CHECK(exitCode == 0);
     CHECK(sizes == std::vector<usize>{0, 1, 0});
+}
+
+TEST_CASE("App: a missing texture shows the fallback and logs exactly one error", "[engine][app][assets]") {
+    AssetsApp fixture{{}, {}, rhi::Backend::Null};
+    REQUIRE(fixture.app.isInitialized());
+    const test::LogCapture logs;
+    assets::Asset<renderer::Texture> hero;
+    int fallbackFrames = 0;
+
+    const int exitCode = fixture.app.run({.update = [&](App& app, f32) {
+        if (app.frameCount() == 0) {
+            hero = app.assets().load<renderer::Texture>("assets://hero.png");
+        }
+        if (hero.isFallback() && hero.get().size() == UVec2{renderer::kFallbackTextureSize}) {
+            ++fallbackFrames;
+        }
+        if (app.frameCount() == 2) {
+            app.quit();
+        }
+    }});
+    hero = {};
+
+    CHECK(exitCode == 0);
+    CHECK(fallbackFrames == 3);
+    const auto errors = std::ranges::count_if(
+        logs.records(), [](const test::CapturedLog& record) { return record.level >= LogLevel::Error; });
+    CHECK(errors == 1);
 }
