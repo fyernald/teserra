@@ -68,6 +68,14 @@ public:
         m_frameTimes = std::move(frameTimes);
     }
 
+    /// Replaces the native file system, e.g. with a test::MemoryFileSystem, and returns it.
+    template <typename T>
+    T& useFileSystem(std::unique_ptr<T> fileSystem) {
+        T& used = *fileSystem;
+        m_fileSystem = std::move(fileSystem);
+        return used;
+    }
+
     /// Delivers `event` from the `poll`-th pollEvents() call, counting from 1 (the first frame).
     void queueEvent(u64 poll, const platform::Event& event) { m_scriptedEvents[poll].push_back(event); }
 
@@ -97,7 +105,7 @@ public:
     }
 
     [[nodiscard]] const platform::Clock& clock() const noexcept override { return m_clock; }
-    [[nodiscard]] platform::FileSystem& fileSystem() noexcept override { return m_fileSystem; }
+    [[nodiscard]] platform::FileSystem& fileSystem() noexcept override { return *m_fileSystem; }
 
     [[nodiscard]] u64 polls() const noexcept { return m_polls; }
     /// How many of the polls were waitEvents() calls.
@@ -107,7 +115,7 @@ public:
 private:
     Journal* m_journal;
     platform::ManualClock m_clock;
-    platform::NativeFileSystem m_fileSystem;
+    std::unique_ptr<platform::FileSystem> m_fileSystem = std::make_unique<platform::NativeFileSystem>();
     std::vector<std::chrono::nanoseconds> m_frameTimes{std::chrono::milliseconds{16}};
     std::map<u64, std::vector<platform::Event>> m_scriptedEvents;
     platform::WindowDesc m_lastWindowDesc;

@@ -3,6 +3,7 @@
 // The application object: owns the engine services and runs the main loop (docs/architecture/
 // public-api.md#application-lifecycle, docs/architecture/overview.md#frame-flow-v1).
 
+#include <teserra/assets/mount_table.hpp>
 #include <teserra/core/math.hpp>
 #include <teserra/core/result.hpp>
 #include <teserra/core/types.hpp>
@@ -24,6 +25,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <vector>
 
 namespace teserra::engine {
 
@@ -31,6 +33,13 @@ namespace teserra::engine {
 struct CommandLine {
     int argc = 0;
     const char* const* argv = nullptr;
+};
+
+/// A mount point of App::mounts(): virtual paths "<scheme>://..." refer to files under `directory`.
+struct AssetMount {
+    std::string scheme;
+    /// A relative directory is relative to the executable's directory, not to the working directory.
+    std::string directory;
 };
 
 /// Settings of an App. The engine flags in `args` override the matching fields:
@@ -61,6 +70,11 @@ struct AppConfig {
     /// runs nothing else: no fixed steps, updates, scene phases or rendering, and scene Time stands still.
     /// The frame after it gets an image back resumes with at most this much time to catch up.
     std::chrono::nanoseconds minimizedEventWait = std::chrono::milliseconds{100};
+    /// Mount points of App::mounts() (docs/architecture/assets.md#mount-points-and-files). Unless listed
+    /// here, "assets" is mounted to `<executable dir>/assets` and "engine" to `<executable dir>/engine`;
+    /// those defaults may be missing. Initialization fails if a listed directory does not exist, or a scheme
+    /// is invalid or listed twice.
+    std::vector<AssetMount> mounts{};
     CommandLine args{};
 };
 
@@ -141,6 +155,8 @@ public:
     // Services; initialization must have succeeded (asserted).
     [[nodiscard]] platform::Platform& platform();
     [[nodiscard]] platform::Window& window();
+    /// The mount points that asset paths ("assets://...") resolve through.
+    [[nodiscard]] assets::MountTable& mounts();
     /// The GPU device; AppConfig::backend must not be std::nullopt (asserted).
     [[nodiscard]] rhi::Device& device();
     /// The swapchain image of the current frame, to render into during AppCallbacks::render; a null handle
@@ -160,6 +176,8 @@ public:
 private:
     void start(Result<std::unique_ptr<platform::Platform>> platform);
     Result<void> initialize(Result<std::unique_ptr<platform::Platform>> platform);
+    // Mounts AppConfig::mounts and the defaults on the platform's file system.
+    Result<void> mountAssets();
     void runFrame(const AppCallbacks& callbacks);
     void render(const AppCallbacks& callbacks, scene::Scene* active);
     // Whether the window has no image to render into: a device with a swapchain of zero size.
@@ -172,6 +190,8 @@ private:
     // Services in dependency order: members are destroyed in reverse, the device before the window
     // before the platform.
     std::unique_ptr<platform::Platform> m_platform;
+    // Reads through the platform's file system, so it is destroyed before the platform.
+    std::optional<assets::MountTable> m_mounts;
     std::unique_ptr<platform::Window> m_window;
     std::unique_ptr<rhi::Device> m_device;
     // After the device, so it is destroyed before it.

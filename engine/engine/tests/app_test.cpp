@@ -181,6 +181,7 @@ TEST_CASE("App: services assert when initialization failed", "[engine][app]") {
 
     REQUIRE_ASSERTS(static_cast<void>(fixture.app.window()));
     REQUIRE_ASSERTS(static_cast<void>(fixture.app.platform()));
+    REQUIRE_ASSERTS(static_cast<void>(fixture.app.mounts()));
     REQUIRE_ASSERTS(static_cast<void>(fixture.app.device()));
 }
 

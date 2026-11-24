@@ -3,6 +3,7 @@ teserra_add_test(assets
         asset_id_test.cpp
         asset_registry_test.cpp
         image_test.cpp
+        mount_table_test.cpp
     DEPENDS assets
 )
 

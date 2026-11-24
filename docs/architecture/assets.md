@@ -34,7 +34,7 @@ const Texture& tex = hero.get();         // asserts if not ready
 - **`Asset<T>`** is the runtime handle: a generational slot handle plus a reference count in the registry's slot (non-atomic in v1 because loading is single-threaded; atomic when async loading arrives).
 - **Unloading** happens at the end of the frame for slots whose count reached zero, after the renderer's deferred destruction rules for GPU objects.
 - Loading the same path twice returns the same slot.
-- **Today** (`<teserra/assets/asset_id.hpp>`, `<teserra/assets/asset_registry.hpp>`, #80): `AssetId::fromPath()` and `normalizeAssetPath()`; `AssetRegistry::load<T>(path, create)`, where `create` returns `Result<T>` and runs only when the path is not loaded yet, and `endFrame()`; `Asset<T>` with `isReady()`, `get()` and `id()`. A failed `create` is logged once with the path and leaves a slot that is not ready, deduplicated like a loaded one, so a missing file logs one error. `create` may load other assets (dependencies); an asset that loads itself asserts. Unloading an asset releases the assets it holds, and the same `endFrame()` unloads those too. Slot types are checked in debug builds through the address of a per-type tag variable, which needs no RTTI and no `ecs::TypeKey`. The registry must outlive its `Asset<T>`s (asserted when it is destroyed). `load<T>(path)` with registered loaders (#81) reads the bytes through the mount points (#82) and passes the loader to the same path.
+- **Today** (`<teserra/assets/asset_id.hpp>`, `<teserra/assets/asset_registry.hpp>`, #80): `AssetId::fromPath()` and `normalizeAssetPath()`; `AssetRegistry::load<T>(path, create)`, where `create` returns `Result<T>` and runs only when the path is not loaded yet, and `endFrame()`; `Asset<T>` with `isReady()`, `get()` and `id()`. A failed `create` is logged once with the path and leaves a slot that is not ready, deduplicated like a loaded one, so a missing file logs one error. `create` may load other assets (dependencies); an asset that loads itself asserts. Unloading an asset releases the assets it holds, and the same `endFrame()` unloads those too. Slot types are checked in debug builds through the address of a per-type tag variable, which needs no RTTI and no `ecs::TypeKey`. The registry must outlive its `Asset<T>`s (asserted when it is destroyed). `load<T>(path)` with registered loaders (#81) will read the bytes through the mount points (`MountTable`, #82) and pass the loader to the same path.
 
 ## Loaders
 
@@ -64,8 +64,18 @@ public:
 
 ## Mount points and files
 
-- Virtual paths: `assets://` maps to the game's asset directory (default `<executable dir>/assets`), `engine://` to the engine's built-in assets. Mounts are configured in `AppConfig`.
+- Virtual paths: `assets://` maps to the game's asset directory (default `<executable dir>/assets`), `engine://` to the engine's built-in assets (default `<executable dir>/engine`). Mounts are configured in `AppConfig::mounts`.
 - All file access goes through `platform::FileSystem`; loaders receive bytes, not paths. This keeps archives and hot reload possible later without touching loaders.
+- A virtual path is `<scheme>://<relative path>`. The scheme is a letter followed by letters, digits, `-` or `_`, compared without case. The relative path uses `/` (`\` counts as `/`), and every component is a name: **empty components, `.` and `..` are rejected, not collapsed**, so a path cannot leave its mount and each file has one spelling, and therefore one `AssetId`. `:` is rejected after the scheme, so drive letters and Windows stream names never reach the file system. Names keep their case, because Linux file systems are case-sensitive.
+
+```cpp
+assets::MountTable& mounts = app.mounts();
+mounts.resolve("assets://sprites/hero.png");   // "<executable dir>/assets/sprites/hero.png"
+mounts.readFile("assets://sprites/hero.png");  // Result<std::vector<std::byte>>
+mounts.resolve("assets://../save.dat");         // InvalidArgument
+```
+
+- **Today** (`<teserra/assets/mount_table.hpp>`, #82): `MountTable` with `mount()`, `unmount()`, `directory()`, `resolve()` and `readFile()`, whose errors name the virtual path; a scheme without a mount is `NotFound`. `engine::App` owns one on the platform's file system (`app.mounts()`): `AppConfig::mounts` (`{scheme, directory}`) adds schemes or replaces the defaults, a relative directory is relative to the executable's directory, and initialization fails if a listed directory does not exist or a scheme is invalid or listed twice. The default directories may be missing, so a game without files still starts. Built-in engine assets (the sprite shaders) are still embedded in the renderer, so `engine://` has nothing to read yet.
 
 ## Importing vs runtime formats
 
