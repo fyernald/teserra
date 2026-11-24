@@ -3,6 +3,7 @@
 // The application object: owns the engine services and runs the main loop (docs/architecture/
 // public-api.md#application-lifecycle, docs/architecture/overview.md#frame-flow-v1).
 
+#include <teserra/assets/asset_registry.hpp>
 #include <teserra/assets/mount_table.hpp>
 #include <teserra/core/math.hpp>
 #include <teserra/core/result.hpp>
@@ -157,6 +158,10 @@ public:
     [[nodiscard]] platform::Window& window();
     /// The mount points that asset paths ("assets://...") resolve through.
     [[nodiscard]] assets::MountTable& mounts();
+    /// The assets, read through mounts(). Loaders: assets::ImageLoader (ImageData), and with a device the
+    /// renderer's (renderer::Texture, renderer::Shader). Assets nothing refers to are unloaded at the end of
+    /// each frame. Every Asset<T> must be gone before the App is destroyed (asserted).
+    [[nodiscard]] assets::AssetRegistry& assets();
     /// The GPU device; AppConfig::backend must not be std::nullopt (asserted).
     [[nodiscard]] rhi::Device& device();
     /// The swapchain image of the current frame, to render into during AppCallbacks::render; a null handle
@@ -194,6 +199,8 @@ private:
     std::optional<assets::MountTable> m_mounts;
     std::unique_ptr<platform::Window> m_window;
     std::unique_ptr<rhi::Device> m_device;
+    // After the device: assets hold GPU objects of it. Before the scenes, whose components hold assets.
+    std::optional<assets::AssetRegistry> m_assets;
     // After the device, so it is destroyed before it.
     std::unique_ptr<renderer::Renderer> m_renderer;
     bool m_rendererFailed = false;

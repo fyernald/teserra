@@ -1,8 +1,10 @@
 #include <teserra/engine/app.hpp>
 
+#include <teserra/assets/image.hpp>
 #include <teserra/core/assert.hpp>
 #include <teserra/core/log.hpp>
 #include <teserra/core/profile.hpp>
+#include <teserra/renderer/assets.hpp>
 #include <teserra/renderer/sprite_pass.hpp>
 #include <teserra/rhi_null/null_device.hpp>
 #include <teserra/scene/render_extraction.hpp>
@@ -12,6 +14,7 @@
 
 #include <array>
 #include <charconv>
+#include <memory>
 #include <string>
 #include <string_view>
 #include <system_error>
@@ -125,6 +128,12 @@ Result<void> App::initialize(Result<std::unique_ptr<platform::Platform>> platfor
         };
         TESERRA_TRY_ASSIGN(m_device, rhi::createDevice(desc, m_window.get(), compiledBackends()));
     }
+
+    m_assets.emplace(assets::AssetRegistryConfig{.mounts = &*m_mounts});
+    m_assets->registerLoader<assets::ImageData>(std::make_unique<assets::ImageLoader>());
+    if (m_device) {
+        renderer::registerAssetLoaders(*m_assets, *m_device);
+    }
     return {};
 }
 
@@ -137,6 +146,8 @@ int App::run(const AppCallbacks& callbacks) {
     m_frameTimer.tick(m_platform->clock().now()); // the first frame's delta starts here
     while (!m_quitting) {
         runFrame(callbacks);
+        // After the frame's work was submitted: the device keeps GPU objects past the frames in flight.
+        m_assets->endFrame();
         ++m_frameCount;
         if (m_config.maxFrames != 0 && m_frameCount >= m_config.maxFrames && !m_quitting) {
             quit();
@@ -333,6 +344,11 @@ Result<void> App::mountAssets() {
 platform::Platform& App::platform() {
     TESERRA_ASSERT(isInitialized(), "The App failed to initialize: {}", *m_initError);
     return *m_platform;
+}
+
+assets::AssetRegistry& App::assets() {
+    TESERRA_ASSERT(isInitialized(), "The App failed to initialize: {}", *m_initError);
+    return *m_assets;
 }
 
 assets::MountTable& App::mounts() {

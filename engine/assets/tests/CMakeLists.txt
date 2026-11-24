@@ -1,6 +1,7 @@
 teserra_add_test(assets
     SOURCES
         asset_id_test.cpp
+        asset_loader_test.cpp
         asset_registry_test.cpp
         image_test.cpp
         mount_table_test.cpp

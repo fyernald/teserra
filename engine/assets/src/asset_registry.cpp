@@ -2,9 +2,29 @@
 
 #include <teserra/core/log.hpp>
 
+#include <algorithm>
 #include <utility>
 
 namespace teserra::assets {
+
+namespace {
+
+// The extension of the last component of `path`, without the dot: "png" for "assets://a.b/hero.png"; empty
+// when the name has no dot.
+[[nodiscard]] std::string_view fileExtension(std::string_view path) noexcept {
+    const usize nameStart = path.find_last_of("/\\");
+    const std::string_view name = nameStart == std::string_view::npos ? path : path.substr(nameStart + 1);
+    const usize dot = name.rfind('.');
+    return dot == std::string_view::npos ? std::string_view{} : name.substr(dot + 1);
+}
+
+[[nodiscard]] bool equalsIgnoringCase(std::string_view lowercase, std::string_view text) noexcept {
+    return std::ranges::equal(lowercase, text, [](char left, char right) {
+        return left == (right >= 'A' && right <= 'Z' ? static_cast<char>(right - 'A' + 'a') : right);
+    });
+}
+
+} // namespace
 
 AssetRegistry::AssetRegistry(AssetRegistryConfig config)
     : m_config(config) {
@@ -85,6 +105,57 @@ AssetHandle AssetRegistry::insert(AssetId id, std::string normalizedPath, detail
 
 void AssetRegistry::logFailure(std::string_view normalizedPath, const Error& error) const {
     TESERRA_LOG_ERROR(LogCategory::Assets, "Cannot load '{}': {}", normalizedPath, error);
+}
+
+void AssetRegistry::addLoader(detail::AssetTypeId type, std::span<const std::string_view> extensions,
+                              std::unique_ptr<detail::AssetLoaderBase> loader) {
+    for (const std::string_view extension : extensions) {
+        TESERRA_ASSERT(!extension.empty() && std::ranges::none_of(extension,
+                                                                  [](char character) {
+                                                                      return character == '.' ||
+                                                                             (character >= 'A' &&
+                                                                              character <= 'Z');
+                                                                  }),
+                       "Loader extension '{}' must be lowercase, without the dot", extension);
+        TESERRA_ASSERT(std::ranges::none_of(m_loaders,
+                                            [&](const LoaderEntry& entry) {
+                                                return entry.type == type &&
+                                                       std::ranges::find(entry.extensions, extension) !=
+                                                           entry.extensions.end();
+                                            }),
+                       "Two loaders of one asset type read '.{}' files", extension);
+    }
+    m_loaders.push_back({.type = type, .extensions = extensions, .loader = std::move(loader)});
+}
+
+Result<detail::AssetLoaderBase*> AssetRegistry::findLoader(detail::AssetTypeId type,
+                                                           std::string_view virtualPath) const {
+    const std::string_view extension = fileExtension(virtualPath);
+    for (const LoaderEntry& entry : m_loaders) {
+        if (entry.type == type && std::ranges::any_of(entry.extensions, [&](std::string_view candidate) {
+                return equalsIgnoringCase(candidate, extension);
+            })) {
+            return entry.loader.get();
+        }
+    }
+    if (extension.empty()) {
+        return fail(ErrorCode::Unsupported, Module::Assets,
+                    "The file has no extension, so no loader can be chosen for it");
+    }
+    return fail(ErrorCode::Unsupported, Module::Assets, "No loader of this asset type reads '.{}' files",
+                extension);
+}
+
+Result<std::vector<std::byte>> AssetRegistry::readFile(std::string_view virtualPath) const {
+    if (m_config.mounts == nullptr) {
+        return fail(ErrorCode::Unsupported, Module::Assets,
+                    "The asset registry has no mount table to read '{}' with", virtualPath);
+    }
+    return m_config.mounts->readFile(virtualPath);
+}
+
+Result<std::vector<std::byte>> AssetLoadContext::readFile(std::string_view virtualPath) const {
+    return m_registry->readFile(virtualPath);
 }
 
 void AssetRegistry::retain(AssetHandle handle) noexcept {
