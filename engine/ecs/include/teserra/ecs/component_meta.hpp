@@ -15,6 +15,13 @@
 
 namespace teserra::ecs {
 
+// GCC's -Wshadow reports the scoped enumerator FieldType::Entity as shadowing ecs::Entity when
+// <teserra/ecs/entity.hpp> is included first. Scoped enumerators cannot shadow anything, so the warning is
+// turned off around the enum and include order does not matter.
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wshadow"
+#endif
 /// The type of a described field.
 enum class FieldType : u8 {
     Bool,
@@ -28,6 +35,9 @@ enum class FieldType : u8 {
     Color,
     Entity,
 };
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic pop
+#endif
 
 /// One field of a component: its name, its byte offset in the component and its type.
 struct FieldDescriptor {
