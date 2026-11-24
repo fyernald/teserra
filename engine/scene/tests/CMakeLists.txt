@@ -7,6 +7,7 @@ teserra_add_test(scene
     SOURCES
         scene_systems_test.cpp
         scene_test.cpp
+        tile_queries_test.cpp
         tilemap_test.cpp
         transform_test.cpp
         ${scene_render_tests}

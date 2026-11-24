@@ -89,3 +89,25 @@ TEST_CASE("Tileset: uv() asserts for tiles it does not have", "[scene][tilemap][
 }
 
 #endif
+
+TEST_CASE("Tileset: solid tile queries", "[scene][tilemap]") {
+    TextureFixture fixture;
+    const Tileset tileset =
+        Tileset::grid(fixture.texture({32, 16}), {.cellSize = {16, 16}}, {{}, {.solid = true}}).value();
+    Tilemap map{.tileSize = {1.0F, 1.0F}, .layers = {}};
+    TilemapLayer& layer = map.addLayer("ground");
+    layer.setTile({-1, 0}, 1); // not solid
+    layer.setTile({0, 0}, 2);  // solid
+    const TilemapQuery query(map, Mat4{1.0F});
+
+    CHECK(isSolidAt(query, layer, tileset, {0.5F, 0.5F, 0.0F}));
+    CHECK_FALSE(isSolidAt(query, layer, tileset, {-0.5F, 0.5F, 0.0F}));
+    CHECK_FALSE(isSolidAt(query, layer, tileset, {5.0F, 5.0F, 0.0F}));
+
+    const auto box = [](f32 minX, f32 maxX) {
+        return Aabb{.min = {minX, 0.2F, 0.0F}, .max = {maxX, 0.8F, 0.0F}};
+    };
+    CHECK(overlapsSolid(query, layer, tileset, box(-0.5F, 0.1F)));
+    CHECK_FALSE(overlapsSolid(query, layer, tileset, box(-0.9F, 0.0F))); // touches the solid tile's edge
+    CHECK_FALSE(overlapsSolid(query, layer, tileset, box(1.0F, 3.0F)));
+}

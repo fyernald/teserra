@@ -13,6 +13,7 @@
 #include <teserra/renderer/assets.hpp>
 #include <teserra/renderer/frame_packet.hpp>
 #include <teserra/renderer/sprite_sheet.hpp>
+#include <teserra/scene/tile_queries.hpp>
 #include <teserra/scene/tilemap.hpp>
 
 #include <vector>
@@ -61,5 +62,17 @@ private:
     renderer::SpriteSheet m_sheet;
     std::vector<TileProperties> m_properties;
 };
+
+/// Whether the tile of `layer` at `worldPos` is solid in `tileset`.
+[[nodiscard]] inline bool isSolidAt(const TilemapQuery& query, const TilemapLayer& layer,
+                                    const Tileset& tileset, Vec3 worldPos) noexcept {
+    return tileset.isSolid(query.tileAt(layer, worldPos));
+}
+
+/// Whether `worldBox` overlaps a solid tile of `layer` (see TilemapQuery::tileRange() for what overlaps).
+[[nodiscard]] inline bool overlapsSolid(const TilemapQuery& query, const TilemapLayer& layer,
+                                        const Tileset& tileset, const Aabb& worldBox) {
+    return query.anyOverlapping(layer, worldBox, [&](TileId tile) { return tileset.isSolid(tile); });
+}
 
 } // namespace teserra::scene
