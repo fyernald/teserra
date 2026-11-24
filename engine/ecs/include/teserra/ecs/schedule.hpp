@@ -5,6 +5,7 @@
 #include <teserra/core/result.hpp>
 #include <teserra/core/types.hpp>
 #include <teserra/ecs/commands.hpp>
+#include <teserra/ecs/events.hpp>
 #include <teserra/ecs/system_context.hpp>
 #include <teserra/ecs/world.hpp>
 
@@ -63,6 +64,17 @@ public:
     SystemConfig& writesResource() {
         SystemAccess::insert(access().resourceWrites, typeKey<T>());
         return *this;
+    }
+
+    /// The system reads events T (SystemContext::readEvents<T>()): readsResource<Events<T>>().
+    template <typename T>
+    SystemConfig& readsEvents() {
+        return readsResource<Events<T>>();
+    }
+    /// The system sends events T (SystemContext::sendEvent()): writesResource<Events<T>>().
+    template <typename T>
+    SystemConfig& sendsEvents() {
+        return writesResource<Events<T>>();
     }
 
     /// Runs before the system `name` of the same phase.
@@ -130,6 +142,7 @@ private:
         SystemAccess access{};
         std::vector<std::string> before{};
         std::vector<std::string> after{};
+        EventCursors cursors{};
     };
 
     void ensureBuilt();

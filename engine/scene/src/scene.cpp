@@ -1,6 +1,7 @@
 #include <teserra/scene/scene.hpp>
 
 #include <teserra/core/assert.hpp>
+#include <teserra/ecs/events.hpp>
 #include <teserra/scene/scene_manager.hpp>
 #include <teserra/scene/transform.hpp>
 #if TESERRA_HAS_RENDERER
@@ -36,6 +37,9 @@ Scene::Scene(std::string name)
 }
 
 void Scene::run(ecs::Phase phase) {
+    if (phase == ecs::Phase::PreUpdate) {
+        ecs::updateEvents(m_world); // the frame starts: last frame's events become the previous ones
+    }
     if (phase == ecs::Phase::Startup) {
         if (m_started) {
             return;

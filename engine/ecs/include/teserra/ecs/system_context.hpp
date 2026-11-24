@@ -6,6 +6,7 @@
 #include <teserra/core/assert.hpp>
 #include <teserra/core/types.hpp>
 #include <teserra/ecs/commands.hpp>
+#include <teserra/ecs/events.hpp>
 #include <teserra/ecs/type_key.hpp>
 #include <teserra/ecs/view.hpp>
 #include <teserra/ecs/world.hpp>
@@ -13,6 +14,7 @@
 #include <algorithm>
 #include <string_view>
 #include <type_traits>
+#include <utility>
 #include <vector>
 
 namespace teserra::ecs {
@@ -57,11 +59,33 @@ private:
 ///         const f32 dt = ctx.resource<const scene::Time>().deltaSeconds();
 ///         for (auto [entity, transform, player] : ctx.view<scene::Transform, const Player>()) { ... }
 ///     }
+/// The event cursors of one system: where it is in each event type it reads.
+class EventCursors {
+public:
+    /// The cursor of event type `type`, created at 0 on first use.
+    [[nodiscard]] EventCursor& of(TypeKey type) {
+        const auto found =
+            std::ranges::find_if(m_cursors, [&](const auto& entry) { return entry.first == type; });
+        if (found != m_cursors.end()) {
+            return found->second;
+        }
+        return m_cursors.emplace_back(type, EventCursor{}).second;
+    }
+
+private:
+    std::vector<std::pair<TypeKey, EventCursor>> m_cursors;
+};
+
 class SystemContext {
 public:
-    SystemContext(World& world, Commands& commands, std::string_view systemName,
-                  const SystemAccess& access) noexcept
-        : m_world(&world), m_commands(&commands), m_systemName(systemName), m_access(&access) {}
+    /// `cursors` holds the system's event cursors; without one, readEvents() asserts.
+    SystemContext(World& world, Commands& commands, std::string_view systemName, const SystemAccess& access,
+                  EventCursors* cursors = nullptr) noexcept
+        : m_world(&world),
+          m_commands(&commands),
+          m_systemName(systemName),
+          m_access(&access),
+          m_cursors(cursors) {}
 
     /// world.view<Included...>(exclude<Excluded...>). A const included type needs reads<T>() or writes<T>(),
     /// a mutable one writes<T>(), an excluded one reads<T>() (asserted).
@@ -103,6 +127,23 @@ public:
         return m_world->tryResource<std::remove_const_t<T>>();
     }
 
+    /// Sends an event T (Events<T> must exist: addEvents<T>()). Needs sendsEvents<T>() (asserted).
+    template <typename T>
+    void sendEvent(T event) {
+        resource<Events<T>>().send(std::move(event));
+    }
+
+    /// Calls f(const T&) for each event T this system has not read yet, oldest first: events sent since its
+    /// last run, in this frame or the previous one. Every system has its own cursor, so two readers each see
+    /// every event once. Needs readsEvents<T>() (asserted). Returns how many it read.
+    template <typename T, typename F>
+    usize readEvents(F&& f) {
+        const Events<T>& events = resource<const Events<T>>();
+        TESERRA_ASSERT(m_cursors != nullptr, "System '{}' has no event cursors to read {} with", m_systemName,
+                       componentName<T>());
+        return events.read(m_cursors->of(typeKey<Events<T>>()), std::forward<F>(f));
+    }
+
     /// Structural changes, applied at the end of the phase (the sync point).
     [[nodiscard]] Commands& commands() noexcept { return *m_commands; }
 
@@ -141,6 +182,7 @@ private:
     Commands* m_commands;
     std::string_view m_systemName;
     const SystemAccess* m_access;
+    EventCursors* m_cursors;
 };
 
 } // namespace teserra::ecs
