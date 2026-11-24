@@ -5,11 +5,15 @@ teserra_add_module(assets LAYER 2
         include/teserra/assets/asset_id.hpp
         include/teserra/assets/asset_registry.hpp
         include/teserra/assets/image.hpp
+        include/teserra/assets/json.hpp
         include/teserra/assets/mount_table.hpp
+        include/teserra/assets/tiled.hpp
     SOURCES
         src/asset_registry.cpp
         src/image.cpp
+        src/json.cpp
         src/mount_table.cpp
+        src/tiled.cpp
 )
 
 # stb_image decodes images (ADR-0010). It is PRIVATE: src/image.cpp is the one translation unit that
@@ -22,6 +26,11 @@ mark_as_advanced(TESERRA_STB_INCLUDE_DIR)
 add_library(teserra_stb_image INTERFACE IMPORTED)
 set_target_properties(teserra_stb_image PROPERTIES INTERFACE_INCLUDE_DIRECTORIES "${TESERRA_STB_INCLUDE_DIR}")
 teserra_link_third_party(assets PRIVATE teserra_stb_image)
+
+# yyjson parses JSON (ADR-0025). It is PRIVATE: src/json.cpp is the one translation unit that includes it, and
+# the rest of the engine reads JSON through <teserra/assets/json.hpp>.
+find_package(yyjson CONFIG REQUIRED)
+teserra_link_third_party(assets PRIVATE yyjson::yyjson)
 
 if(TESERRA_BUILD_TESTS)
     add_subdirectory(tests)

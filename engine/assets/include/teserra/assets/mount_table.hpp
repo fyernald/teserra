@@ -78,4 +78,10 @@ private:
     std::vector<Mount> m_mounts;
 };
 
+/// `relative` resolved against the directory of the virtual path `base`, for files that name other files
+/// (a map its tilesets, a sprite sheet its texture): ("assets://maps/a.tmj", "../tiles/t.png") gives
+/// "assets://tiles/t.png". "." and ".." are collapsed and `\` counts as `/`; a `relative` with a scheme is
+/// returned as it is. Errors: InvalidData when ".." leaves the root of the mount point.
+[[nodiscard]] Result<std::string> resolveRelativePath(std::string_view base, std::string_view relative);
+
 } // namespace teserra::assets

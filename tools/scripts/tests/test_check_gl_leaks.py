@@ -128,6 +128,17 @@ class CheckGlLeaksTest(TreeTestCase):
             """)
         self.assertEqual(self.rules(), ["glm-leak"] * 3)
 
+    def test_yyjson_only_in_the_json_view(self) -> None:
+        self.write("engine/assets/src/json.cpp", """
+            #include <yyjson.h>
+            yyjson_doc* doc = yyjson_read(text, size, YYJSON_READ_NOFLAG);
+            """)
+        self.write("engine/renderer/src/sheet_loader.cpp", """
+            #include <yyjson.h>
+            auto* root = yyjson_doc_get_root(doc);
+            """)
+        self.assertEqual(self.rules(), ["yyjson-leak"] * 2)
+
     def test_flat_bindings_only_in_the_shader_blob_header_the_gl_backend_and_shaderc(self) -> None:
         for allowed in ("engine/rhi/include/teserra/rhi/shader_blob.hpp",
                         "engine/rhi/backends/opengl/src/gl_device.cpp",

@@ -130,6 +130,9 @@ function(teserra_add_header_check module)
 #if defined(STBI_VERSION)
 #error "<@include_path@> exposes stb_image, which is private to teserra_assets (ADR-0010)"
 #endif
+#if defined(YYJSON_VERSION_HEX)
+#error "<@include_path@> exposes yyjson, which is private to teserra_assets (ADR-0025)"
+#endif
 ]])
         list(APPEND sources "${source}")
     endforeach()

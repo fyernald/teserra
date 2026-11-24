@@ -6,9 +6,10 @@ if(TARGET teserra_renderer)
     set(scene_render_headers
         include/teserra/scene/render_components.hpp
         include/teserra/scene/render_extraction.hpp
+        include/teserra/scene/tiled.hpp
         include/teserra/scene/tileset.hpp
     )
-    set(scene_render_sources src/render_components.cpp src/render_extraction.cpp src/tileset.cpp)
+    set(scene_render_sources src/render_components.cpp src/render_extraction.cpp src/tiled.cpp src/tileset.cpp)
 endif()
 
 teserra_add_module(scene LAYER 5
