@@ -6,8 +6,9 @@ if(TARGET teserra_renderer)
     set(scene_render_headers
         include/teserra/scene/render_components.hpp
         include/teserra/scene/render_extraction.hpp
+        include/teserra/scene/tileset.hpp
     )
-    set(scene_render_sources src/render_components.cpp src/render_extraction.cpp)
+    set(scene_render_sources src/render_components.cpp src/render_extraction.cpp src/tileset.cpp)
 endif()
 
 teserra_add_module(scene LAYER 5
@@ -18,11 +19,13 @@ teserra_add_module(scene LAYER 5
     PUBLIC_HEADERS
         include/teserra/scene/scene.hpp
         include/teserra/scene/scene_manager.hpp
+        include/teserra/scene/tilemap.hpp
         include/teserra/scene/time.hpp
         include/teserra/scene/transform.hpp
         ${scene_render_headers}
     SOURCES
         src/scene.cpp
+        src/tilemap.cpp
         src/transform.cpp
         ${scene_render_sources}
 )
