@@ -4,6 +4,8 @@
 #include <teserra/scene/render_extraction.hpp>
 
 #include <teserra/renderer/debug_draw.hpp>
+#include <teserra/scene/collision.hpp>
+#include <teserra/scene/collision_debug.hpp>
 #include <teserra/scene/scene.hpp>
 #include <teserra/scene/transform.hpp>
 #include <teserra/test/allocation_counter.hpp>
@@ -236,4 +238,20 @@ TEST_CASE("Render extraction: debug lines drawn by systems go into the packet fo
     level.run(ecs::Phase::Update);
     CHECK(extract(level, UVec2{0U}).packet.debugLines.empty());
     CHECK(level.world().resource<renderer::DebugDrawList>().vertices().empty());
+}
+
+TEST_CASE("Render extraction: collider outlines are drawn while collision debug is on",
+          "[scene][render][debug]") {
+    Scene level("level");
+    addCamera(level);
+    const ecs::Entity box = level.spawn();
+    level.add<Transform>(box);
+    level.add<Collider>(box);
+    level.run(ecs::Phase::PostUpdate);
+    CHECK(level.world().resource<renderer::DebugDrawList>().vertices().empty()); // off by default
+
+    level.world().resource<CollisionDebug>().enabled = true;
+    level.run(ecs::Phase::PostUpdate);
+    CHECK(level.world().resource<renderer::DebugDrawList>().lineCount() ==
+          (renderer::kDebugDrawCompiled ? 12U : 0U));
 }

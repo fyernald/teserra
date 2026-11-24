@@ -4,12 +4,13 @@ set(scene_render_headers "")
 set(scene_render_sources "")
 if(TARGET teserra_renderer)
     set(scene_render_headers
+        include/teserra/scene/collision_debug.hpp
         include/teserra/scene/render_components.hpp
         include/teserra/scene/render_extraction.hpp
         include/teserra/scene/tiled.hpp
         include/teserra/scene/tileset.hpp
     )
-    set(scene_render_sources src/render_components.cpp src/render_extraction.cpp src/tiled.cpp src/tileset.cpp)
+    set(scene_render_sources src/collision_debug.cpp src/render_components.cpp src/render_extraction.cpp src/tiled.cpp src/tileset.cpp)
 endif()
 
 teserra_add_module(scene LAYER 5
@@ -18,6 +19,7 @@ teserra_add_module(scene LAYER 5
     DEPENDS core rhi ecs
     OPTIONAL_DEPENDS renderer assets
     PUBLIC_HEADERS
+        include/teserra/scene/collision.hpp
         include/teserra/scene/hierarchy.hpp
         include/teserra/scene/scene.hpp
         include/teserra/scene/scene_manager.hpp
@@ -27,6 +29,7 @@ teserra_add_module(scene LAYER 5
         include/teserra/scene/transform.hpp
         ${scene_render_headers}
     SOURCES
+        src/collision.cpp
         src/hierarchy.cpp
         src/scene.cpp
         src/tile_queries.cpp
