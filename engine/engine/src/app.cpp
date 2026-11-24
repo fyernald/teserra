@@ -1,6 +1,7 @@
 #include <teserra/engine/app.hpp>
 
 #include <teserra/assets/image.hpp>
+#include <teserra/assets/tiled.hpp>
 #include <teserra/core/assert.hpp>
 #include <teserra/core/log.hpp>
 #include <teserra/core/profile.hpp>
@@ -131,6 +132,7 @@ Result<void> App::initialize(Result<std::unique_ptr<platform::Platform>> platfor
 
     m_assets.emplace(assets::AssetRegistryConfig{.mounts = &*m_mounts});
     m_assets->registerLoader<assets::ImageData>(std::make_unique<assets::ImageLoader>());
+    m_assets->registerLoader<assets::TiledMap>(std::make_unique<assets::TiledMapLoader>());
     if (m_device) {
         TESERRA_TRY(renderer::registerAssetLoaders(*m_assets, *m_device));
     }

@@ -112,6 +112,14 @@ RULES = (
         None,
     ),
     Rule(
+        "yyjson-leak",
+        "yyjson",
+        "engine/assets/src/json.cpp (use <teserra/assets/json.hpp>, ADR-0025)",
+        lambda path: path.as_posix() == "engine/assets/src/json.cpp",
+        re.compile(r"\b(?:yyjson_\w+|YYJSON_\w+)"),
+        re.compile(r"^yyjson\.h$"),
+    ),
+    Rule(
         "glm-leak",
         "glm",
         "engine/core/ (use the aliases of <teserra/core/math.hpp>, ADR-0008)",

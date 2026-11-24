@@ -20,7 +20,8 @@
         "glfw3",
         "glslang",
         "spirv-cross",
-        "stb"
+        "stb",
+        "yyjson"
       ]
     },
     "tests": {
