@@ -13,7 +13,8 @@
 //   assets.endFrame();
 //
 // Loading a path that is loaded already returns its slot without calling `create`. A failed `create` is
-// logged once and leaves a failed slot (isReady() is false), deduplicated like a loaded one. Copying an
+// logged once and leaves a failed slot, deduplicated like a loaded one: it resolves to the fallback of its
+// type (setFallback()), or is not ready without one. Copying an
 // Asset<T> adds a reference and destroying one removes it; a slot without references is unloaded by the
 // next endFrame(), so an asset dropped and loaded again within one frame is not loaded twice. Not
 // thread-safe: loading is single-threaded in v1.
@@ -180,10 +181,17 @@ public:
 
     [[nodiscard]] bool isNull() const noexcept { return m_registry == nullptr; }
 
-    /// Whether the asset loaded: false for a null asset and for a failed load.
+    /// Whether get() may be called: the asset loaded, or its load failed and a fallback is bound. False for a
+    /// null asset and for a failed load of a type without a fallback.
     [[nodiscard]] bool isReady() const noexcept;
 
-    /// The asset. Asserts isReady().
+    /// Whether the asset itself loaded (not a fallback).
+    [[nodiscard]] bool isLoaded() const noexcept;
+
+    /// Whether the load failed and get() returns the fallback of the type.
+    [[nodiscard]] bool isFallback() const noexcept { return isReady() && !isLoaded(); }
+
+    /// The asset, or the fallback its failed load resolved to. Asserts isReady().
     [[nodiscard]] const T& get() const;
 
     /// The ID of the asset's path; null for a null asset.
@@ -237,6 +245,14 @@ public:
     template <typename T>
     void registerLoader(std::unique_ptr<AssetLoader<T>> loader);
 
+    /// Makes the failed loads of T resolve to `fallback` (a magenta texture, an error shader), so that a
+    /// missing file shows instead of crashing. Only paths that end with `pathSuffix` (compared without case)
+    /// use it; "" matches every path, and the longest matching suffix wins. Failed slots that exist already
+    /// are bound too. The registry owns the fallback until it is destroyed. Asserts if T has a fallback for
+    /// `pathSuffix` already.
+    template <typename T>
+    void setFallback(T fallback, std::string_view pathSuffix = {});
+
     /// The asset at `virtualPath`, which the loader of T for the path's extension (compared without case)
     /// makes from the file's bytes, read through the mount points. Otherwise like load(path, create): loaded
     /// once and deduplicated, and a failure is logged once with the path and gives an asset that is not
@@ -273,11 +289,18 @@ private:
         std::unique_ptr<detail::AssetLoaderBase> loader;
     };
 
+    struct FallbackEntry {
+        detail::AssetTypeId type = nullptr;
+        std::string suffix; // lowercase
+        detail::ErasedObject object;
+    };
+
     struct Slot {
         AssetId id;
         std::string path;
         detail::AssetTypeId type = nullptr;
-        detail::ErasedObject object; // empty when the load failed
+        detail::ErasedObject object;    // empty when the load failed
+        const void* fallback = nullptr; // what a failed slot resolves to, owned by m_fallbacks; or null
         u32 references = 0;
         bool queued = false; // listed for endFrame(), at most once
     };
@@ -299,15 +322,23 @@ private:
     // Through the mount table, or Unsupported without one.
     [[nodiscard]] Result<std::vector<std::byte>> readFile(std::string_view virtualPath) const;
 
+    void addFallback(detail::AssetTypeId type, std::string_view pathSuffix, detail::ErasedObject fallback);
+    // The fallback object for a failed load of `type` at `normalizedPath`, or null.
+    [[nodiscard]] const void* findFallback(detail::AssetTypeId type,
+                                           std::string_view normalizedPath) const noexcept;
+
     void retain(AssetHandle handle) noexcept;
     void release(AssetHandle handle) noexcept;
     [[nodiscard]] bool isReady(AssetHandle handle) const noexcept;
+    [[nodiscard]] bool isLoaded(AssetHandle handle) const noexcept;
     [[nodiscard]] AssetId idOf(AssetHandle handle) const noexcept;
     [[nodiscard]] const void* object(AssetHandle handle, detail::AssetTypeId type) const;
 
     AssetRegistryConfig m_config;
     // Before the slots, so that the loaders outlive the assets they made.
     std::vector<LoaderEntry> m_loaders;
+    // Before the slots, which point to them. Each object is on the heap, so growing the vector moves none.
+    std::vector<FallbackEntry> m_fallbacks;
     HandlePool<Slot, AssetTag> m_slots;
     std::unordered_map<AssetId, AssetHandle> m_byId;
     // Slots whose count reached zero since the last endFrame(), and endFrame()'s working list. A slot is in
@@ -322,6 +353,11 @@ void AssetRegistry::registerLoader(std::unique_ptr<AssetLoader<T>> loader) {
     TESERRA_ASSERT(loader != nullptr, "registerLoader() needs a loader");
     const std::span<const std::string_view> extensions = loader->extensions();
     addLoader(detail::assetTypeId<T>(), extensions, std::move(loader));
+}
+
+template <typename T>
+void AssetRegistry::setFallback(T fallback, std::string_view pathSuffix) {
+    addFallback(detail::assetTypeId<T>(), pathSuffix, detail::ErasedObject::make(std::move(fallback)));
 }
 
 template <typename T>
@@ -397,6 +433,11 @@ Asset<T>::~Asset() {
 template <typename T>
 bool Asset<T>::isReady() const noexcept {
     return m_registry != nullptr && m_registry->isReady(m_handle);
+}
+
+template <typename T>
+bool Asset<T>::isLoaded() const noexcept {
+    return m_registry != nullptr && m_registry->isLoaded(m_handle);
 }
 
 template <typename T>

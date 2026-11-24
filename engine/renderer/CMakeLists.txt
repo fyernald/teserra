@@ -20,14 +20,16 @@ teserra_add_module(renderer LAYER 3
         src/upload_ring.cpp
 )
 
-# The built-in materials' shaders, compiled at build time and embedded: <teserra_renderer/shaders.hpp>
-# declares teserra::renderer::shaders::kSpriteUnlitVert and kSpriteUnlitFrag. shaders/ also holds the includes
-# every engine shader uses (teserra/camera.glsl).
+# The built-in materials' shaders and the fallbacks of shader assets, compiled at build time and embedded:
+# <teserra_renderer/shaders.hpp> declares teserra::renderer::shaders::kSpriteUnlitVert, kSpriteUnlitFrag,
+# kErrorVert and kErrorFrag. shaders/ also holds the includes every engine shader uses (teserra/camera.glsl).
 teserra_add_shaders(teserra_renderer EMBED
     NAMESPACE teserra::renderer::shaders
     HEADER teserra_renderer/shaders.hpp
     INCLUDE_DIRECTORIES shaders
     SOURCES
+        shaders/error.vert
+        shaders/error.frag
         shaders/sprite_unlit.vert
         shaders/sprite_unlit.frag
 )
