@@ -181,3 +181,12 @@ TEST_CASE("MountTable: readFile() reads through the mount", "[assets][mount_tabl
         CHECK(files.reads().size() == 1);
     }
 }
+
+TEST_CASE("Mount table: relative paths resolve against the file that names them", "[assets][mount]") {
+    CHECK(resolveRelativePath("assets://maps/level.tmj", "../tiles/t.png") == "assets://tiles/t.png");
+    CHECK(resolveRelativePath("assets://maps/level.tmj", "t.png") == "assets://maps/t.png");
+    CHECK(resolveRelativePath("assets://maps/level.tmj", "./a/./b\\c.png") == "assets://maps/a/b/c.png");
+    CHECK(resolveRelativePath("assets://level.tmj", "t.png") == "assets://t.png");
+    CHECK(resolveRelativePath("assets://maps/level.tmj", "engine://fallback.png") == "engine://fallback.png");
+    CHECK_FALSE(resolveRelativePath("assets://level.tmj", "../t.png").has_value());
+}

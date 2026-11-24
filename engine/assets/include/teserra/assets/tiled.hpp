@@ -13,6 +13,7 @@
 // rectangles.
 
 #include <teserra/assets/asset_registry.hpp>
+#include <teserra/assets/mount_table.hpp>
 #include <teserra/core/math.hpp>
 #include <teserra/core/result.hpp>
 #include <teserra/core/types.hpp>
@@ -64,7 +65,8 @@ struct TiledTileset {
     /// The global tile id (gid) of the tileset's first tile; layer data uses gids.
     u32 firstGid = 1;
     std::string name;
-    /// The image's virtual path, resolved against the file that names it: "assets://tiles/terrain.png".
+    /// The image's virtual path, resolved against the file that names it (resolveRelativePath()):
+    /// "assets://tiles/terrain.png".
     std::string image;
     UVec2 imageSize{0U};
     UVec2 tileSize{0U};
@@ -149,11 +151,6 @@ using TiledFileReader = std::function<Result<std::vector<std::byte>>(std::string
 /// or object they are about; errors of a tileset name its file.
 [[nodiscard]] Result<TiledMap> parseTiledMap(std::span<const std::byte> bytes, std::string_view mapPath,
                                              const TiledFileReader& readFile);
-
-/// `relative` resolved against the directory of the virtual path `base`: ("assets://maps/a.tmj",
-/// "../tiles/t.png") gives "assets://tiles/t.png". A `relative` with a scheme is returned as it is. Errors:
-/// InvalidData when ".." leaves the mount point's root.
-[[nodiscard]] Result<std::string> resolveRelativePath(std::string_view base, std::string_view relative);
 
 /// Loads TiledMaps from .tmj files; external tilesets are read through the context's mount points.
 class TiledMapLoader final : public AssetLoader<TiledMap> {

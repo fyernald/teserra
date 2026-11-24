@@ -340,12 +340,3 @@ TEST_CASE("Tiled: broken data fails with the layer and tile", "[assets][tiled]")
     CHECK(missing.error().code == ErrorCode::NotFound);
     CHECK_THAT(missing.error().message, ContainsSubstring("tileset 'assets://tiles/terrain.tsj'"));
 }
-
-TEST_CASE("Tiled: relative paths resolve against the file that names them", "[assets][tiled]") {
-    CHECK(resolveRelativePath("assets://maps/level.tmj", "../tiles/t.png") == "assets://tiles/t.png");
-    CHECK(resolveRelativePath("assets://maps/level.tmj", "t.png") == "assets://maps/t.png");
-    CHECK(resolveRelativePath("assets://maps/level.tmj", "./a/./b\\c.png") == "assets://maps/a/b/c.png");
-    CHECK(resolveRelativePath("assets://level.tmj", "t.png") == "assets://t.png");
-    CHECK(resolveRelativePath("assets://maps/level.tmj", "engine://fallback.png") == "engine://fallback.png");
-    CHECK_FALSE(resolveRelativePath("assets://level.tmj", "../t.png").has_value());
-}
