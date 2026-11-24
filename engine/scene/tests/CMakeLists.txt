@@ -1,6 +1,6 @@
 set(scene_render_tests "")
 if(TARGET teserra_renderer)
-    set(scene_render_tests render_extraction_test.cpp)
+    set(scene_render_tests render_extraction_test.cpp sprite_sheet_sprites_test.cpp)
 endif()
 
 teserra_add_test(scene
@@ -9,7 +9,8 @@ teserra_add_test(scene
         scene_test.cpp
         transform_test.cpp
         ${scene_render_tests}
-    DEPENDS scene
+    # The null backend gives the sprite sheet tests a device for their texture assets.
+    DEPENDS scene rhi_null
 )
 
 # Every public header compiles on its own.

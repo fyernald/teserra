@@ -10,6 +10,7 @@ teserra_add_module(renderer LAYER 3
         include/teserra/renderer/renderer.hpp
         include/teserra/renderer/sprite_batcher.hpp
         include/teserra/renderer/sprite_pass.hpp
+        include/teserra/renderer/sprite_sheet.hpp
         include/teserra/renderer/upload_ring.hpp
     SOURCES
         src/assets.cpp
@@ -17,6 +18,7 @@ teserra_add_module(renderer LAYER 3
         src/renderer.cpp
         src/sprite_batcher.cpp
         src/sprite_pass.cpp
+        src/sprite_sheet.cpp
         src/upload_ring.cpp
 )
 

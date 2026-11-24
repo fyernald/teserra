@@ -75,6 +75,23 @@ hero.isFallback();  // true; isLoaded() is false
 - The error is still logged once per failed load, with the path, so a game that keeps its handle logs one error for a missing file.
 - The renderer's `registerAssetLoaders()` creates its fallbacks: an 8×8 `Rgba8Srgb` texture of magenta and black 4×4 checks (magenta at the top left), an error vertex shader for `.vert.tshader` paths (no inputs, its triangles are empty) and an error fragment shader for `.frag.tshader` paths (opaque magenta, no inputs or bindings). `teserra_add_shaders()` names blobs after their sources, so the stage is in the path; other shader paths have no fallback.
 
+## Sprite sheets
+
+A sprite sheet names rectangular regions of one texture (`renderer::SpriteSheet`, `<teserra/renderer/sprite_sheet.hpp>`, #84). The renderer owns it because it holds an `Asset<Texture>`, which keeps the texture loaded while the sheet lives.
+
+```cpp
+Asset<Texture> texture = app.assets().load<Texture>("assets://sprites.png");
+SpriteSheet sheet = *SpriteSheet::grid(texture, {.cellSize = {16, 16}, .namePrefix = "hero"});
+level.add<SpriteRenderer>(hero, scene::spriteFromSheet(sheet, *sheet.find("hero3")));
+```
+
+- **Regions** (`SpriteRegion`) are a name, a top-left texel and a size in texels, with the origin at the texture's top-left corner ([ADR-0024](../adr/0024-coordinate-conventions.md)); `regionUv(textureSize, position, size)` turns them into `UvRect`s. Region indices follow the order of the regions, and `find(name)` looks one up.
+- **Grids** (`SpriteSheet::grid(texture, SpriteGrid)`): cells of `cellSize` after a `margin`, with `spacing` between them, row by row from the top left, named `<namePrefix><index>`. `count` limits the cells, and 0 takes every cell that fits whole. A zero cell size or more cells than fit are `InvalidArgument`, and a texture that is not ready is `NotFound`.
+- **World size:** `worldSize(region)` is the region's texels divided by the sheet's `pixelsPerUnit` (default 16, `kDefaultPixelsPerUnit`), so 16-pixel art fills one world unit.
+- **Missing textures:** when the texture is a fallback, every region shows the whole fallback (`uv()` is the full texture), and a grid makes the `count` cells asked for (at least one), so a game whose sheet file is missing still runs and logs one error.
+- **Sprites:** `scene::spriteFromSheet(sheet, region)` (or by name) makes a `SpriteRenderer` with the region's texture, UVs and world size. `SpriteRenderer` stores the texture's `rhi::TextureHandle`, so the game keeps the sheet alive while sprites show it.
+- **Not yet:** sheets defined in a `.sheet.json` file (grid or named regions) need the JSON library of #90 (#231). Until then sheets are made in code, and the registry can share one with `load<SpriteSheet>(path, create)`.
+
 ## Image decoding
 
 `decodeImage(bytes, config)` (`<teserra/assets/image.hpp>`) turns a PNG file in memory into an `ImageData`: width, height, `ImageFormat::Rgba8` and tightly packed pixels, with row 0 as the top row of the file ([ADR-0024](../adr/0024-coordinate-conventions.md)). The texture loader builds on it.

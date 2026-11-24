@@ -7,14 +7,14 @@ if(TARGET teserra_renderer)
         include/teserra/scene/render_components.hpp
         include/teserra/scene/render_extraction.hpp
     )
-    set(scene_render_sources src/render_extraction.cpp)
+    set(scene_render_sources src/render_components.cpp src/render_extraction.cpp)
 endif()
 
 teserra_add_module(scene LAYER 5
     # Scenes own worlds (docs/architecture/ecs.md#scenes-own-worlds). No platform or GPU code, so the portable
     # Linux build includes it; with the renderer, scenes also extract render data (TESERRA_HAS_RENDERER).
     DEPENDS core rhi ecs
-    OPTIONAL_DEPENDS renderer
+    OPTIONAL_DEPENDS renderer assets
     PUBLIC_HEADERS
         include/teserra/scene/scene.hpp
         include/teserra/scene/scene_manager.hpp

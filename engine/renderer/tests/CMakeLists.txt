@@ -3,6 +3,7 @@ teserra_add_test(renderer
         assets_test.cpp
         camera_test.cpp
         renderer_test.cpp
+        sprite_sheet_test.cpp
         sprite_batcher_test.cpp
         sprite_pass_test.cpp
         upload_ring_test.cpp
