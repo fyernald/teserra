@@ -19,12 +19,14 @@ teserra_add_module(scene LAYER 5
     PUBLIC_HEADERS
         include/teserra/scene/scene.hpp
         include/teserra/scene/scene_manager.hpp
+        include/teserra/scene/tile_queries.hpp
         include/teserra/scene/tilemap.hpp
         include/teserra/scene/time.hpp
         include/teserra/scene/transform.hpp
         ${scene_render_headers}
     SOURCES
         src/scene.cpp
+        src/tile_queries.cpp
         src/tilemap.cpp
         src/transform.cpp
         ${scene_render_sources}
