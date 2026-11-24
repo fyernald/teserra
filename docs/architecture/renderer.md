@@ -123,6 +123,13 @@ The vertex layout is declared as an RHI `VertexLayout`, never hard-coded in the 
 
 Tilemaps are rendered as **chunks** (e.g. 32×32 tiles). Each chunk owns a static vertex buffer built once and rebuilt only when tiles in that chunk change. Chunks are culled against the view's bounds and drawn with the tileset's material. Details of the data model live with the scene layer; the renderer only sees `TilemapChunkDrawItem {world, vertexBuffer, indexCount, material, layer}`.
 
+The data model (`<teserra/scene/tilemap.hpp>`, #88):
+
+- A `Tilemap` component has a `tileSize` in world units and `layers`, drawn in order. Tile (x, y) covers `[x, x + 1) × [y, y + 1)` times `tileSize` in the entity's local space, +Y up (ADR-0024); Tiled's row-down maps are flipped by the importer.
+- A `TilemapLayer` stores `TileId`s (`u32`; 0 = `kNoTile`, n = tile n - 1 of the tileset, Tiled's gid without flip bits) in 32×32 `TilemapChunk`s in a hash map keyed by chunk coordinate (`chunkOf()`, floor division, so negative coordinates work). Chunks without tiles are never allocated; a chunk emptied by edits stays allocated so the renderer sees the change.
+- `setTile()` marks a chunk `dirty` only when a value changes; the renderer rebuilds dirty chunks and calls `clearDirty()`.
+- A `Tileset` (with the renderer) is a `SpriteSheet` plus per-tile `TileProperties` (`solid`); tiles without properties get the defaults.
+
 ## Materials, shaders and uniforms
 
 - A **Shader** asset (`renderer::Shader`, #81) is one compiled stage: the shader module of a `.tshader` blob and its stage; the blob carries the reflection. A material names its vertex and fragment shaders.
