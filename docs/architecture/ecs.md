@@ -178,7 +178,7 @@ level.systems().add(ecs::Phase::Update, "move_player", movePlayer)
   - **Transforms are 3D** (renderer.md, 3D readiness #1):
     - `scene::Transform` is `Vec3 position`, `Quat rotation`, `Vec3 scale`; `matrix()` is translate × rotate × scale.
     - 2D helpers work in the XY plane and keep z: `position2D` / `setPosition2D`, `rotation2D` / `setRotation2D` (radians, counter-clockwise around +Z, in (-π, π], ADR-0024), `scale2D` / `setScale2D`.
-    - The transform system (`scene::transformSystem`, named `scene::kTransformSystemName` = `"teserra.transforms"`) runs in every scene's PostUpdate: it sets every `GlobalTransform` (`Mat4`) from its `Transform`, and gives entities without one a `GlobalTransform` with the right matrix through commands, so it exists after PostUpdate's sync point and is correct for Extract. Every entity is a root until hierarchies (iteration 13). Order gameplay systems that move things in PostUpdate with `.before(scene::kTransformSystemName)`.
+    - The transform system (`scene::transformSystem`, named `scene::kTransformSystemName` = `"teserra.transforms"`) runs in every scene's PostUpdate: it sets every `GlobalTransform` (`Mat4`) from its `Transform`, and gives entities without one a `GlobalTransform` with the right matrix through commands, so it exists after PostUpdate's sync point and is correct for Extract. Children follow their parents ([transform hierarchies](#transform-hierarchies)). Order gameplay systems that move things in PostUpdate with `.before(scene::kTransformSystemName)`.
     - `scene::updateGlobalTransforms(world)` does the same directly on a World, outside a Schedule.
   - **Input:** the App keeps a `platform::Input` resource in the active scene's World, inserted the first frame and set after the events of every frame. Systems read it with `.readsResource<platform::Input>()`.
   - **Rendering** (with the renderer; the portable build leaves these headers out, `OPTIONAL_DEPENDS renderer`):
@@ -188,6 +188,20 @@ level.systems().add(ecs::Phase::Update, "move_player", movePlayer)
     - A steady-state Extract allocates nothing (tested with 10 000 sprites), and so does a whole App frame of a rendered scene.
     - `Transform` describes its fields for the editor (`ComponentFields`).
 - Engine-provided systems (transform propagation, render extraction, tilemap chunk updates) are added to every scene by the engine; games add their own.
+
+### Transform hierarchies
+
+A weapon in a hand, a turret on a ship: `<teserra/scene/hierarchy.hpp>` (#98).
+
+- **`Parent { Entity entity; }`** is the truth. A child's `Transform` is relative to its parent's world matrix; changing `Parent::entity` reparents. `setParent(world, child, parent)` sets it and asserts that both are alive and that no cycle forms. `removeParent(world, child)` detaches. In systems, `commands().add<Parent>(child, Parent{parent})` works too.
+- **`Children { std::vector<Entity> entities; }`** is derived: `setParent()` and `removeParent()` update it at once, and the transform system makes it follow the `Parent` components every PostUpdate. Read it, do not write it.
+- **Propagation** happens in the transform system, with full 3D matrices (3D readiness #1):
+  - roots get their local matrix;
+  - children are sorted by depth (walking up their `Parent` chain, at most `kMaxHierarchyDepth` = 1024 levels, deeper is a cycle and asserts) and get `parent world × local`, so every parent is done before its children whatever the storage order;
+  - a parent whose `GlobalTransform` is still a pending command is computed from its chain of local transforms;
+  - an entity without a `Transform` in the middle of a chain counts as identity.
+- **Destruction:** an entity whose parent, or any ancestor, is no longer alive is destroyed through commands. Destroying a parent (directly or through commands) destroys its whole subtree at the next PostUpdate's sync point.
+- **Memory:** the system's scratch (`TransformHierarchyScratch`) is a resource of every scene, so a steady-state PostUpdate allocates nothing. `SystemContext::tryGet<T>(entity)` and `isAlive(entity)` give systems checked random access, such as a child reading its parent.
 
 ## Roadmap: from simple and correct to benchmarked and optimized
 
