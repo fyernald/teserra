@@ -6,8 +6,11 @@
 //   teserra_scene_sprites                                  until Escape or close
 //   teserra_scene_sprites --frames 120 --hidden-window     smoke run
 //
-// Textures are made in code and created on the App's device; asset handles come with iteration 11.
+// The art is one sprite sheet, assets/sprites.png next to the executable, loaded through the App's assets as
+// assets://sprites.png and cut into a grid of 16x16 regions (iteration 11). Without the file, every sprite
+// shows the magenta and black fallback and the log has one error.
 
+#include <teserra/assets/asset_registry.hpp>
 #include <teserra/core/log.hpp>
 #include <teserra/core/math.hpp>
 #include <teserra/core/types.hpp>
@@ -16,19 +19,16 @@
 #include <teserra/engine/app.hpp>
 #include <teserra/platform/input.hpp>
 #include <teserra/platform/key.hpp>
-#include <teserra/rhi/device.hpp>
-#include <teserra/rhi/texture.hpp>
+#include <teserra/renderer/assets.hpp>
+#include <teserra/renderer/sprite_sheet.hpp>
 #include <teserra/scene/render_components.hpp>
 #include <teserra/scene/scene.hpp>
 #include <teserra/scene/time.hpp>
 #include <teserra/scene/transform.hpp>
 
-#include <array>
 #include <cmath>
-#include <cstddef>
-#include <functional>
-#include <string_view>
-#include <vector>
+#include <optional>
+#include <utility>
 
 using namespace teserra;
 
@@ -47,68 +47,13 @@ TESERRA_COMPONENT(CameraFollow, "CameraFollow");
 
 namespace {
 
-constexpr u32 kTextureSize = 16;
 constexpr int kFieldRadius = 12; // tiles from the center in each direction
 
-// A kTextureSize² RGBA8 sRGB texture whose texel (x, y), top row first, is `texel(x, y)`.
-rhi::TextureHandle makeTexture(rhi::Device& device, std::string_view name,
-                               const std::function<std::array<u8, 4>(u32, u32)>& texel) {
-    std::vector<std::byte> texels;
-    texels.reserve(usize{kTextureSize} * kTextureSize * 4);
-    for (u32 y = 0; y < kTextureSize; ++y) {
-        for (u32 x = 0; x < kTextureSize; ++x) {
-            for (const u8 channel : texel(x, y)) {
-                texels.push_back(static_cast<std::byte>(channel));
-            }
-        }
-    }
-    const rhi::TextureHandle texture = *device.createTexture(
-        {.width = kTextureSize, .height = kTextureSize, .debugName = std::string(name)});
-    device.writeTexture(texture, {.width = kTextureSize, .height = kTextureSize}, texels);
-    return texture;
-}
-
-// Distance of texel (x, y) from the texture's center, in texels.
-f32 centerDistance(u32 x, u32 y) {
-    constexpr f32 kCenter = (kTextureSize - 1) * 0.5F;
-    return std::hypot(static_cast<f32>(x) - kCenter, static_cast<f32>(y) - kCenter);
-}
-
-struct Textures {
-    rhi::TextureHandle grass;
-    rhi::TextureHandle hero;
-    rhi::TextureHandle coin;
-};
-
-Textures makeTextures(rhi::Device& device) {
-    return {
-        .grass = makeTexture(device, "Grass",
-                             [](u32 x, u32 y) -> std::array<u8, 4> {
-                                 const bool blade = ((x * 7) + (y * 13)) % 11 == 0;
-                                 return blade ? std::array<u8, 4>{70, 150, 60, 255}
-                                              : std::array<u8, 4>{50, 120, 45, 255};
-                             }),
-        // A round body with two eyes near the top, so the image's orientation is visible.
-        .hero = makeTexture(device, "Hero",
-                            [](u32 x, u32 y) -> std::array<u8, 4> {
-                                if (centerDistance(x, y) > 7.5F) {
-                                    return {0, 0, 0, 0};
-                                }
-                                const bool eye = y >= 4 && y <= 6 && (x == 5 || x == 10);
-                                return eye ? std::array<u8, 4>{20, 20, 30, 255}
-                                           : std::array<u8, 4>{230, 90, 60, 255};
-                            }),
-        .coin = makeTexture(device, "Coin",
-                            [](u32 x, u32 y) -> std::array<u8, 4> {
-                                const f32 distance = centerDistance(x, y);
-                                if (distance > 6.0F) {
-                                    return {0, 0, 0, 0};
-                                }
-                                return distance > 4.5F ? std::array<u8, 4>{200, 150, 30, 255}
-                                                       : std::array<u8, 4>{250, 210, 60, 255};
-                            }),
-    };
-}
+// The cells of assets/sprites.png, 16x16 texels each, left to right.
+constexpr u32 kGrass = 0;
+constexpr u32 kHero = 1;
+constexpr u32 kCoin = 2;
+constexpr u32 kCellCount = 3;
 
 // Systems: free functions that see the world through their SystemContext.
 
@@ -157,7 +102,20 @@ int main(int argc, char** argv) { // NOLINT(bugprone-exception-escape)
     }
 
     scene::Scene& level = app.scenes().create("level");
-    const Textures textures = makeTextures(app.device());
+    // 16 texels per world unit: each cell is one unit square. The sheet keeps its texture loaded while it
+    // lives.
+    const std::optional<renderer::SpriteSheet> sheet = [&]() -> std::optional<renderer::SpriteSheet> {
+        auto made = renderer::SpriteSheet::grid(app.assets().load<renderer::Texture>("assets://sprites.png"),
+                                                {.cellSize = {16, 16}, .count = kCellCount});
+        if (!made) {
+            TESERRA_LOG_ERROR(LogCategory::App, "Cannot cut the sprite sheet: {}", made.error());
+            return std::nullopt;
+        }
+        return std::move(made).value();
+    }();
+    if (!sheet) {
+        return 1;
+    }
 
     // Camera: 14 world units tall, orthographic, following the player.
     const ecs::Entity camera = level.spawn();
@@ -172,8 +130,7 @@ int main(int argc, char** argv) { // NOLINT(bugprone-exception-escape)
             const ecs::Entity tile = level.spawn();
             level.add<scene::Transform>(
                 tile, scene::Transform{.position = {static_cast<f32>(x), static_cast<f32>(y), 0.0F}});
-            level.add<scene::SpriteRenderer>(tile,
-                                             scene::SpriteRenderer{.texture = textures.grass, .layer = 0});
+            level.add<scene::SpriteRenderer>(tile, scene::spriteFromSheet(*sheet, kGrass));
         }
     }
 
@@ -182,14 +139,18 @@ int main(int argc, char** argv) { // NOLINT(bugprone-exception-escape)
         const ecs::Entity coin = level.spawn();
         level.add<scene::Transform>(
             coin, scene::Transform{.position = {std::cos(angle) * 6.0F, std::sin(angle) * 6.0F, 0.0F}});
-        level.add<scene::SpriteRenderer>(
-            coin, scene::SpriteRenderer{.texture = textures.coin, .size = Vec2{0.7F}, .layer = 5});
+        scene::SpriteRenderer sprite = scene::spriteFromSheet(*sheet, kCoin);
+        sprite.size = Vec2{0.7F};
+        sprite.layer = 5;
+        level.add<scene::SpriteRenderer>(coin, sprite);
         level.add<Coin>(coin, Coin{.phase = angle});
     }
 
     const ecs::Entity hero = level.spawn();
     level.add<scene::Transform>(hero);
-    level.add<scene::SpriteRenderer>(hero, scene::SpriteRenderer{.texture = textures.hero, .layer = 10});
+    scene::SpriteRenderer heroSprite = scene::spriteFromSheet(*sheet, kHero);
+    heroSprite.layer = 10;
+    level.add<scene::SpriteRenderer>(hero, heroSprite);
     level.add<Player>(hero);
 
     level.systems()

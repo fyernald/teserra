@@ -8,7 +8,11 @@
 #include <teserra/ecs/type_key.hpp>
 #include <teserra/renderer/camera.hpp>
 #include <teserra/renderer/frame_packet.hpp>
+#include <teserra/renderer/sprite_sheet.hpp>
 #include <teserra/rhi/handles.hpp>
+
+#include <optional>
+#include <string_view>
 
 namespace teserra::scene {
 
@@ -30,7 +34,8 @@ using renderer::UvRect;
 ///
 ///     level.add<SpriteRenderer>(hero, SpriteRenderer{.texture = heroTexture, .layer = 10});
 struct SpriteRenderer {
-    /// The texture, created on the App's device; asset handles replace it in iteration 11.
+    /// The texture: a renderer::Texture asset's handle() or one created on the App's device. The game keeps
+    /// the asset (or the sprite sheet) alive while sprites show it.
     rhi::TextureHandle texture{};
     /// The part of the texture shown, top-left origin.
     UvRect uv{};
@@ -49,6 +54,16 @@ struct SpriteRenderer {
     /// Hidden sprites are not extracted.
     bool visible = true;
 };
+
+/// A SpriteRenderer that shows region `region` of `sheet`: the sheet's texture, the region's UVs and its size
+/// in world units. The other fields keep their defaults. The sheet must outlive the sprites that show it.
+///
+///     level.add<SpriteRenderer>(coin, spriteFromSheet(sheet, *sheet.find("coin")));
+[[nodiscard]] SpriteRenderer spriteFromSheet(const renderer::SpriteSheet& sheet, usize region);
+
+/// Like spriteFromSheet(sheet, region) for the region named `name`; std::nullopt if the sheet has none.
+[[nodiscard]] std::optional<SpriteRenderer> spriteFromSheet(const renderer::SpriteSheet& sheet,
+                                                            std::string_view name);
 
 } // namespace teserra::scene
 

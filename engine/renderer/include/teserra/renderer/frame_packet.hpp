@@ -38,6 +38,8 @@ enum class SpriteBlend : u8 {
 struct UvRect {
     Vec2 min{0.0F};
     Vec2 max{1.0F};
+
+    friend bool operator==(const UvRect&, const UvRect&) = default;
 };
 
 /// One sprite to draw this frame.
