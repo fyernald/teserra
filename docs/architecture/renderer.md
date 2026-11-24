@@ -125,7 +125,7 @@ Tilemaps are rendered as **chunks** (e.g. 32×32 tiles). Each chunk owns a stati
 
 ## Materials, shaders and uniforms
 
-- A **Shader** asset pairs vertex and fragment `.tshader` modules plus their reflection data.
+- A **Shader** asset (`renderer::Shader`, #81) is one compiled stage: the shader module of a `.tshader` blob and its stage; the blob carries the reflection. A material names its vertex and fragment shaders.
 - A **Material** = shader + pipeline state template (blend mode, depth test/write, cull mode) + parameter block layout (derived from reflection of set 2) + default values.
 - A **MaterialInstance** = material + parameter values + textures. It owns one parameter uniform buffer region and a bind group for set 2. Changing a parameter marks it dirty; the buffer is rewritten during prepare.
 - **Pipelines are created lazily** and cached by `(material pipeline state, vertex layout, render target layout)`. Pipeline creation is never on the per-sprite path; a frame that creates a pipeline logs it at `Debug` level so warm-up issues are visible.

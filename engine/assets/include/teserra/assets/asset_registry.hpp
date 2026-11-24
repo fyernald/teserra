@@ -1,10 +1,12 @@
 #pragma once
 
-// Typed, reference-counted asset handles and the registry that owns the assets
-// (docs/architecture/assets.md#handles-and-ids, ADR-0020).
+// Typed, reference-counted asset handles, the loaders that produce assets and the registry that owns them
+// (docs/architecture/assets.md#handles-and-ids, docs/architecture/assets.md#loaders, ADR-0020).
 //
-//   AssetRegistry assets;
-//   Asset<ImageData> hero = assets.load<ImageData>("assets://sprites/hero.png", [&] { return decode(); });
+//   AssetRegistry assets{{.mounts = &mounts}};
+//   assets.registerLoader<ImageData>(std::make_unique<ImageLoader>());
+//   Asset<ImageData> hero = assets.load<ImageData>("assets://sprites/hero.png");   // read and decoded
+//   Asset<ImageData> made = assets.load<ImageData>("game://noise", [&] { return makeNoise(); });
 //   if (hero.isReady()) { use(hero.get()); }
 //   Asset<ImageData> again = assets.load<ImageData>("assets://sprites/hero.png", ...);  // same slot
 //   hero = {};  again = {};        // no references left: unloaded at the next endFrame()
@@ -17,6 +19,7 @@
 // thread-safe: loading is single-threaded in v1.
 
 #include <teserra/assets/asset_id.hpp>
+#include <teserra/assets/mount_table.hpp>
 #include <teserra/core/assert.hpp>
 #include <teserra/core/handle.hpp>
 #include <teserra/core/handle_pool.hpp>
@@ -24,7 +27,10 @@
 #include <teserra/core/types.hpp>
 
 #include <concepts>
+#include <cstddef>
 #include <functional>
+#include <memory>
+#include <span>
 #include <string>
 #include <string_view>
 #include <type_traits>
@@ -37,6 +43,8 @@ namespace teserra::assets {
 /// The registry's slot of an asset. Asset<T> wraps it with a type and a reference.
 using AssetHandle = Handle<struct AssetTag>;
 
+template <typename T>
+class Asset;
 class AssetRegistry;
 
 namespace detail {
@@ -100,7 +108,60 @@ private:
     void (*m_destroy)(void*) noexcept = nullptr;
 };
 
+// What the registry knows of an AssetLoader<T>: something it owns and destroys.
+class AssetLoaderBase {
+public:
+    virtual ~AssetLoaderBase() = default;
+
+protected:
+    AssetLoaderBase() = default;
+    AssetLoaderBase(const AssetLoaderBase&) = default;
+    AssetLoaderBase& operator=(const AssetLoaderBase&) = default;
+    AssetLoaderBase(AssetLoaderBase&&) = default;
+    AssetLoaderBase& operator=(AssetLoaderBase&&) = default;
+};
+
 } // namespace detail
+
+/// What a loader can do while it loads an asset: load the assets it depends on and read other files. Only
+/// valid during AssetLoader::load().
+class AssetLoadContext {
+public:
+    /// The normalized virtual path of the asset being loaded.
+    [[nodiscard]] std::string_view path() const noexcept { return m_path; }
+
+    /// A dependency, loaded through the registry like AssetRegistry::load<T>(path): a material's textures.
+    /// The asset being loaded may keep it.
+    template <typename T>
+    [[nodiscard]] Asset<T> load(std::string_view virtualPath);
+
+    /// The whole content of another file, read through the registry's mount points.
+    [[nodiscard]] Result<std::vector<std::byte>> readFile(std::string_view virtualPath) const;
+
+private:
+    friend class AssetRegistry;
+
+    AssetLoadContext(AssetRegistry& registry, std::string_view path) noexcept
+        : m_registry(&registry), m_path(path) {}
+
+    AssetRegistry* m_registry;
+    std::string_view m_path;
+};
+
+/// Produces assets of type T from the bytes of their files. Registered per type with
+/// AssetRegistry::registerLoader() and chosen by the extension of the path, so a new asset type only
+/// needs a loader, not a change to the registry.
+template <typename T>
+class AssetLoader : public detail::AssetLoaderBase {
+public:
+    /// The file extensions this loader reads, lowercase and without the dot: {"png"}. The span must stay
+    /// valid while the loader lives.
+    [[nodiscard]] virtual std::span<const std::string_view> extensions() const = 0;
+
+    /// The asset in `bytes`, the whole content of the file at context.path(). The registry logs a failure
+    /// once, with the path, so the loader's errors do not need to name it.
+    [[nodiscard]] virtual Result<T> load(AssetLoadContext& context, std::span<const std::byte> bytes) = 0;
+};
 
 /// A shared reference to an asset of type T in an AssetRegistry. The registry must outlive it.
 template <typename T>
@@ -152,6 +213,9 @@ struct AssetRegistryConfig {
     /// Hashes a normalized path into an AssetId value. Null uses FNV-1a (AssetId::fromPath()); tests
     /// inject collisions with it.
     u64 (*hashPath)(std::string_view normalizedPath) = nullptr;
+    /// Where load<T>(path) reads files; it must outlive the registry. Null: only load<T>(path, create)
+    /// works.
+    const MountTable* mounts = nullptr;
 };
 
 /// Owns the assets, deduplicated by path, and unloads them once nothing refers to them.
@@ -167,6 +231,19 @@ public:
     AssetRegistry& operator=(const AssetRegistry&) = delete;
     AssetRegistry(AssetRegistry&&) = delete;
     AssetRegistry& operator=(AssetRegistry&&) = delete;
+
+    /// Makes `loader` load the assets of type T in files with its extensions. Asserts if another loader of
+    /// T reads one of them, or if an extension is empty, or has a dot or an uppercase letter.
+    template <typename T>
+    void registerLoader(std::unique_ptr<AssetLoader<T>> loader);
+
+    /// The asset at `virtualPath`, which the loader of T for the path's extension (compared without case)
+    /// makes from the file's bytes, read through the mount points. Otherwise like load(path, create): loaded
+    /// once and deduplicated, and a failure is logged once with the path and gives an asset that is not
+    /// ready. Failures: no loader of T for the extension or no mount table (Unsupported), and the errors of
+    /// MountTable::readFile() and of the loader.
+    template <typename T>
+    [[nodiscard]] Asset<T> load(std::string_view virtualPath);
 
     /// The asset at `virtualPath`. If the path is loaded already (or failed already), returns its slot
     /// with one more reference; otherwise calls `create` once, which returns Result<T>. A failure is logged
@@ -188,6 +265,13 @@ public:
 private:
     template <typename T>
     friend class Asset;
+    friend class AssetLoadContext;
+
+    struct LoaderEntry {
+        detail::AssetTypeId type = nullptr;
+        std::span<const std::string_view> extensions;
+        std::unique_ptr<detail::AssetLoaderBase> loader;
+    };
 
     struct Slot {
         AssetId id;
@@ -207,6 +291,14 @@ private:
                                      detail::ErasedObject object);
     void logFailure(std::string_view normalizedPath, const Error& error) const;
 
+    void addLoader(detail::AssetTypeId type, std::span<const std::string_view> extensions,
+                   std::unique_ptr<detail::AssetLoaderBase> loader);
+    // The loader of `type` for the extension of `virtualPath`, or Unsupported.
+    [[nodiscard]] Result<detail::AssetLoaderBase*> findLoader(detail::AssetTypeId type,
+                                                              std::string_view virtualPath) const;
+    // Through the mount table, or Unsupported without one.
+    [[nodiscard]] Result<std::vector<std::byte>> readFile(std::string_view virtualPath) const;
+
     void retain(AssetHandle handle) noexcept;
     void release(AssetHandle handle) noexcept;
     [[nodiscard]] bool isReady(AssetHandle handle) const noexcept;
@@ -214,6 +306,8 @@ private:
     [[nodiscard]] const void* object(AssetHandle handle, detail::AssetTypeId type) const;
 
     AssetRegistryConfig m_config;
+    // Before the slots, so that the loaders outlive the assets they made.
+    std::vector<LoaderEntry> m_loaders;
     HandlePool<Slot, AssetTag> m_slots;
     std::unordered_map<AssetId, AssetHandle> m_byId;
     // Slots whose count reached zero since the last endFrame(), and endFrame()'s working list. A slot is in
@@ -222,6 +316,30 @@ private:
     std::vector<AssetHandle> m_unreferenced;
     std::vector<AssetHandle> m_unloading;
 };
+
+template <typename T>
+void AssetRegistry::registerLoader(std::unique_ptr<AssetLoader<T>> loader) {
+    TESERRA_ASSERT(loader != nullptr, "registerLoader() needs a loader");
+    const std::span<const std::string_view> extensions = loader->extensions();
+    addLoader(detail::assetTypeId<T>(), extensions, std::move(loader));
+}
+
+template <typename T>
+Asset<T> AssetRegistry::load(std::string_view virtualPath) {
+    return load<T>(virtualPath, [this, virtualPath]() -> Result<T> {
+        TESERRA_TRY_ASSIGN(detail::AssetLoaderBase* const loader,
+                           findLoader(detail::assetTypeId<T>(), virtualPath));
+        TESERRA_TRY_ASSIGN(const std::vector<std::byte> bytes, readFile(virtualPath));
+        const std::string normalized = normalizeAssetPath(virtualPath);
+        AssetLoadContext context(*this, normalized);
+        return static_cast<AssetLoader<T>*>(loader)->load(context, bytes);
+    });
+}
+
+template <typename T>
+Asset<T> AssetLoadContext::load(std::string_view virtualPath) {
+    return m_registry->load<T>(virtualPath);
+}
 
 template <typename T, typename Create>
     requires std::invocable<Create&> && std::same_as<std::invoke_result_t<Create&>, Result<T>>

@@ -1,5 +1,6 @@
 teserra_add_test(renderer
     SOURCES
+        assets_test.cpp
         camera_test.cpp
         renderer_test.cpp
         sprite_batcher_test.cpp

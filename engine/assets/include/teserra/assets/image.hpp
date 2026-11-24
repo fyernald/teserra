@@ -2,11 +2,13 @@
 
 // CPU images decoded from PNG files (ADR-0010, docs/architecture/assets.md#image-decoding).
 
+#include <teserra/assets/asset_registry.hpp>
 #include <teserra/core/result.hpp>
 #include <teserra/core/types.hpp>
 
 #include <cstddef>
 #include <span>
+#include <string_view>
 #include <vector>
 
 namespace teserra::assets {
@@ -62,5 +64,21 @@ struct ImageDecodeConfig {
 /// (SECURITY.md).
 [[nodiscard]] Result<ImageData> decodeImage(std::span<const std::byte> bytes,
                                             const ImageDecodeConfig& config = {});
+
+/// Loads ImageData assets from PNG files with decodeImage(). For images the CPU uses; textures come from
+/// the renderer's loader.
+class ImageLoader final : public AssetLoader<ImageData> {
+public:
+    explicit ImageLoader(const ImageDecodeConfig& config = {}) noexcept
+        : m_config(config) {}
+
+    /// {"png"}
+    [[nodiscard]] std::span<const std::string_view> extensions() const override;
+    [[nodiscard]] Result<ImageData> load(AssetLoadContext& context,
+                                         std::span<const std::byte> bytes) override;
+
+private:
+    ImageDecodeConfig m_config;
+};
 
 } // namespace teserra::assets

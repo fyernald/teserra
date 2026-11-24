@@ -2,6 +2,7 @@ teserra_add_module(renderer LAYER 3
     # Only the abstract RHI: backends are chosen by teserra_engine (docs/architecture/overview.md).
     DEPENDS core rhi assets
     PUBLIC_HEADERS
+        include/teserra/renderer/assets.hpp
         include/teserra/renderer/camera.hpp
         include/teserra/renderer/camera_data.hpp
         include/teserra/renderer/frame_packet.hpp
@@ -11,6 +12,7 @@ teserra_add_module(renderer LAYER 3
         include/teserra/renderer/sprite_pass.hpp
         include/teserra/renderer/upload_ring.hpp
     SOURCES
+        src/assets.cpp
         src/camera.cpp
         src/renderer.cpp
         src/sprite_batcher.cpp

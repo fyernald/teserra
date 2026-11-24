@@ -3,6 +3,7 @@
 #include <teserra/core/assert.hpp>
 
 #include <algorithm>
+#include <array>
 #include <climits>
 #include <cstring>
 #include <memory>
@@ -124,6 +125,19 @@ Result<ImageData> decodeImage(std::span<const std::byte> bytes, const ImageDecod
         .format = kFormat,
         .pixels = std::vector<std::byte>(first, first + size),
     };
+}
+
+} // namespace teserra::assets
+
+namespace teserra::assets {
+
+std::span<const std::string_view> ImageLoader::extensions() const {
+    static constexpr std::array<std::string_view, 1> kExtensions{"png"};
+    return kExtensions;
+}
+
+Result<ImageData> ImageLoader::load(AssetLoadContext& /*context*/, std::span<const std::byte> bytes) {
+    return decodeImage(bytes, m_config);
 }
 
 } // namespace teserra::assets
