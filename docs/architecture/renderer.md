@@ -169,6 +169,14 @@ debug.cross(Vec3 p, f32 size, Color c);
 
 Shapes accumulate in a `DebugDrawList` (line vertices in 3D) and are drawn in the debug pass with an option for depth testing. Debug draw can be disabled at runtime and compiled out with `TESERRA_WITH_DEBUG_DRAW=OFF`.
 
+**Today** (#96):
+
+- **The list:** `renderer::DebugDrawList` (`<teserra/renderer/debug_draw.hpp>`) has `line`, `rect` (from `position` to `position + size` in world units, +Y up, at height `z`), `circle` (in the plane of its center), `cross` (three axes) and `box` (an `Aabb`'s twelve edges). All points are `Vec3` (3D readiness #2). Vertices are `DebugVertex {Vec3 position; RGBA bytes}`, two per line. `clear()` keeps the memory, so a steady-state frame allocates nothing.
+- **Toggles:** `setEnabled(false)` ignores shapes at runtime (the tilemap example binds it to F1). `TESERRA_WITH_DEBUG_DRAW=OFF` makes every call an empty inline function (`kDebugDrawCompiled`).
+- **Systems** draw through the scene's `renderer::DebugDrawList` resource (`.writesResource<renderer::DebugDrawList>()`). The ECS cannot see renderer types, so a resource stands in for the frame context. Extraction appends the list's lines to `FramePacket::debugLines` and clears the list: lines last one frame, and a frame without a target drops them.
+- **The pass:** `renderer::DebugPass`, added by the App after the sprite pass, loads the scene color and draws the lines with the built-in `debug_lines` material (`LineList`, alpha blending): one upload and one draw per view. A frame without lines records nothing.
+- **Not yet:** depth testing. Scene targets have no depth attachment until render targets (#95); the option comes with it.
+
 ## 3D readiness checklist
 
 Apply this checklist to **every** 2D renderer or scene feature. Issues that touch rendering quote the relevant rows in their acceptance criteria.

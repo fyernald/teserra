@@ -1,7 +1,8 @@
 // Tilemap: a 256x256 map with three layers (ground, walls, decor) drawn from static chunk meshes (iteration
 // 12, #89). The camera scrolls over the map on its own and zooms in and out; WASD or the arrows take over, Q
 // and E zoom, and Space plants flowers under the camera, which rebuilds only that chunk. The title shows how
-// many chunks were drawn, culled and rebuilt.
+// many chunks were drawn, culled and rebuilt. Debug draw outlines the chunks around the camera and marks its
+// center (#96); F1 turns it off and on.
 //
 //   teserra_tilemap                                  until Escape or close
 //   teserra_tilemap --frames 120 --hidden-window     smoke run
@@ -19,6 +20,7 @@
 #include <teserra/platform/key.hpp>
 #include <teserra/platform/window.hpp>
 #include <teserra/renderer/assets.hpp>
+#include <teserra/renderer/debug_draw.hpp>
 #include <teserra/scene/render_components.hpp>
 #include <teserra/scene/render_extraction.hpp>
 #include <teserra/scene/scene.hpp>
@@ -171,6 +173,34 @@ void plantFlowers(ecs::SystemContext& ctx) {
     }
 }
 
+// Outlines the chunks around the camera and marks its center; F1 toggles debug draw.
+void drawChunkBorders(ecs::SystemContext& ctx) {
+    auto& debug = ctx.resource<renderer::DebugDrawList>();
+    if (ctx.resource<const platform::Input>().wasPressed(platform::Key::F1)) {
+        debug.setEnabled(!debug.isEnabled());
+    }
+    if (!debug.isEnabled()) {
+        return;
+    }
+    constexpr Color kBorder{.r = 1.0F, .g = 0.85F, .b = 0.2F, .a = 0.6F};
+    constexpr Color kCenter{.r = 1.0F, .g = 0.2F, .b = 0.2F, .a = 1.0F};
+    constexpr auto kChunk = static_cast<f32>(scene::kTilemapChunkSize);
+    for (const auto& [entity, transform, scroller] : ctx.view<const scene::Transform, const Scroller>()) {
+        const Vec3 center = transform.position;
+        debug.cross(center, 1.0F, kCenter);
+        const f32 originX = std::floor(center.x / kChunk) * kChunk;
+        const f32 originY = std::floor(center.y / kChunk) * kChunk;
+        for (int dy = -2; dy <= 2; ++dy) {
+            for (int dx = -2; dx <= 2; ++dx) {
+                debug.rect({.position = {originX + (static_cast<f32>(dx) * kChunk),
+                                         originY + (static_cast<f32>(dy) * kChunk)},
+                            .size = Vec2{kChunk}},
+                           kBorder, 0.0F);
+            }
+        }
+    }
+}
+
 } // namespace
 
 int main(int argc, char** argv) { // NOLINT(bugprone-exception-escape)
@@ -220,6 +250,14 @@ int main(int argc, char** argv) { // NOLINT(bugprone-exception-escape)
         .reads<scene::GlobalTransform>()
         .writes<scene::Tilemap>()
         .readsResource<platform::Input>()
+        .after("move_camera");
+
+    level.systems()
+        .add(ecs::Phase::Update, "draw_chunk_borders", drawChunkBorders)
+        .reads<scene::Transform>()
+        .reads<Scroller>()
+        .readsResource<platform::Input>()
+        .writesResource<renderer::DebugDrawList>()
         .after("move_camera");
 
     f32 sinceTitle = 0.0F;
