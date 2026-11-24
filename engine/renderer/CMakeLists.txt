@@ -5,6 +5,7 @@ teserra_add_module(renderer LAYER 3
         include/teserra/renderer/assets.hpp
         include/teserra/renderer/camera.hpp
         include/teserra/renderer/camera_data.hpp
+        include/teserra/renderer/chunk_mesh_cache.hpp
         include/teserra/renderer/frame_packet.hpp
         include/teserra/renderer/render_pass.hpp
         include/teserra/renderer/renderer.hpp
@@ -15,6 +16,7 @@ teserra_add_module(renderer LAYER 3
     SOURCES
         src/assets.cpp
         src/camera.cpp
+        src/chunk_mesh_cache.cpp
         src/renderer.cpp
         src/sprite_batcher.cpp
         src/sprite_pass.cpp

@@ -14,6 +14,7 @@
 #include <teserra/platform/input.hpp>
 #include <teserra/platform/platform.hpp>
 #include <teserra/platform/window.hpp>
+#include <teserra/renderer/chunk_mesh_cache.hpp>
 #include <teserra/renderer/renderer.hpp>
 #include <teserra/rhi/command_list.hpp>
 #include <teserra/rhi/device.hpp>
@@ -204,6 +205,8 @@ private:
     // After the device, so it is destroyed before it.
     std::unique_ptr<renderer::Renderer> m_renderer;
     bool m_rendererFailed = false;
+    // The meshes of tilemap chunks of the active scene, built during its Extract; after the device.
+    std::unique_ptr<renderer::ChunkMeshCache> m_chunkMeshes;
     // After the device: scenes are destroyed first, so GPU resources they hold go before the device.
     scene::SceneManager m_scenes;
     rhi::TextureHandle m_backbuffer;
