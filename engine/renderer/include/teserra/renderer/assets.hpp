@@ -129,8 +129,8 @@ private:
 inline constexpr u32 kFallbackTextureSize = 8;
 inline constexpr u32 kFallbackCheckSize = 4;
 
-/// Registers the renderer's loaders (TextureLoader, ShaderLoader) for `device` with `registry`, and creates
-/// the fallbacks of their failed loads once:
+/// Registers the renderer's loaders (TextureLoader, ShaderLoader, SpriteSheetLoader) for `device` with
+/// `registry`, and creates the fallbacks of their failed loads once:
 /// - Texture: kFallbackTextureSize² magenta and black checks (Rgba8Srgb), magenta at the top left.
 /// - Shader, for paths ending with ".vert.tshader": a vertex shader without inputs whose triangles are
 ///   empty; ".frag.tshader": opaque magenta. teserra_add_shaders() names blobs after their sources, so the

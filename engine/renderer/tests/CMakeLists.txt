@@ -4,6 +4,7 @@ teserra_add_test(renderer
         camera_test.cpp
         chunk_mesh_cache_test.cpp
         renderer_test.cpp
+        sprite_sheet_file_test.cpp
         sprite_sheet_test.cpp
         sprite_batcher_test.cpp
         sprite_pass_test.cpp
