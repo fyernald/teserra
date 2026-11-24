@@ -6,6 +6,7 @@
 #include <teserra/core/math.hpp>
 #include <teserra/core/types.hpp>
 #include <teserra/renderer/camera_data.hpp>
+#include <teserra/renderer/debug_draw.hpp>
 #include <teserra/rhi/handles.hpp>
 
 #include <vector>
@@ -85,12 +86,15 @@ struct FramePacket {
     std::vector<SpriteDrawItem> sprites;
     /// Drawn by layer; chunks of the same layer keep their order.
     std::vector<TilemapChunkDrawItem> tilemapChunks;
-    // Next: debug draw (#96).
+    /// Debug lines in world space, two vertices each (DebugDrawList), drawn over everything by the debug
+    /// pass.
+    std::vector<DebugVertex> debugLines;
 
     void clear() noexcept {
         views.clear();
         sprites.clear();
         tilemapChunks.clear();
+        debugLines.clear();
     }
 };
 

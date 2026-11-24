@@ -25,6 +25,7 @@ Scene::Scene(std::string name)
         .writesResource<TransformHierarchyScratch>();
 #if TESERRA_HAS_RENDERER
     m_world.insertResource<RenderExtraction>();
+    m_world.insertResource<renderer::DebugDrawList>();
     m_schedule.add(ecs::Phase::Extract, std::string(kRenderExtractionSystemName), renderExtractionSystem)
         .reads<Camera>()
         .reads<GlobalTransform>()
@@ -32,7 +33,8 @@ Scene::Scene(std::string name)
         .reads<TilemapRenderer>()
         .writes<Tilemap>()
         .readsResource<Time>()
-        .writesResource<RenderExtraction>();
+        .writesResource<RenderExtraction>()
+        .writesResource<renderer::DebugDrawList>();
 #endif
 }
 

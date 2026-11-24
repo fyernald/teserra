@@ -54,7 +54,8 @@ inline constexpr std::string_view kRenderExtractionSystemName = "teserra.render_
 /// a visible TilemapRenderer's Tilemap whose bounds (chunkBounds()) intersect a view, building the chunk's
 /// mesh when it is dirty, missing from the cache, or placed or drawn differently than when it was built,
 /// and then clearing its dirty flag. Reads Camera, GlobalTransform, SpriteRenderer and TilemapRenderer and
-/// the Time resource; writes Tilemap (dirty flags) and the RenderExtraction resource.
+/// the Time resource; writes Tilemap (dirty flags) and the RenderExtraction resource. The lines of the
+/// world's renderer::DebugDrawList resource go into the packet's debugLines, and the list is cleared.
 void renderExtractionSystem(ecs::SystemContext& context);
 
 /// The world-space box around everything a view can see: the corners of its frustum (or box, for an

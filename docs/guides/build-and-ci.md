@@ -65,6 +65,7 @@ tools/shaderc/                 # teserra_shaderc, the build-time shader compiler
 | `TESERRA_ENABLE_ASSERTS` | `DEFAULT` (on for Debug/RelWithDebInfo) | `TESERRA_ASSERT` active; `ON` / `OFF` force it for every configuration |
 | `TESERRA_ENABLE_PROFILING` | `OFF` | Tracy instrumentation |
 | `TESERRA_RHI_OPENGL` | `ON` | OpenGL backend |
+| `TESERRA_WITH_DEBUG_DRAW` | `ON` | Debug draw (`renderer::DebugDrawList`); `OFF` compiles its calls to nothing ([renderer.md](../architecture/renderer.md#debug-draw)) |
 | `TESERRA_PORTABLE_ONLY` | `OFF`, `ON` in the `linux-*-portable` presets | Only the modules without OS or GPU code: `core`, `ecs`, `scene`, `rhi` + null backend and the portable part of `platform` (no OS services, no window backend, no tests that need a `Platform`). Skips `teserra_shaderc`, `assets`, `renderer`, `engine`, the examples and the build-system tests, and turns off the default vcpkg feature `engine` (glfw3, glslang, spirv-cross, stb). For the Linux job before the Linux port |
 | `TESERRA_RHI_VULKAN` | `OFF` | Future Vulkan backend |
 | `TESERRA_SHADER_VALIDATION` | `OFF` locally, `ON` in `ci-windows` | SPIR-V validation of `teserra_shaderc`'s output in its tests (vcpkg feature `shader-validation`, SPIRV-Tools; about 15 minutes to build once) |

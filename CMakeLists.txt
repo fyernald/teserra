@@ -50,6 +50,7 @@ set(TESERRA_ENABLE_ASSERTS "DEFAULT" CACHE STRING
     "Check TESERRA_ASSERT: DEFAULT (Debug and RelWithDebInfo builds), ON or OFF")
 set_property(CACHE TESERRA_ENABLE_ASSERTS PROPERTY STRINGS DEFAULT ON OFF)
 option(TESERRA_RHI_OPENGL "Build the OpenGL 4.5 RHI backend (teserra_rhi_opengl)" ON)
+option(TESERRA_WITH_DEBUG_DRAW "Compile debug draw (renderer::DebugDrawList); OFF makes its calls empty" ON)
 option(TESERRA_SHADER_VALIDATION
     "Validate the SPIR-V of teserra_shaderc in its tests with SPIRV-Tools (slow to build; on in CI)" OFF)
 
