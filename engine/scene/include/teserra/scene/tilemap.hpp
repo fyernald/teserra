@@ -4,7 +4,7 @@
 // touches one chunk and the renderer rebuilds only the chunks that changed. Chunks without tiles are never
 // allocated, so sparse maps are cheap. This header is portable: it does not need the renderer.
 //
-//   Tilemap& map = level.add<Tilemap>(entity, Tilemap{.tileSize = {1.0F, 1.0F}, .layers = {}});
+//   Tilemap& map = level.add<Tilemap>(entity, Tilemap{.tileSize = {1.0F, 1.0F}});
 //   TilemapLayer& ground = map.addLayer("ground");
 //   ground.setTile({-3, 0}, 5);          // tile 4 of the tileset (ids count from 1)
 //   const TileId id = ground.tile({-3, 0});
@@ -93,7 +93,7 @@ struct Tilemap {
     /// Width and height of a tile, in world units.
     Vec2 tileSize{1.0F};
     /// Drawn in order: later layers on top.
-    std::vector<TilemapLayer> layers;
+    std::vector<TilemapLayer> layers{};
 
     /// Adds a layer on top of the others. The reference is valid until the next addLayer().
     TilemapLayer& addLayer(std::string name);
