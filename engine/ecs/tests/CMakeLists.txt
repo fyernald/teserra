@@ -1,6 +1,7 @@
 ﻿teserra_add_test(ecs
     SOURCES
         commands_test.cpp
+        events_test.cpp
         component_test.cpp
         resource_test.cpp
         schedule_test.cpp

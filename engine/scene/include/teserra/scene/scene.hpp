@@ -2,6 +2,7 @@
 
 // Scenes own worlds (docs/architecture/ecs.md#scenes-own-worlds).
 
+#include <teserra/ecs/events.hpp>
 #include <teserra/ecs/schedule.hpp>
 #include <teserra/ecs/world.hpp>
 #include <teserra/scene/time.hpp>
@@ -51,8 +52,15 @@ public:
     [[nodiscard]] ecs::Schedule& systems() noexcept { return m_schedule; }
 
     /// Runs the systems of `phase` on this scene's world, then applies their commands. Startup runs only
-    /// the first time it is asked for; later calls do nothing. Called by the App for the active scene.
+    /// the first time it is asked for; later calls do nothing. PreUpdate starts the frame of the world's
+    /// events first (ecs::updateEvents()). Called by the App for the active scene.
     void run(ecs::Phase phase);
+
+    /// The world's Events<T>, created on first use (ecs::addEvents()): events systems send and read.
+    template <typename T>
+    ecs::Events<T>& addEvents() {
+        return ecs::addEvents<T>(m_world);
+    }
 
     /// Whether Startup has run.
     [[nodiscard]] bool started() const noexcept { return m_started; }
