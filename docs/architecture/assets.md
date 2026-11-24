@@ -56,7 +56,7 @@ public:
   - `load<T>(path)` reads the file through the registry's `MountTable` (`AssetRegistryConfig::mounts`) and goes through `load<T>(path, create)`, so deduplication and the single error log with the path work the same for both. A type without a loader for the extension, and a registry without a mount table, fail with `Unsupported`.
   - `assets::ImageLoader` makes `ImageData` from `.png` files. The renderer's `<teserra/renderer/assets.hpp>` has `renderer::Texture` (an `Rgba8Srgb` texture with one mip level, named after its path) with `TextureLoader` (`.png`), and `renderer::Shader` (a shader module and its stage) with `ShaderLoader` (`.tshader`); `renderer::registerAssetLoaders(registry, device)` registers both. Both asset types own their GPU object and destroy it when they unload; the device keeps it until no frame in flight uses it.
   - `engine::App` owns the registry (`app.assets()`), reading through `app.mounts()`, with `ImageLoader` and, when it has a device, the renderer's loaders. It calls `endFrame()` after each frame, and it is destroyed after the scenes and before the device.
-  - Not yet: the `<file>.asset.json` sidecar (#228), so every asset loads with defaults. The JSON view it needs exists (see [JSON](#json)).
+  - Import settings come from the `<file>.asset.json` sidecar ([import settings](#import-settings), #228).
 
 ### Fallback assets
 
@@ -101,6 +101,21 @@ level.add<SpriteRenderer>(hero, scene::spriteFromSheet(sheet, *sheet.find("hero3
   {"texture": "characters.png", "pixelsPerUnit": 16,
    "grid": {"cellSize": [16, 16], "count": 6, "namePrefix": "hero"}}
   ```
+
+## Import settings
+
+An asset file may have a sidecar next to it, `<file>.asset.json`, with its import settings (#228). `AssetRegistry::load<T>(path)` reads it through the mount points before calling the loader, and the loader sees the settings as `AssetLoadContext::settings()`.
+
+```json
+{"srgb": false, "mipmaps": true}
+```
+
+- `AssetImportSettings`:
+  - `srgb` (default `true`): `TextureLoader` makes `Rgba8Srgb` textures, or `Rgba8Unorm` for data such as normal maps and masks;
+  - `mipmaps` (default `false`): `TextureLoader` creates the full mip chain and generates it on the GPU.
+- Without a sidecar (the file is not found), the defaults apply. A sidecar that cannot be read, holds malformed JSON or has a setting of the wrong type fails the load with the sidecar's path, logged once like any load failure.
+- Keys the engine does not know are one warning that names them, so a misspelled setting does not go unnoticed. Filtering and `pixelsPerUnit` are not import settings yet: the sprite pass chooses its sampler, and sprite sheets carry their own `pixelsPerUnit`.
+- Assets made in code (`load<T>(path, create)`) have no sidecar.
 
 ## JSON
 

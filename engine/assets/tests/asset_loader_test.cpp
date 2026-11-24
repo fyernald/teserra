@@ -131,13 +131,15 @@ TEST_CASE("Asset loaders: a new asset type needs only a loader", "[assets][loade
     CHECK(rock.get().vertexCount == 5);
     CHECK(rock.get().path == "assets://meshes/rock.mesh");
     CHECK(rock.id() == AssetId::fromPath("assets://meshes/rock.mesh"));
-    CHECK(fixture.files.reads() == std::vector<std::string>{"/game/assets/meshes/rock.mesh"});
+    // The loader also looked for the import-settings sidecar next to the file.
+    CHECK(fixture.files.reads() == std::vector<std::string>{"/game/assets/meshes/rock.mesh",
+                                                            "/game/assets/meshes/rock.mesh.asset.json"});
 
     SECTION("loading the path again reads nothing") {
         const Asset<MeshStub> again = fixture.registry.load<MeshStub>("ASSETS://meshes\\rock.mesh");
         CHECK(again == rock);
         CHECK(loads == 1);
-        CHECK(fixture.files.reads().size() == 1);
+        CHECK(fixture.files.reads().size() == 2);
     }
 }
 
@@ -165,8 +167,8 @@ TEST_CASE("Asset loaders: the loader is chosen by type and extension, without ca
         CHECK_FALSE(rockWithoutExtension.isReady());
         CHECK(errorsMentioning(logs, "has no extension") == 1);
     }
-    // Neither failure read a file.
-    CHECK(fixture.files.reads().size() == 1);
+    // Neither failure read a file: the reads are the rock's and its (missing) import-settings sidecar's.
+    CHECK(fixture.files.reads().size() == 2);
 }
 
 TEST_CASE("Asset loaders: a failed load is logged once with the path and deduplicated", "[assets][loader]") {

@@ -56,13 +56,20 @@ std::span<const std::string_view> TextureLoader::extensions() const {
 
 Result<Texture> TextureLoader::load(assets::AssetLoadContext& context, std::span<const std::byte> bytes) {
     TESERRA_TRY_ASSIGN(const assets::ImageData image, assets::decodeImage(bytes, m_config));
-    TESERRA_TRY_ASSIGN(const rhi::TextureHandle texture, m_device->createTexture({
-                                                             .format = rhi::Format::Rgba8Srgb,
-                                                             .width = image.width,
-                                                             .height = image.height,
-                                                             .debugName = context.path(),
-                                                         }));
+    const assets::AssetImportSettings& settings = context.settings();
+    const bool mipmaps = settings.mipmaps && (image.width > 1 || image.height > 1);
+    TESERRA_TRY_ASSIGN(const rhi::TextureHandle texture,
+                       m_device->createTexture({
+                           .format = settings.srgb ? rhi::Format::Rgba8Srgb : rhi::Format::Rgba8Unorm,
+                           .width = image.width,
+                           .height = image.height,
+                           .mipLevels = mipmaps ? rhi::kAllMips : 1,
+                           .debugName = context.path(),
+                       }));
     m_device->writeTexture(texture, {.width = image.width, .height = image.height}, image.pixels);
+    if (mipmaps) {
+        m_device->generateMipmaps(texture);
+    }
     return Texture(*m_device, texture, UVec2{image.width, image.height});
 }
 

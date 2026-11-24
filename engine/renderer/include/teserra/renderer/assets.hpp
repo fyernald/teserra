@@ -90,8 +90,9 @@ private:
     rhi::ShaderStage m_stage;
 };
 
-/// Loads Texture assets from PNG files: an Rgba8Srgb texture with one mip level, named after the path.
-/// Import settings (linear color, mipmaps) come with the `.asset.json` sidecar.
+/// Loads Texture assets from PNG files, named after the path: Rgba8Srgb with one mip level by default. The
+/// import settings of the `.asset.json` sidecar choose Rgba8Unorm ("srgb": false) and a full mip chain
+/// generated on the GPU ("mipmaps": true).
 class TextureLoader final : public assets::AssetLoader<Texture> {
 public:
     /// `device` must outlive the loader and the textures it loads.
