@@ -62,6 +62,20 @@ struct SpriteDrawItem {
     f32 sortDepth = 0.0F;
 };
 
+/// One built tilemap chunk to draw this frame (docs/architecture/renderer.md#tilemaps): a static vertex
+/// buffer of SpriteVertex quads in world space, from a ChunkMeshCache. It draws with the sprite material,
+/// like a batch of sprites, before the sprites of its layer.
+struct TilemapChunkDrawItem {
+    /// Four vertices per quad, in the corner order of SpriteBatcher::writeVertices().
+    rhi::BufferHandle vertexBuffer{};
+    u32 quadCount = 0;
+    /// The tileset's texture, sampled with the sprite pass's tilemap filter (nearest by default).
+    rhi::TextureHandle texture{};
+    SpriteBlend blend = SpriteBlend::Alpha;
+    /// Chunks draw over sprites of lower layers and under sprites of their own and higher layers.
+    i16 layer = 0;
+};
+
 /// The render data of one frame. Reuse one packet from frame to frame and clear() it: the vectors keep
 /// their capacity, so a steady-state frame allocates nothing.
 struct FramePacket {
@@ -69,11 +83,14 @@ struct FramePacket {
     std::vector<RenderView> views;
     /// Drawn in the order of spriteSortKey() (<teserra/renderer/sprite_batcher.hpp>).
     std::vector<SpriteDrawItem> sprites;
-    // Next: tilemap chunks (#89), debug draw (#96).
+    /// Drawn by layer; chunks of the same layer keep their order.
+    std::vector<TilemapChunkDrawItem> tilemapChunks;
+    // Next: debug draw (#96).
 
     void clear() noexcept {
         views.clear();
         sprites.clear();
+        tilemapChunks.clear();
     }
 };
 

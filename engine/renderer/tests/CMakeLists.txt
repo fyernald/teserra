@@ -2,6 +2,7 @@ teserra_add_test(renderer
     SOURCES
         assets_test.cpp
         camera_test.cpp
+        chunk_mesh_cache_test.cpp
         renderer_test.cpp
         sprite_sheet_test.cpp
         sprite_batcher_test.cpp

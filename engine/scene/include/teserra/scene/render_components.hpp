@@ -10,6 +10,7 @@
 #include <teserra/renderer/frame_packet.hpp>
 #include <teserra/renderer/sprite_sheet.hpp>
 #include <teserra/rhi/handles.hpp>
+#include <teserra/scene/tileset.hpp>
 
 #include <optional>
 #include <string_view>
@@ -65,7 +66,28 @@ struct SpriteRenderer {
 [[nodiscard]] std::optional<SpriteRenderer> spriteFromSheet(const renderer::SpriteSheet& sheet,
                                                             std::string_view name);
 
+/// Draws the Tilemap of its entity, placed by the entity's GlobalTransform, with the tiles of `tileset`.
+/// Tilemap layer i draws at sprite layer `layer + i * layerSpacing`, before the sprites of that layer; a
+/// spacing above 1 leaves layers for sprites between tile layers.
+///
+///     level.add<Tilemap>(map, std::move(tiles));
+///     level.add<TilemapRenderer>(map, TilemapRenderer{.tileset = &tileset, .layerSpacing = 10});
+struct TilemapRenderer {
+    /// The tiles' art. The game keeps the tileset alive while the tilemap shows it.
+    const Tileset* tileset = nullptr;
+    /// Multiplies every tile, in linear values.
+    Color tint{.r = 1.0F, .g = 1.0F, .b = 1.0F, .a = 1.0F};
+    SpriteBlend blend = SpriteBlend::Alpha;
+    /// The sprite layer of the first tilemap layer.
+    i16 layer = 0;
+    /// Sprite layers between consecutive tilemap layers.
+    i16 layerSpacing = 1;
+    /// Hidden tilemaps are not extracted.
+    bool visible = true;
+};
+
 } // namespace teserra::scene
 
 TESERRA_COMPONENT(teserra::renderer::Camera, "Camera");
 TESERRA_COMPONENT(teserra::scene::SpriteRenderer, "SpriteRenderer");
+TESERRA_COMPONENT(teserra::scene::TilemapRenderer, "TilemapRenderer");

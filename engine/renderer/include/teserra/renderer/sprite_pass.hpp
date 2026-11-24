@@ -22,19 +22,25 @@ namespace teserra::renderer {
 struct SpritePassConfig {
     /// How sprite textures are filtered when scaled; pixel art wants Nearest.
     rhi::Filter filter = rhi::Filter::Linear;
+    /// How tilemap chunk textures are filtered. Nearest keeps neighboring tiles from bleeding into each other
+    /// at any zoom.
+    rhi::Filter tilemapFilter = rhi::Filter::Nearest;
 };
 
 /// What the last frame drew, for counters and tests.
 struct SpritePassStats {
     u32 sprites = 0;
     u32 batches = 0;
+    /// Tilemap chunks of the packet with quads.
+    u32 tilemapChunks = 0;
+    /// Sprite batches and tilemap chunks drawn, over all views.
     u32 drawCalls = 0;
 };
 
 /// Clears SceneColor to the first view's clear color and draws the frame's sprites for every view, in
-/// SpriteBatcher order. Pipelines (one per target format and blend mode) and the bind group of each texture
-/// are created when first needed and kept, so a steady-state frame creates no GPU objects and allocates
-/// nothing.
+/// SpriteBatcher order, and its tilemap chunks: each before the first sprite of its layer or a higher one.
+/// Pipelines (one per target format and blend mode) and the bind group of each texture are created when first
+/// needed and kept, so a steady-state frame creates no GPU objects and allocates nothing.
 class SpritePass final : public RenderPass {
 public:
     /// `frameLayout` is Renderer::frameGroupLayout(), set 0 of the pass's pipelines.
@@ -63,15 +69,27 @@ private:
     };
     struct TextureGroup {
         rhi::TextureHandle texture;
+        bool tilemap = false; // sampled with the tilemap sampler
         rhi::BindGroupHandle group;
+    };
+    // What is bound in the current view, so draws rebind only what changes.
+    struct Bound {
+        rhi::GraphicsPipelineHandle pipeline;
+        rhi::BindGroupHandle group;
+        rhi::BufferHandle vertices;
     };
 
     explicit SpritePass(rhi::Device& device);
 
     // The pipeline for `blend` into targets of `format`, created on first use; null if creation failed.
     [[nodiscard]] rhi::GraphicsPipelineHandle pipeline(rhi::Format format, SpriteBlend blend);
-    // The material group (set 2) of `texture`, created on first use; null if creation failed.
-    [[nodiscard]] rhi::BindGroupHandle textureGroup(rhi::TextureHandle texture);
+    // The material group (set 2) of `texture` with the sprite or the tilemap sampler, created on first use;
+    // null if creation failed.
+    [[nodiscard]] rhi::BindGroupHandle textureGroup(rhi::TextureHandle texture, bool tilemap);
+    // Binds what a draw needs; false if its pipeline or group could not be created.
+    [[nodiscard]] bool bindDraw(rhi::CommandList& commands, Bound& bound, rhi::Format format,
+                                SpriteBlend blend, rhi::TextureHandle texture, bool tilemap,
+                                rhi::BufferHandle vertices, u64 vertexOffset);
 
     rhi::Device& m_device;
     SpriteBatcher m_batcher;
@@ -80,9 +98,12 @@ private:
     rhi::BindGroupLayoutHandle m_materialLayout;
     rhi::PipelineLayoutHandle m_pipelineLayout;
     rhi::SamplerHandle m_sampler;
+    rhi::SamplerHandle m_tilemapSampler;
     rhi::BufferHandle m_indices;
     std::vector<Pipeline> m_pipelines;
     std::vector<TextureGroup> m_textureGroups;
+    // The packet's tilemap chunks with quads, ordered by layer; reused every frame.
+    std::vector<u32> m_chunkOrder;
     SpritePassStats m_stats;
 };
 

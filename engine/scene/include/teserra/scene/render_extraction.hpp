@@ -7,8 +7,10 @@
 #include <teserra/core/types.hpp>
 #include <teserra/ecs/system_context.hpp>
 #include <teserra/renderer/camera_data.hpp>
+#include <teserra/renderer/chunk_mesh_cache.hpp>
 #include <teserra/renderer/frame_packet.hpp>
 #include <teserra/scene/render_components.hpp>
+#include <teserra/scene/tilemap.hpp>
 
 #include <string_view>
 #include <vector>
@@ -30,6 +32,16 @@ struct RenderExtraction {
     std::vector<Aabb> viewBounds;
     /// Visible sprites left out this frame because they were outside every view.
     usize culledSprites = 0;
+
+    /// Where tilemap chunks are built, set by the App (its renderer's device); without one, tilemaps are not
+    /// extracted.
+    renderer::ChunkMeshCache* chunkMeshes = nullptr;
+    /// Tilemap chunks left out this frame because they were outside every view.
+    usize culledChunks = 0;
+    /// Tilemap chunks built (new, changed or evicted) this frame.
+    usize builtChunks = 0;
+    /// The vertices of the chunk being built; reused.
+    std::vector<renderer::SpriteVertex> chunkVertices;
 };
 
 /// The name every scene's Schedule gives renderExtractionSystem(), for before()/after() constraints.
@@ -38,8 +50,11 @@ inline constexpr std::string_view kRenderExtractionSystemName = "teserra.render_
 /// The extraction system, which every Scene runs in Extract. It clears the RenderExtraction resource, adds a
 /// view for every entity with a Camera and a GlobalTransform, and a SpriteDrawItem for every visible
 /// SpriteRenderer with a GlobalTransform whose bounds (spriteBounds()) intersect a view's bounds
-/// (viewBounds()). Reads Camera, GlobalTransform and SpriteRenderer and the Time resource; writes the
-/// RenderExtraction resource.
+/// (viewBounds()). With a chunk mesh cache, it also adds a TilemapChunkDrawItem for every chunk with tiles of
+/// a visible TilemapRenderer's Tilemap whose bounds (chunkBounds()) intersect a view, building the chunk's
+/// mesh when it is dirty, missing from the cache, or placed or drawn differently than when it was built,
+/// and then clearing its dirty flag. Reads Camera, GlobalTransform, SpriteRenderer and TilemapRenderer and
+/// the Time resource; writes Tilemap (dirty flags) and the RenderExtraction resource.
 void renderExtractionSystem(ecs::SystemContext& context);
 
 /// The world-space box around everything a view can see: the corners of its frustum (or box, for an
@@ -48,5 +63,8 @@ void renderExtractionSystem(ecs::SystemContext& context);
 
 /// The world-space box around the quad of `sprite` drawn at `world`.
 [[nodiscard]] Aabb spriteBounds(const SpriteRenderer& sprite, const Mat4& world) noexcept;
+
+/// The world-space box around chunk `chunkCoord` of a tilemap with tiles of `tileSize` placed at `world`.
+[[nodiscard]] Aabb chunkBounds(IVec2 chunkCoord, Vec2 tileSize, const Mat4& world) noexcept;
 
 } // namespace teserra::scene
