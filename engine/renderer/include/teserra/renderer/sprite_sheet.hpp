@@ -8,6 +8,10 @@
 //   const usize walk = *sheet.find("hero3");
 //   sprite.uv = sheet.uv(walk);            // top-left origin
 //   sprite.size = sheet.worldSize(walk);   // {1, 1} at 16 pixels per unit
+//
+// Sheets can also be files, loaded as assets (SpriteSheetLoader):
+//
+//   Asset<SpriteSheet> heroes = assets.load<SpriteSheet>("assets://sprites/characters.sheet.json");
 
 #include <teserra/assets/asset_registry.hpp>
 #include <teserra/core/math.hpp>
@@ -16,6 +20,8 @@
 #include <teserra/renderer/assets.hpp>
 #include <teserra/renderer/frame_packet.hpp>
 
+#include <array>
+#include <cstddef>
 #include <optional>
 #include <span>
 #include <string>
@@ -91,6 +97,31 @@ private:
     assets::Asset<Texture> m_texture;
     std::vector<SpriteRegion> m_regions;
     f32 m_pixelsPerUnit;
+};
+
+/// Loads SpriteSheets from JSON files (by convention `<name>.sheet.json`): the texture, loaded as a
+/// dependency, and either a grid or a list of named regions, in texels from the top-left corner.
+///
+///     {"texture": "characters.png", "pixelsPerUnit": 16,
+///      "grid": {"cellSize": [16, 16], "margin": [0, 0], "spacing": [0, 0], "count": 0, "namePrefix":
+///      "hero"}}
+///
+///     {"texture": "characters.png",
+///      "regions": [{"name": "idle", "position": [0, 0], "size": [16, 32]}]}
+///
+/// "texture" is a virtual path or a path relative to the sheet file. "pixelsPerUnit" (default 16), and the
+/// grid's "margin", "spacing", "count" and "namePrefix" are optional. A missing texture gives its fallback,
+/// as in code. Errors (InvalidData) name the field: malformed JSON, missing or mistyped fields, both or
+/// neither of "grid" and "regions", and regions outside the texture.
+class SpriteSheetLoader final : public assets::AssetLoader<SpriteSheet> {
+public:
+    /// {"json"}: asset types are part of the key, so other JSON assets have their own loaders.
+    [[nodiscard]] std::span<const std::string_view> extensions() const override { return kExtensions; }
+    [[nodiscard]] Result<SpriteSheet> load(assets::AssetLoadContext& context,
+                                           std::span<const std::byte> bytes) override;
+
+private:
+    static constexpr std::array<std::string_view, 1> kExtensions{"json"};
 };
 
 } // namespace teserra::renderer

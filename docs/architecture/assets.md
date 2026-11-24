@@ -90,7 +90,17 @@ level.add<SpriteRenderer>(hero, scene::spriteFromSheet(sheet, *sheet.find("hero3
 - **World size:** `worldSize(region)` is the region's texels divided by the sheet's `pixelsPerUnit` (default 16, `kDefaultPixelsPerUnit`), so 16-pixel art fills one world unit.
 - **Missing textures:** when the texture is a fallback, every region shows the whole fallback (`uv()` is the full texture), and a grid makes the `count` cells asked for (at least one), so a game whose sheet file is missing still runs and logs one error.
 - **Sprites:** `scene::spriteFromSheet(sheet, region)` (or by name) makes a `SpriteRenderer` with the region's texture, UVs and world size. `SpriteRenderer` stores the texture's `rhi::TextureHandle`, so the game keeps the sheet alive while sprites show it.
-- **Not yet:** sheets defined in a `.sheet.json` file (grid or named regions), #231, which can read them through the [JSON view](#json). Until then sheets are made in code, and the registry can share one with `load<SpriteSheet>(path, create)`.
+- **Sheet files** (#231): `renderer::SpriteSheetLoader`, registered with the renderer's loaders, loads `Asset<SpriteSheet>` from JSON files, by convention `<name>.sheet.json`:
+  - the `texture`, a virtual path or a path relative to the sheet file, loaded as a dependency;
+  - an optional `pixelsPerUnit`;
+  - either a `grid` (`cellSize`, and optionally `margin`, `spacing`, `count`, `namePrefix`, as in `SpriteGrid`) or a list of `regions` (`name`, `position`, `size` in texels).
+
+  Arrays like `[16, 16]` are `[x, y]`. A missing texture gives the sheet with the fallback, as in code. Malformed files fail once with the path and the field: JSON errors with line and column, missing or mistyped fields, both or neither of `grid` and `regions`, and regions outside the loaded texture.
+
+  ```json
+  {"texture": "characters.png", "pixelsPerUnit": 16,
+   "grid": {"cellSize": [16, 16], "count": 6, "namePrefix": "hero"}}
+  ```
 
 ## JSON
 

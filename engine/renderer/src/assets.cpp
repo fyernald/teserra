@@ -1,5 +1,6 @@
 #include <teserra/renderer/assets.hpp>
 
+#include <teserra/renderer/sprite_sheet.hpp>
 #include <teserra/rhi/shader_blob.hpp>
 #include <teserra/rhi/texture.hpp>
 
@@ -91,6 +92,7 @@ Result<void> registerAssetLoaders(assets::AssetRegistry& registry, rhi::Device& 
                                             "Fallback fragment shader"));
     registry.registerLoader<Texture>(std::make_unique<TextureLoader>(device));
     registry.registerLoader<Shader>(std::make_unique<ShaderLoader>(device));
+    registry.registerLoader<SpriteSheet>(std::make_unique<SpriteSheetLoader>());
     registry.setFallback(std::move(texture));
     registry.setFallback(std::move(vertex), ".vert.tshader");
     registry.setFallback(std::move(fragment), ".frag.tshader");
