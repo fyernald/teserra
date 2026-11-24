@@ -3,6 +3,7 @@
 
 #include <teserra/scene/render_extraction.hpp>
 
+#include <teserra/renderer/debug_draw.hpp>
 #include <teserra/scene/scene.hpp>
 #include <teserra/scene/transform.hpp>
 #include <teserra/test/allocation_counter.hpp>
@@ -210,4 +211,29 @@ TEST_CASE("Render extraction: 10 000 sprites in steady state allocate nothing",
     const RenderExtraction& extraction = level.world().resource<RenderExtraction>();
     CHECK(extraction.packet.sprites.size() + extraction.culledSprites == usize{kSide} * kSide);
     CHECK(extraction.culledSprites > 4000);
+}
+
+TEST_CASE("Render extraction: debug lines drawn by systems go into the packet for one frame",
+          "[scene][render][debug]") {
+    Scene level("level");
+    addCamera(level);
+    level.systems()
+        .add(ecs::Phase::Update, "draw_debug",
+             [](ecs::SystemContext& ctx) {
+                 ctx.resource<renderer::DebugDrawList>().cross(
+                     {0.0F, 0.0F, 0.0F}, 1.0F, Color{.r = 0.0F, .g = 1.0F, .b = 0.0F, .a = 1.0F});
+             })
+        .writesResource<renderer::DebugDrawList>();
+    level.run(ecs::Phase::Update);
+
+    const RenderExtraction& extraction = extract(level);
+    CHECK(extraction.packet.debugLines.size() == (renderer::kDebugDrawCompiled ? 6U : 0U));
+    CHECK(level.world().resource<renderer::DebugDrawList>().vertices().empty()); // cleared for the next frame
+
+    CHECK(extract(level).packet.debugLines.empty()); // nothing drawn this frame
+
+    // Without a target (minimized), the lines are dropped, not kept for later.
+    level.run(ecs::Phase::Update);
+    CHECK(extract(level, UVec2{0U}).packet.debugLines.empty());
+    CHECK(level.world().resource<renderer::DebugDrawList>().vertices().empty());
 }

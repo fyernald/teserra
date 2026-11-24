@@ -1,6 +1,7 @@
 #include <teserra/scene/render_extraction.hpp>
 
 #include <teserra/core/log.hpp>
+#include <teserra/renderer/debug_draw.hpp>
 #include <teserra/scene/time.hpp>
 #include <teserra/scene/transform.hpp>
 
@@ -10,6 +11,7 @@
 #include <cmath>
 #include <functional>
 #include <limits>
+#include <span>
 
 namespace teserra::scene {
 
@@ -193,6 +195,15 @@ void renderExtractionSystem(ecs::SystemContext& context) {
     extraction.builtChunks = 0;
     if (extraction.chunkMeshes != nullptr) {
         extraction.chunkMeshes->beginFrame();
+    }
+    // Debug lines live for one frame: they are taken into the packet (when it is rendered) and cleared.
+    if (auto* debug = context.tryResource<renderer::DebugDrawList>()) {
+        if (extraction.targetSize.x != 0 && extraction.targetSize.y != 0) {
+            const std::span<const renderer::DebugVertex> lines = debug->vertices();
+            extraction.packet.debugLines.insert(extraction.packet.debugLines.end(), lines.begin(),
+                                                lines.end());
+        }
+        debug->clear();
     }
     const UVec2 targetSize = extraction.targetSize;
     if (targetSize.x == 0 || targetSize.y == 0) {

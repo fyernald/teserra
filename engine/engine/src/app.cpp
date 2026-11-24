@@ -6,6 +6,7 @@
 #include <teserra/core/log.hpp>
 #include <teserra/core/profile.hpp>
 #include <teserra/renderer/assets.hpp>
+#include <teserra/renderer/debug_pass.hpp>
 #include <teserra/renderer/sprite_pass.hpp>
 #include <teserra/rhi_null/null_device.hpp>
 #include <teserra/scene/render_extraction.hpp>
@@ -305,6 +306,9 @@ renderer::Renderer* App::sceneRenderer() {
         TESERRA_TRY_ASSIGN(std::unique_ptr<renderer::SpritePass> sprites,
                            renderer::SpritePass::create(*m_device, created->frameGroupLayout()));
         created->addPass(std::move(sprites));
+        TESERRA_TRY_ASSIGN(std::unique_ptr<renderer::DebugPass> debug,
+                           renderer::DebugPass::create(*m_device, created->frameGroupLayout()));
+        created->addPass(std::move(debug));
         return created;
     };
     if (Result<std::unique_ptr<renderer::Renderer>> created = create(); created) {
