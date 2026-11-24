@@ -1,5 +1,6 @@
 #include <teserra/assets/asset_registry.hpp>
 
+#include <teserra/assets/json.hpp>
 #include <teserra/core/log.hpp>
 
 #include <algorithm>
@@ -190,6 +191,67 @@ const void* AssetRegistry::findFallback(detail::AssetTypeId type,
         }
     }
     return best != nullptr ? best->object.get() : nullptr;
+}
+
+std::string importSettingsPath(std::string_view virtualPath) {
+    return std::string(virtualPath) + ".asset.json";
+}
+
+Result<AssetImportSettings> parseImportSettings(std::span<const std::byte> bytes,
+                                                std::string_view sidecarPath) {
+    Result<JsonDocument> document = JsonDocument::parse(bytes);
+    if (!document) {
+        return fail(ErrorCode::InvalidData, Module::Assets, "Import settings '{}': {}", sidecarPath,
+                    document.error().message);
+    }
+    const JsonValue root = document->root();
+    if (!root.isObject()) {
+        return fail(ErrorCode::InvalidData, Module::Assets, "Import settings '{}' hold {}, not an object",
+                    sidecarPath, root.typeName());
+    }
+    AssetImportSettings settings;
+    std::string unknown;
+    Result<void> result;
+    root.forEachMember([&](std::string_view key, JsonValue value) {
+        bool* flag = nullptr;
+        if (key == "srgb") {
+            flag = &settings.srgb;
+        } else if (key == "mipmaps") {
+            flag = &settings.mipmaps;
+        } else {
+            unknown += unknown.empty() ? "" : ", ";
+            unknown += key;
+            return true;
+        }
+        const std::optional<bool> parsed = value.asBool();
+        if (!parsed) {
+            result = fail(ErrorCode::InvalidData, Module::Assets,
+                          "Import settings '{}': '{}' must be a boolean, not {}", sidecarPath, key,
+                          value.typeName());
+            return false;
+        }
+        *flag = *parsed;
+        return true;
+    });
+    TESERRA_TRY(result);
+    if (!unknown.empty()) {
+        TESERRA_LOG_WARN(LogCategory::Assets, "Import settings '{}': unknown settings ignored: {}",
+                         sidecarPath, unknown);
+    }
+    return settings;
+}
+
+Result<AssetImportSettings> AssetRegistry::readImportSettings(std::string_view normalizedPath) const {
+    const std::string sidecar = importSettingsPath(normalizedPath);
+    Result<std::vector<std::byte>> bytes = readFile(sidecar);
+    if (!bytes) {
+        if (bytes.error().code == ErrorCode::NotFound) {
+            return AssetImportSettings{}; // no sidecar: the defaults
+        }
+        return fail(bytes.error().code, Module::Assets, "Import settings '{}': {}", sidecar,
+                    bytes.error().message);
+    }
+    return parseImportSettings(*bytes, sidecar);
 }
 
 Result<std::vector<std::byte>> AssetLoadContext::readFile(std::string_view virtualPath) const {

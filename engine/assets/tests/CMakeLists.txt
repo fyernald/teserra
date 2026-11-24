@@ -5,6 +5,7 @@ teserra_add_test(assets
         asset_loader_test.cpp
         asset_registry_test.cpp
         image_test.cpp
+        import_settings_test.cpp
         json_test.cpp
         mount_table_test.cpp
         tiled_test.cpp

@@ -85,6 +85,27 @@ TEST_CASE("Renderer assets: TextureLoader uploads a PNG file into an sRGB textur
     }
 }
 
+TEST_CASE("Renderer assets: import settings make a linear texture with mipmaps", "[renderer][assets]") {
+    Fixture fixture;
+    const std::array<u8, 16> pixels{};
+    fixture.files.addFile("/game/assets/normals.png", test::writePng(2, 2, test::PngColor::Rgba, pixels));
+    fixture.files.addTextFile("/game/assets/normals.png.asset.json", R"({"srgb": false, "mipmaps": true})");
+    fixture.files.addFile("/game/assets/mask.png", test::writePng(2, 2, test::PngColor::Rgba, pixels));
+    fixture.files.addTextFile("/game/assets/mask.png.asset.json", R"({"srgb": false})");
+
+    const assets::Asset<Texture> normals = fixture.registry.load<Texture>("assets://normals.png");
+    REQUIRE(normals.isLoaded());
+    const rhi::TextureDesc* desc = fixture.device->texture(normals.get().handle());
+    REQUIRE(desc != nullptr);
+    CHECK(desc->format == rhi::Format::Rgba8Unorm);
+    CHECK(rhi::mipLevelCount(*desc) == 2); // 2x2 and 1x1
+
+    const assets::Asset<Texture> mask = fixture.registry.load<Texture>("assets://mask.png");
+    REQUIRE(mask.isLoaded());
+    CHECK(fixture.device->texture(mask.get().handle())->format == rhi::Format::Rgba8Unorm);
+    CHECK(fixture.device->texture(mask.get().handle())->mipLevels == 1);
+}
+
 TEST_CASE("Renderer assets: ShaderLoader creates a shader module of the blob's stage", "[renderer][assets]") {
     Fixture fixture;
 

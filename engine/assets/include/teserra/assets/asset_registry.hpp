@@ -124,12 +124,37 @@ protected:
 
 } // namespace detail
 
-/// What a loader can do while it loads an asset: load the assets it depends on and read other files. Only
-/// valid during AssetLoader::load().
+/// How an asset file is imported, from the optional sidecar `<file>.asset.json` next to it
+/// (docs/architecture/assets.md#import-settings). Without a sidecar every field has its default.
+///
+///     {"srgb": false, "mipmaps": true}        // assets://textures/normals.png.asset.json
+struct AssetImportSettings {
+    /// Color textures are sRGB; data (normal maps, masks) is linear: "srgb": false.
+    bool srgb = true;
+    /// Textures get a full mip chain, generated on the GPU.
+    bool mipmaps = false;
+
+    friend bool operator==(const AssetImportSettings&, const AssetImportSettings&) = default;
+};
+
+/// The virtual path of the import-settings sidecar of `virtualPath`: "<virtualPath>.asset.json".
+[[nodiscard]] std::string importSettingsPath(std::string_view virtualPath);
+
+/// Parses the content of a sidecar at `sidecarPath` (for messages). Errors: InvalidData for malformed JSON
+/// and settings of the wrong type, naming the sidecar. Keys it does not know are logged as one warning, so
+/// a misspelled setting does not go unnoticed.
+[[nodiscard]] Result<AssetImportSettings> parseImportSettings(std::span<const std::byte> bytes,
+                                                              std::string_view sidecarPath);
+
+/// What a loader can do while it loads an asset: load the assets it depends on, read other files, and see
+/// the asset's import settings. Only valid during AssetLoader::load().
 class AssetLoadContext {
 public:
     /// The normalized virtual path of the asset being loaded.
     [[nodiscard]] std::string_view path() const noexcept { return m_path; }
+
+    /// The asset's import settings: its sidecar's, or the defaults when it has none.
+    [[nodiscard]] const AssetImportSettings& settings() const noexcept { return m_settings; }
 
     /// A dependency, loaded through the registry like AssetRegistry::load<T>(path): a material's textures.
     /// The asset being loaded may keep it.
@@ -142,11 +167,13 @@ public:
 private:
     friend class AssetRegistry;
 
-    AssetLoadContext(AssetRegistry& registry, std::string_view path) noexcept
-        : m_registry(&registry), m_path(path) {}
+    AssetLoadContext(AssetRegistry& registry, std::string_view path,
+                     const AssetImportSettings& settings) noexcept
+        : m_registry(&registry), m_path(path), m_settings(settings) {}
 
     AssetRegistry* m_registry;
     std::string_view m_path;
+    const AssetImportSettings& m_settings;
 };
 
 /// Produces assets of type T from the bytes of their files. Registered per type with
@@ -321,6 +348,8 @@ private:
                                                               std::string_view virtualPath) const;
     // Through the mount table, or Unsupported without one.
     [[nodiscard]] Result<std::vector<std::byte>> readFile(std::string_view virtualPath) const;
+    // The settings of the sidecar of `normalizedPath`, or the defaults if it has none.
+    [[nodiscard]] Result<AssetImportSettings> readImportSettings(std::string_view normalizedPath) const;
 
     void addFallback(detail::AssetTypeId type, std::string_view pathSuffix, detail::ErasedObject fallback);
     // The fallback object for a failed load of `type` at `normalizedPath`, or null.
@@ -367,7 +396,8 @@ Asset<T> AssetRegistry::load(std::string_view virtualPath) {
                            findLoader(detail::assetTypeId<T>(), virtualPath));
         TESERRA_TRY_ASSIGN(const std::vector<std::byte> bytes, readFile(virtualPath));
         const std::string normalized = normalizeAssetPath(virtualPath);
-        AssetLoadContext context(*this, normalized);
+        TESERRA_TRY_ASSIGN(const AssetImportSettings settings, readImportSettings(normalized));
+        AssetLoadContext context(*this, normalized, settings);
         return static_cast<AssetLoader<T>*>(loader)->load(context, bytes);
     });
 }
