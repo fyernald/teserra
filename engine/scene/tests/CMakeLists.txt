@@ -1,6 +1,6 @@
 set(scene_render_tests "")
 if(TARGET teserra_renderer)
-    set(scene_render_tests render_extraction_test.cpp sprite_sheet_sprites_test.cpp tileset_test.cpp)
+    set(scene_render_tests render_extraction_test.cpp sprite_sheet_sprites_test.cpp tilemap_render_test.cpp tileset_test.cpp)
 endif()
 
 teserra_add_test(scene

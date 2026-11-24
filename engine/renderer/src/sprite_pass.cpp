@@ -16,6 +16,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <limits>
 #include <optional>
 #include <span>
 #include <utility>
@@ -102,6 +103,10 @@ Result<std::unique_ptr<SpritePass>> SpritePass::create(rhi::Device& device,
                                                               .magFilter = config.filter,
                                                               .mipmapMode = rhi::MipmapMode::Nearest,
                                                               .debugName = "Sprites"}));
+    TESERRA_TRY_ASSIGN(pass->m_tilemapSampler, device.createSampler({.minFilter = config.tilemapFilter,
+                                                                     .magFilter = config.tilemapFilter,
+                                                                     .mipmapMode = rhi::MipmapMode::Nearest,
+                                                                     .debugName = "Tilemap chunks"}));
 
     // The quad pattern of every sprite a batch may hold; draws pick theirs with a vertex offset.
     std::vector<u16> indices;
@@ -133,6 +138,7 @@ SpritePass::~SpritePass() {
     }
     m_device.destroy(m_indices);
     m_device.destroy(m_sampler);
+    m_device.destroy(m_tilemapSampler);
     m_device.destroy(m_pipelineLayout);
     m_device.destroy(m_materialLayout);
     m_device.destroy(m_fragmentShader);
@@ -144,11 +150,13 @@ void SpritePass::declare(PassBuilder& builder) {
 }
 
 void SpritePass::forgetTexture(rhi::TextureHandle texture) {
-    const auto found = std::ranges::find(m_textureGroups, texture, &TextureGroup::texture);
-    if (found != m_textureGroups.end()) {
-        m_device.destroy(found->group);
-        m_textureGroups.erase(found);
-    }
+    std::erase_if(m_textureGroups, [&](const TextureGroup& group) {
+        if (group.texture != texture) {
+            return false;
+        }
+        m_device.destroy(group.group);
+        return true;
+    });
 }
 
 rhi::GraphicsPipelineHandle SpritePass::pipeline(rhi::Format format, SpriteBlend blend) {
@@ -180,12 +188,15 @@ rhi::GraphicsPipelineHandle SpritePass::pipeline(rhi::Format format, SpriteBlend
     return handle;
 }
 
-rhi::BindGroupHandle SpritePass::textureGroup(rhi::TextureHandle texture) {
-    const auto found = std::ranges::find(m_textureGroups, texture, &TextureGroup::texture);
+rhi::BindGroupHandle SpritePass::textureGroup(rhi::TextureHandle texture, bool tilemap) {
+    const auto found = std::ranges::find_if(m_textureGroups, [&](const TextureGroup& group) {
+        return group.texture == texture && group.tilemap == tilemap;
+    });
     if (found != m_textureGroups.end()) {
         return found->group;
     }
-    const std::array entries{rhi::BindGroupEntry{.binding = 0, .texture = texture, .sampler = m_sampler}};
+    const std::array entries{rhi::BindGroupEntry{
+        .binding = 0, .texture = texture, .sampler = tilemap ? m_tilemapSampler : m_sampler}};
     Result<rhi::BindGroupHandle> created = m_device.createBindGroup(
         {.layout = m_materialLayout, .entries = entries, .debugName = "Sprite texture"});
     if (!created) {
@@ -193,12 +204,36 @@ rhi::BindGroupHandle SpritePass::textureGroup(rhi::TextureHandle texture) {
                           texture, created.error());
         return {};
     }
-    m_textureGroups.push_back({.texture = texture, .group = *created});
+    m_textureGroups.push_back({.texture = texture, .tilemap = tilemap, .group = *created});
     return *created;
+}
+
+bool SpritePass::bindDraw(rhi::CommandList& commands, Bound& bound, rhi::Format format, SpriteBlend blend,
+                          rhi::TextureHandle texture, bool tilemap, rhi::BufferHandle vertices,
+                          u64 vertexOffset) {
+    const rhi::GraphicsPipelineHandle drawPipeline = pipeline(format, blend);
+    const rhi::BindGroupHandle group = textureGroup(texture, tilemap);
+    if (drawPipeline.isNull() || group.isNull()) {
+        return false; // logged when creation failed
+    }
+    if (drawPipeline != bound.pipeline) {
+        commands.bindPipeline(drawPipeline);
+        bound.pipeline = drawPipeline;
+    }
+    if (group != bound.group) {
+        commands.bindGroup(rhi::kMaterialGroup, group);
+        bound.group = group;
+    }
+    if (vertices != bound.vertices) {
+        commands.bindVertexBuffer(0, vertices, vertexOffset);
+        bound.vertices = vertices;
+    }
+    return true;
 }
 
 void SpritePass::execute(PassContext& context, rhi::CommandList& commands) {
     const std::span<const SpriteDrawItem> sprites = context.packet().sprites;
+    const std::span<const TilemapChunkDrawItem> chunks = context.packet().tilemapChunks;
     const std::span<const RenderView> views = context.views();
     const FrameTarget& target = context.target(PassResource::SceneColor);
     m_stats = {.sprites = static_cast<u32>(sprites.size())};
@@ -209,8 +244,18 @@ void SpritePass::execute(PassContext& context, rhi::CommandList& commands) {
         vertices = context.uploads().allocate(m_batcher.vertexBytes(), kVertexAlignment);
         if (vertices) {
             m_batcher.writeVertices(sprites, vertices->memory);
+            m_stats.batches = static_cast<u32>(m_batcher.batches().size());
         }
     }
+    // Chunks with quads by layer, keeping the order of the packet within a layer.
+    m_chunkOrder.clear();
+    for (u32 chunk = 0; chunk < chunks.size(); ++chunk) {
+        if (chunks[chunk].quadCount > 0 && !chunks[chunk].vertexBuffer.isNull()) {
+            m_chunkOrder.push_back(chunk);
+        }
+    }
+    std::ranges::stable_sort(m_chunkOrder, {}, [&](u32 chunk) { return chunks[chunk].layer; });
+    m_stats.tilemapChunks = static_cast<u32>(m_chunkOrder.size());
 
     const Color clear = views.empty() ? Color{} : views.front().clearColor;
     commands.beginRenderPass({.colorAttachments = {{
@@ -219,39 +264,62 @@ void SpritePass::execute(PassContext& context, rhi::CommandList& commands) {
                                   .storeOp = rhi::StoreOp::Store,
                                   .clearColor = {clear.r, clear.g, clear.b, clear.a},
                               }}});
-    if (vertices) { // no sprites, or allocate() asserted: only the clear
-        m_stats.batches = static_cast<u32>(m_batcher.batches().size());
-        for (usize view = 0; view < views.size(); ++view) {
-            const rhi::Viewport area = viewportOf(views[view], target.size);
-            commands.setViewport(area);
-            commands.setScissor({.x = static_cast<u32>(std::max(area.x, 0.0F)),
-                                 .y = static_cast<u32>(std::max(area.y, 0.0F)),
-                                 .width = static_cast<u32>(area.width),
-                                 .height = static_cast<u32>(area.height)});
-            context.bindView(commands, view);
-            commands.bindVertexBuffer(0, vertices->buffer, vertices->offset);
-            commands.bindIndexBuffer(m_indices, rhi::IndexType::Uint16);
-            rhi::GraphicsPipelineHandle boundPipeline;
-            rhi::BindGroupHandle boundGroup;
-            for (const SpriteBatch& batch : m_batcher.batches()) {
-                const rhi::GraphicsPipelineHandle batchPipeline = pipeline(target.format, batch.blend);
-                const rhi::BindGroupHandle group = textureGroup(batch.texture);
-                if (batchPipeline.isNull() || group.isNull()) {
-                    continue; // logged when creation failed
+    // Without sprite vertices (no sprites, or allocate() asserted) the batches are left out; chunks still
+    // draw.
+    const UploadRing::Allocation* spriteVertices = vertices ? &*vertices : nullptr;
+    const std::span<const SpriteBatch> batches =
+        spriteVertices != nullptr ? m_batcher.batches() : std::span<const SpriteBatch>{};
+    const std::span<const u32> order = m_batcher.order();
+    const bool anything = !batches.empty() || !m_chunkOrder.empty();
+    for (usize view = 0; anything && view < views.size(); ++view) {
+        const rhi::Viewport area = viewportOf(views[view], target.size);
+        commands.setViewport(area);
+        commands.setScissor({.x = static_cast<u32>(std::max(area.x, 0.0F)),
+                             .y = static_cast<u32>(std::max(area.y, 0.0F)),
+                             .width = static_cast<u32>(area.width),
+                             .height = static_cast<u32>(area.height)});
+        context.bindView(commands, view);
+        commands.bindIndexBuffer(m_indices, rhi::IndexType::Uint16);
+        Bound bound;
+
+        usize nextChunk = 0;
+        // Draws the chunks not drawn yet whose layer is at most `layer`.
+        const auto drawChunksUpTo = [&](i32 layer) {
+            for (; nextChunk < m_chunkOrder.size() && chunks[m_chunkOrder[nextChunk]].layer <= layer;
+                 ++nextChunk) {
+                const TilemapChunkDrawItem& chunk = chunks[m_chunkOrder[nextChunk]];
+                if (bindDraw(commands, bound, target.format, chunk.blend, chunk.texture, true,
+                             chunk.vertexBuffer, 0)) {
+                    commands.drawIndexed({.indexCount = chunk.quadCount * 6});
+                    ++m_stats.drawCalls;
                 }
-                if (batchPipeline != boundPipeline) {
-                    commands.bindPipeline(batchPipeline);
-                    boundPipeline = batchPipeline;
+            }
+        };
+        for (const SpriteBatch& batch : batches) {
+            u32 first = batch.firstSprite;
+            const u32 end = batch.firstSprite + batch.spriteCount;
+            while (first < end) {
+                drawChunksUpTo(sprites[order[first]].layer);
+                // The sprites below the next chunk's layer draw together; without chunks left, the whole
+                // rest.
+                u32 last = end;
+                if (nextChunk < m_chunkOrder.size()) {
+                    const i16 chunkLayer = chunks[m_chunkOrder[nextChunk]].layer;
+                    last = first + 1;
+                    while (last < end && sprites[order[last]].layer < chunkLayer) {
+                        ++last;
+                    }
                 }
-                if (group != boundGroup) {
-                    commands.bindGroup(rhi::kMaterialGroup, group);
-                    boundGroup = group;
+                if (bindDraw(commands, bound, target.format, batch.blend, batch.texture, false,
+                             spriteVertices->buffer, spriteVertices->offset)) {
+                    commands.drawIndexed(
+                        {.indexCount = (last - first) * 6, .vertexOffset = static_cast<i32>(first * 4)});
+                    ++m_stats.drawCalls;
                 }
-                commands.drawIndexed({.indexCount = batch.spriteCount * 6,
-                                      .vertexOffset = static_cast<i32>(batch.firstSprite * 4)});
-                ++m_stats.drawCalls;
+                first = last;
             }
         }
+        drawChunksUpTo(std::numeric_limits<i32>::max());
     }
     commands.endRenderPass();
 }

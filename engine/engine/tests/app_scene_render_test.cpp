@@ -6,6 +6,8 @@
 #include <teserra/rhi_null/null_device.hpp>
 #include <teserra/scene/render_components.hpp>
 #include <teserra/scene/render_extraction.hpp>
+#include <teserra/scene/tilemap.hpp>
+#include <teserra/scene/tileset.hpp>
 #include <teserra/scene/transform.hpp>
 #include <teserra/test/allocation_counter.hpp>
 
@@ -86,6 +88,38 @@ TEST_CASE("App: the active scene's sprites are drawn without a render callback",
     const std::string commands = rhi::describeCommands(*device.submitted()[0]);
     CHECK(countOf(commands, "DrawIndexed") == 1); // both sprites in one batch
     CHECK(commands.find("BeginRenderPass") != std::string::npos);
+}
+
+TEST_CASE("App: the active scene's tilemaps are drawn from cached chunk meshes",
+          "[engine][app][scene][render]") {
+    App app(nullConfig(3), std::make_unique<test::HeadlessPlatform>());
+    REQUIRE(app.isInitialized());
+    scene::Scene& level = app.scenes().create("level");
+    buildScene(level, whiteTexture(app), 1);
+    const rhi::TextureHandle tiles = *app.device().createTexture({.width = 16, .height = 16});
+    const assets::Asset<renderer::Texture> texture =
+        app.assets().load<renderer::Texture>("game://tiles", [&]() -> Result<renderer::Texture> {
+            return renderer::Texture(app.device(), tiles, {16, 16});
+        });
+    const scene::Tileset tileset = scene::Tileset::grid(texture, {.cellSize = {16, 16}}).value();
+
+    const ecs::Entity map = level.spawn();
+    level.add<scene::Transform>(map);
+    scene::Tilemap tilemap;
+    tilemap.addLayer("ground").setTile({-1, 0}, 1);
+    tilemap.layers[0].setTile({0, 0}, 1);
+    level.add<scene::Tilemap>(map, std::move(tilemap));
+    level.add<scene::TilemapRenderer>(map, scene::TilemapRenderer{.tileset = &tileset});
+
+    CHECK(app.run(level) == 0);
+    const auto& extraction = level.world().resource<scene::RenderExtraction>();
+    CHECK(extraction.packet.tilemapChunks.size() == 2);
+    CHECK(extraction.builtChunks == 0); // built in the first frame, reused since
+
+    const auto& device = static_cast<rhi::null::NullDevice&>(app.device());
+    REQUIRE(device.submitted().size() == 1);
+    const std::string commands = rhi::describeCommands(*device.submitted()[0]);
+    CHECK(countOf(commands, "DrawIndexed") == 3); // two chunks under one sprite batch
 }
 
 TEST_CASE("App: a scene without a camera is cleared", "[engine][app][scene][render]") {

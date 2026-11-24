@@ -127,9 +127,19 @@ The data model (`<teserra/scene/tilemap.hpp>`, #88):
 
 - A `Tilemap` component has a `tileSize` in world units and `layers`, drawn in order. Tile (x, y) covers `[x, x + 1) × [y, y + 1)` times `tileSize` in the entity's local space, +Y up (ADR-0024); Tiled's row-down maps are flipped by the importer.
 - A `TilemapLayer` stores `TileId`s (`u32`; 0 = `kNoTile`, n = tile n - 1 of the tileset, Tiled's gid without flip bits) in 32×32 `TilemapChunk`s in a hash map keyed by chunk coordinate (`chunkOf()`, floor division, so negative coordinates work). Chunks without tiles are never allocated; a chunk emptied by edits stays allocated so the renderer sees the change.
-- `setTile()` marks a chunk `dirty` only when a value changes; the renderer rebuilds dirty chunks and calls `clearDirty()`.
+- `setTile()` marks a chunk `dirty` only when a value changes; extraction rebuilds dirty chunks and calls `clearDirty()`.
 - A `Tileset` (with the renderer) is a `SpriteSheet` plus per-tile `TileProperties` (`solid`); tiles without properties get the defaults.
 - Gameplay asks the map through a `TilemapQuery` (`<teserra/scene/tile_queries.hpp>`, #91): the map plus its entity's world matrix. `tileAt(layer, worldPos)` reads the tile under a point; `tilesOverlapping(layer, box, f)` visits the tiles whose inside a world box overlaps, chunk by chunk, with a callback, so queries never allocate. A box that only touches a tile's edge does not reach it, so a body resting on the ground does not overlap it. `isSolidAt()` and `overlapsSolid()` combine a query with a `Tileset`'s `solid` property.
+
+Rendering (#89):
+
+- An entity with a `Tilemap`, a `scene::TilemapRenderer` (the `Tileset`, tint, blend, `layer` and `layerSpacing`, `visible`) and a `GlobalTransform` is drawn. Tilemap layer i draws at sprite layer `layer + i * layerSpacing`; a spacing above 1 leaves sprite layers between tile layers.
+- **Chunk meshes** live in a `renderer::ChunkMeshCache`, which the App owns and hands to the active scene's `RenderExtraction` (`chunkMeshes`). Each mesh is a GPU-only vertex buffer of `SpriteVertex` quads in world space, keyed by `ChunkMeshKey {scope (the world), owner (the entity), layer, chunk}`, and reused while it is large enough.
+- **Extraction** visits the chunks of each layer. A chunk whose world `Aabb` (`chunkBounds()`) misses every view is culled (`culledChunks`) and keeps its dirty flag. A visible chunk is rebuilt when it is dirty, missing from the cache, moved (its world matrix changed), or drawn differently (tileset, texture, tint, tile size). Rebuilt chunks are counted in `builtChunks`. A steady-state frame builds nothing and allocates nothing.
+- Meshes unused for 300 frames are evicted (the tilemap went away or has been out of view); extraction rebuilds whatever it does not find.
+- **Drawing:** `TilemapChunkDrawItem {vertexBuffer, quadCount, texture, blend, layer}`. The sprite pass draws chunks with the `sprite_unlit` material and the sprite quad index buffer. Each chunk draws before the first sprite of its layer or a higher one, splitting a sprite batch where needed. Chunks sample their texture with `SpritePassConfig::tilemapFilter` (nearest by default).
+- **No seams:** corners come from integer tile coordinates, so neighboring quads share their edges exactly. UVs are pulled in by 1/64 of a texel, so nearest sampling never reaches the next tile of the sheet.
+- Vertices are in world space because `sprite_unlit` has no model matrix. A map that moves rebuilds its visible chunks (counted, and fine for static maps); per-draw model matrices come with materials (#97).
 
 ## Materials, shaders and uniforms
 

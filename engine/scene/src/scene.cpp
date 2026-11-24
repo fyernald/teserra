@@ -24,6 +24,8 @@ Scene::Scene(std::string name)
         .reads<Camera>()
         .reads<GlobalTransform>()
         .reads<SpriteRenderer>()
+        .reads<TilemapRenderer>()
+        .writes<Tilemap>()
         .readsResource<Time>()
         .writesResource<RenderExtraction>();
 #endif

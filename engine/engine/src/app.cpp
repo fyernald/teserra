@@ -241,6 +241,10 @@ void App::runFrame(const AppCallbacks& callbacks) {
         if (auto* extraction = active->world().tryResource<scene::RenderExtraction>()) {
             const rhi::Swapchain* swapchain = m_device ? m_device->swapchain() : nullptr;
             extraction->targetSize = swapchain != nullptr ? swapchain->size() : UVec2{0U};
+            if (m_device && !m_chunkMeshes) {
+                m_chunkMeshes = std::make_unique<renderer::ChunkMeshCache>(*m_device);
+            }
+            extraction->chunkMeshes = m_chunkMeshes.get();
         }
     }
     runPhase(ecs::Phase::Extract);

@@ -5,6 +5,7 @@
 #include <teserra/renderer/sprite_pass.hpp>
 
 #include <teserra/renderer/renderer.hpp>
+#include <teserra/rhi/buffer.hpp>
 #include <teserra/rhi_null/null_device.hpp>
 #include <teserra/test/allocation_counter.hpp>
 
@@ -188,4 +189,65 @@ TEST_CASE("Sprite pass: forgetTexture destroys the texture's bind group", "[rend
     CHECK(scene.device->liveObjectCount() == withGroup - 1);
     scene.sprites->forgetTexture(scene.textures[0]); // nothing left to forget
     CHECK(scene.device->liveObjectCount() == withGroup - 1);
+}
+
+TEST_CASE("Sprite pass: tilemap chunks draw before the sprites of their layer",
+          "[renderer][sprites][tilemap]") {
+    Scene scene(2);
+    const rhi::TextureHandle tiles = scene.textures[0];
+    const rhi::TextureHandle hero = scene.textures[1];
+    std::vector<rhi::BufferHandle> buffers;
+    buffers.reserve(3);
+    for (int i = 0; i < 3; ++i) {
+        buffers.push_back(*scene.device->createBuffer(
+            {.sizeInBytes = 4096, .usage = rhi::BufferUsage::Vertex | rhi::BufferUsage::CopyDst}));
+    }
+    // Chunks given out of layer order; one has no quads and is skipped.
+    scene.packet.tilemapChunks = {
+        {.vertexBuffer = buffers[0], .quadCount = 3, .texture = tiles, .layer = 2},
+        {.vertexBuffer = buffers[1], .quadCount = 5, .texture = tiles, .layer = 0},
+        {.vertexBuffer = buffers[2], .quadCount = 0, .texture = tiles, .layer = 1},
+    };
+    // Sprites on layers 0, 1 and 3, all of one texture: one batch that the chunk of layer 2 splits.
+    scene.packet.sprites = {
+        {.texture = hero, .layer = 0}, {.texture = hero, .layer = 1}, {.texture = hero, .layer = 3}};
+
+    const std::vector<std::string> draws = linesStartingWith(scene.render(), "DrawIndexed");
+    // Layer 0 chunk, sprites of layers 0 and 1, layer 2 chunk, sprite of layer 3.
+    CHECK(draws ==
+          std::vector<std::string>{
+              "DrawIndexed indexCount=30 instanceCount=1 firstIndex=0 vertexOffset=0 firstInstance=0",
+              "DrawIndexed indexCount=12 instanceCount=1 firstIndex=0 vertexOffset=0 firstInstance=0",
+              "DrawIndexed indexCount=18 instanceCount=1 firstIndex=0 vertexOffset=0 firstInstance=0",
+              "DrawIndexed indexCount=6 instanceCount=1 firstIndex=0 vertexOffset=8 firstInstance=0",
+          });
+    CHECK(scene.sprites->stats().tilemapChunks == 2);
+    CHECK(scene.sprites->stats().batches == 1);
+    CHECK(scene.sprites->stats().drawCalls == 4);
+    for (const rhi::BufferHandle buffer : buffers) {
+        scene.device->destroy(buffer);
+    }
+}
+
+TEST_CASE("Sprite pass: tilemap chunks draw without sprites, with their own sampler",
+          "[renderer][sprites][tilemap]") {
+    Scene scene(1);
+    const rhi::BufferHandle buffer = *scene.device->createBuffer(
+        {.sizeInBytes = 4096, .usage = rhi::BufferUsage::Vertex | rhi::BufferUsage::CopyDst});
+    scene.packet.tilemapChunks = {{.vertexBuffer = buffer, .quadCount = 1, .texture = scene.textures[0]},
+                                  {.vertexBuffer = buffer, .quadCount = 2, .texture = scene.textures[0]}};
+    const std::vector<std::string> lines = scene.render();
+    CHECK(countStartingWith(lines, "DrawIndexed") == 2);
+    CHECK(countStartingWith(lines, "BindVertexBuffer") == 1); // the same buffer stays bound
+    CHECK(countStartingWith(lines, "BindGroup index=2") == 1);
+    const usize objects = scene.device->liveObjectCount();
+
+    // The same texture on a sprite gets a second group, with the sprite sampler.
+    scene.packet.sprites = {{.texture = scene.textures[0], .layer = 5}};
+    const std::vector<std::string> mixed = scene.render();
+    CHECK(countStartingWith(mixed, "BindGroup index=2") == 2);
+    CHECK(scene.device->liveObjectCount() == objects + 1);
+    scene.sprites->forgetTexture(scene.textures[0]); // both groups
+    CHECK(scene.device->liveObjectCount() == objects - 1);
+    scene.device->destroy(buffer);
 }
