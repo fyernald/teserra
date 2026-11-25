@@ -107,6 +107,16 @@ public:
         return m_world->tryGet<std::remove_const_t<T>>(entity);
     }
 
+    /// Whether `entity` has a T, tags included (false if it is not alive): random access for components that
+    /// tryGet() cannot return, such as a tag on the other entity of a collision. Needs reads<T>() or
+    /// writes<T>() (asserted).
+    template <typename T>
+        requires Component<std::remove_const_t<T>>
+    [[nodiscard]] bool has(Entity entity) const {
+        requireComponent<const std::remove_const_t<T>>();
+        return m_world->isAlive(entity) && m_world->has<std::remove_const_t<T>>(entity);
+    }
+
     /// Whether `entity` is alive. Needs no declaration.
     [[nodiscard]] bool isAlive(Entity entity) const noexcept { return m_world->isAlive(entity); }
 

@@ -164,14 +164,9 @@ int main(int argc, char** argv) { // NOLINT(bugprone-exception-escape)
     // The art, as a texture asset that the sprite sheet keeps loaded.
     const std::vector<std::byte> art = drawArt();
     rhi::Device& device = app.device();
-    const assets::Asset<renderer::Texture> texture =
-        app.assets().load<renderer::Texture>("game://art", [&]() -> Result<renderer::Texture> {
-            TESERRA_TRY_ASSIGN(
-                const rhi::TextureHandle handle,
-                device.createTexture({.width = 16 * kCellCount, .height = 16, .debugName = "Art"}));
-            device.writeTexture(handle, {.width = 16 * kCellCount, .height = 16}, art);
-            return renderer::Texture(device, handle, {16 * kCellCount, 16});
-        });
+    const assets::Asset<renderer::Texture> texture = app.assets().load<renderer::Texture>("game://art", [&] {
+        return renderer::Texture::create(device, {16 * kCellCount, 16}, art, rhi::Format::Rgba8Srgb, "Art");
+    });
     auto sheet = renderer::SpriteSheet::grid(texture, {.cellSize = {16, 16}, .count = kCellCount});
     if (!sheet) {
         TESERRA_LOG_ERROR(LogCategory::App, "Cannot cut the art: {}", sheet.error());

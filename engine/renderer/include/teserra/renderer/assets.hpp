@@ -13,6 +13,7 @@
 #include <teserra/core/result.hpp>
 #include <teserra/core/types.hpp>
 #include <teserra/rhi/device.hpp>
+#include <teserra/rhi/format.hpp>
 #include <teserra/rhi/handles.hpp>
 #include <teserra/rhi/shader.hpp>
 #include <teserra/rhi/shader_blob.hpp>
@@ -69,6 +70,18 @@ public:
     /// Takes ownership of `handle`, a texture of `device` of `size` texels.
     Texture(rhi::Device& device, rhi::TextureHandle handle, UVec2 size) noexcept
         : m_texture(device, handle), m_size(size) {}
+
+    /// A texture of `size` texels of `format` (one mip level, sampled) filled with `texels`: rows top row
+    /// first, tightly packed. For art made in code:
+    ///
+    ///     registry.load<Texture>("game://atlas", [&] { return Texture::create(device, {64, 16}, texels); });
+    ///
+    /// Fails (InvalidArgument) if a size is 0 or `texels` is not exactly the texture's bytes, and if the
+    /// device cannot create the texture.
+    [[nodiscard]] static Result<Texture> create(rhi::Device& device, UVec2 size,
+                                                std::span<const std::byte> texels,
+                                                rhi::Format format = rhi::Format::Rgba8Srgb,
+                                                std::string_view debugName = {});
 
     [[nodiscard]] rhi::TextureHandle handle() const noexcept { return m_texture.handle(); }
     /// Width and height in texels.

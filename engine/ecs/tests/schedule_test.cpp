@@ -296,6 +296,31 @@ TEST_CASE("Schedule: running another world uses that world's commands", "[ecs][s
 
 #if TESERRA_ENABLE_ASSERTS
 
+TEST_CASE("Schedule: systems test entities for components, tags included", "[ecs][schedule]") {
+    Schedule schedule;
+    World world;
+    const Entity frozen = world.create();
+    world.add<Position>(frozen);
+    world.add<Frozen>(frozen);
+    const Entity free = world.create();
+    world.add<Position>(free);
+    const Entity gone = world.create();
+    world.add<Frozen>(gone);
+    world.destroy(gone);
+
+    std::vector<bool> seen;
+    schedule
+        .add(Phase::Update, "inspect",
+             [&](SystemContext& ctx) {
+                 seen = {ctx.has<Frozen>(frozen), ctx.has<Frozen>(free), ctx.has<const Frozen>(gone),
+                         ctx.has<Position>(free)};
+             })
+        .reads<Frozen>()
+        .writes<Position>(); // a write implies a read
+    schedule.run(Phase::Update, world);
+    CHECK(seen == std::vector<bool>{true, false, false, true});
+}
+
 TEST_CASE("Schedule: undeclared access asserts with the system and type", "[ecs][schedule][validation]") {
     Schedule schedule;
     World world;

@@ -52,6 +52,21 @@ Result<Shader> createFallbackShader(rhi::Device& device, rhi::ShaderStage stage,
 
 } // namespace
 
+Result<Texture> Texture::create(rhi::Device& device, UVec2 size, std::span<const std::byte> texels,
+                                rhi::Format format, std::string_view debugName) {
+    const u64 expected = rhi::textureDataSize(format, {.width = size.x, .height = size.y}, 0);
+    if (size.x == 0 || size.y == 0 || texels.size() != expected) {
+        return fail(ErrorCode::InvalidArgument, Module::Renderer,
+                    "Texture '{}' of {}x{} texels needs {} bytes, not {}", debugName, size.x, size.y,
+                    expected, texels.size());
+    }
+    TESERRA_TRY_ASSIGN(
+        const rhi::TextureHandle handle,
+        device.createTexture({.format = format, .width = size.x, .height = size.y, .debugName = debugName}));
+    device.writeTexture(handle, {.width = size.x, .height = size.y}, texels);
+    return Texture(device, handle, size);
+}
+
 std::span<const std::string_view> TextureLoader::extensions() const {
     static constexpr std::array<std::string_view, 1> kExtensions{"png"};
     return kExtensions;

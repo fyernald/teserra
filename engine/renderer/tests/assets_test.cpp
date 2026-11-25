@@ -211,3 +211,22 @@ TEST_CASE("Renderer assets: a shader file is not a texture", "[renderer][assets]
     REQUIRE(errorCount(logs) == 1);
     CHECK(logs.records().front().message.find("'.tshader'") != std::string::npos);
 }
+
+TEST_CASE("Renderer assets: Texture::create makes a texture from texels", "[renderer][assets]") {
+    Fixture fixture;
+    const std::array<std::byte, 8> texels{std::byte{1}, std::byte{2}, std::byte{3}, std::byte{4},
+                                          std::byte{5}, std::byte{6}, std::byte{7}, std::byte{8}};
+    Result<Texture> made = Texture::create(*fixture.device, {2, 1}, texels, rhi::Format::Rgba8Unorm, "Made");
+    REQUIRE(made.has_value());
+    CHECK(made->size() == UVec2{2, 1});
+    const rhi::TextureDesc* desc = fixture.device->texture(made->handle());
+    REQUIRE(desc != nullptr);
+    CHECK(desc->format == rhi::Format::Rgba8Unorm);
+    CHECK(desc->debugName == "Made");
+    CHECK(std::ranges::equal(fixture.device->textureData(made->handle()), texels));
+
+    const Result<Texture> wrong = Texture::create(*fixture.device, {2, 2}, texels);
+    REQUIRE_FALSE(wrong.has_value());
+    CHECK(wrong.error().message == "Texture '' of 2x2 texels needs 16 bytes, not 8");
+    CHECK_FALSE(Texture::create(*fixture.device, {0, 1}, {}).has_value());
+}
