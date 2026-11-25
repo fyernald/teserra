@@ -1,7 +1,7 @@
 {
   "$schema": "https://raw.githubusercontent.com/microsoft/vcpkg-tool/main/docs/vcpkg.schema.json",
   "name": "teserra",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "A modern C++20 game engine for indie developers",
   "homepage": "https://github.com/fyernald/teserra",
   "license": "MIT",
