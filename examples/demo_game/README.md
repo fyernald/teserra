@@ -6,9 +6,10 @@ Collect every coin in the cave, then reach the door. Spikes and slimes send you 
 
 | Key | Action |
 |---|---|
+| Enter | Start, or play again from the win screen |
 | WASD / arrows | Move |
 | F1 | Show the colliders |
-| Esc | Quit |
+| Esc | Back to the menu; quit from the menu |
 
 ## Feature list (frozen for #104)
 
@@ -20,7 +21,9 @@ Collect every coin in the cave, then reach the door. Spikes and slimes send you 
 - The camera follows the hero inside the level's bounds; the HUD is a child of the camera.
 - 320x180 rendering, scaled by whole factors to the window (`AppConfig::sceneTarget`), with nearest filtering.
 
-Scene switching (menu, level, win screen) comes with #105.
+## Screens (#105)
+
+The menu, the level and the win screen are three scenes of the App's `SceneManager` (`flow.cpp`). A screen's content is built when it is entered and cleared one frame after it is left, when it no longer runs. Each screen's systems request the next screen through a `ScreenRequest` resource, and `Flow::update()` acts on it between frames. The menu and the win screen use a 3x5 pixel font (`font.cpp`). The level does not, so switching to the level releases the font at the end of that frame, and the log shows the asset and entity counts after every switch. Playing again rebuilds the level with the same counts every time. The atlas is shared by all three screens.
 
 ## Art
 

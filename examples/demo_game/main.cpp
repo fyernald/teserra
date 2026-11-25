@@ -1,28 +1,29 @@
-// Demo game (iteration 14, #104): a small top-down game built only on Teserra's public API. Collect every
-// coin in the cave, then reach the door; spikes and slimes send you back to the start.
+// Demo game (iteration 14, #104, #105): a small top-down game built only on Teserra's public API. Collect
+// every coin in the cave, then reach the door; spikes and slimes send you back to the start. A menu, the
+// level and a win screen are scenes that the game switches between.
 //
+//   Enter           start / play again
 //   WASD / arrows   move
 //   F1              show the colliders
-//   Esc             quit
+//   Esc             back to the menu; quit from the menu
 //
 //   teserra_demo_game                                  until Escape or close
 //   teserra_demo_game --frames 600 --hidden-window     smoke run
 //
 // The game renders at 320x180 and is scaled by whole factors to the window. Its art is drawn in code
-// (art.cpp); its rules are components and systems (gameplay.cpp).
+// (art.cpp, font.cpp); its rules are components and systems (gameplay.cpp); its screens are scenes
+// (flow.cpp).
 
 #include <teserra/assets/asset_registry.hpp>
 #include <teserra/core/log.hpp>
 #include <teserra/core/result.hpp>
 #include <teserra/engine/app.hpp>
-#include <teserra/platform/input.hpp>
-#include <teserra/platform/key.hpp>
 #include <teserra/renderer/assets.hpp>
 #include <teserra/rhi/sampler.hpp>
-#include <teserra/scene/collision_debug.hpp>
 #include <teserra/scene/tileset.hpp>
 
 #include "art.hpp"
+#include "flow.hpp"
 #include "gameplay.hpp"
 
 #include <utility>
@@ -65,20 +66,8 @@ int main(int argc, char** argv) { // NOLINT(bugprone-exception-escape)
         return 1;
     }
 
-    scene::Scene& level = app.scenes().create("level");
-    demo::buildLevel(level, *tileset);
-    demo::addGameplaySystems(level);
-
-    const int exitCode = app.run(level, {.update = [&](engine::App& running, f32) {
-                                     const platform::Input& input = running.input();
-                                     if (input.wasPressed(platform::Key::Escape)) {
-                                         running.quit();
-                                     }
-                                     if (input.wasPressed(platform::Key::F1)) {
-                                         auto& debug = level.world().resource<scene::CollisionDebug>();
-                                         debug.enabled = !debug.enabled;
-                                     }
-                                 }});
+    demo::Flow flow(app, *tileset);
+    const int exitCode = app.run(flow.start(), {.update = [&](engine::App&, f32) { flow.update(); }});
     log::flush();
     return exitCode;
 }
