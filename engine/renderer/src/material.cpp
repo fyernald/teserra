@@ -300,7 +300,7 @@ bool writeParameter(const MaterialParameter& parameter, std::span<std::byte> blo
     std::array<f32, 16> values{};
     for (int column = 0; column < 4; ++column) {
         for (int row = 0; row < 4; ++row) {
-            values[static_cast<usize>((column * 4) + row)] = value[column][row];
+            values[(static_cast<usize>(column) * 4) + static_cast<usize>(row)] = value[column][row];
         }
     }
     return writeValues(parameter, block, rhi::ShaderScalarType::Float, 4, 4, values.data(), sizeof(values));
@@ -472,7 +472,8 @@ Result<Material> MaterialLoader::load(assets::AssetLoadContext& context, std::sp
         }
         return loaded;
     };
-    Material::Desc desc{.debugName = context.path()};
+    // Every member is named: Clang's -Wmissing-designated-field-initializers (in -Wextra) flags the rest.
+    Material::Desc desc{.vertex = {}, .fragment = {}, .debugName = context.path()};
     TESERRA_TRY_ASSIGN(desc.vertex, shader("vertex"));
     TESERRA_TRY_ASSIGN(desc.fragment, shader("fragment"));
     if (root["blend"].exists()) {
