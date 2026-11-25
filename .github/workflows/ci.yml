@@ -83,6 +83,9 @@ jobs:
       checks: write # test result annotations
     env:
       VCPKG_TRIPLET: x64-windows
+      # Mesa for the GPU step (#110): pinned, and checked against the release asset's SHA-256.
+      MESA_VERSION: 26.3.0
+      MESA_SHA256: c505fcc77e8f63a09d7ddac086591d2f542c0698d37fc9e3094685a34d0d9991
     steps:
       - uses: actions/checkout@v7
 
@@ -149,6 +152,57 @@ jobs:
         run: |
           echo "::add-matcher::.github/problem-matchers/catch2.json"
           ctest --preset ${{ matrix.preset }}
+
+      # GPU tests and example smoke runs on Mesa's llvmpipe, a software OpenGL 4.6 driver (#110, spike #52):
+      # Windows loads an opengl32.dll next to the executable before the system's. TESERRA_REQUIRE_GPU_TESTS
+      # makes a GPU test that cannot get a context fail instead of skip, and the step fails if any test did
+      # not run, so a broken Mesa deployment or a broken example cannot pass as a skip. Debug job only: one
+      # build is enough, and llvmpipe adds about a minute. TESERRA_GPU_BACKEND names the backend of the
+      # backend-independent GPU tests; a Vulkan backend (lavapipe, same Mesa package) runs this step again.
+      - name: Restore Mesa
+        if: matrix.preset == 'ci-windows'
+        id: mesa-cache
+        uses: actions/cache@v6
+        with:
+          path: ${{ runner.temp }}/mesa
+          key: mesa-${{ env.MESA_VERSION }}-msvc-x64
+
+      - name: Download Mesa
+        if: matrix.preset == 'ci-windows' && steps.mesa-cache.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: |
+          $archive = Join-Path $env:RUNNER_TEMP "mesa.7z"
+          $url = "https://github.com/pal1000/mesa-dist-win/releases/download/$env:MESA_VERSION/mesa3d-$env:MESA_VERSION-release-msvc.7z"
+          Invoke-WebRequest -Uri $url -OutFile $archive
+          $hash = (Get-FileHash $archive -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($hash -ne $env:MESA_SHA256) { throw "Mesa archive SHA-256 is $hash, expected $env:MESA_SHA256" }
+          7z x $archive "-o$env:RUNNER_TEMP\mesa" "x64\opengl32.dll" "x64\libgallium_wgl.dll" -y | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw "7z failed with $LASTEXITCODE" }
+
+      - name: GPU tests on llvmpipe
+        if: matrix.preset == 'ci-windows'
+        shell: pwsh
+        env:
+          TESERRA_REQUIRE_GPU_TESTS: "1"
+          TESERRA_GPU_BACKEND: opengl
+          GALLIUM_DRIVER: llvmpipe
+        run: |
+          $mesa = Join-Path $env:RUNNER_TEMP "mesa\x64"
+          foreach ($dll in "opengl32.dll", "libgallium_wgl.dll") {
+            if (-not (Test-Path (Join-Path $mesa $dll))) { throw "Mesa's $dll is missing from $mesa" }
+          }
+          $dirs = Get-ChildItem build/${{ matrix.preset }} -Recurse -Filter "teserra_*.exe" |
+            ForEach-Object DirectoryName | Sort-Object -Unique
+          foreach ($dir in $dirs) { Copy-Item (Join-Path $mesa "*.dll") $dir }
+          Write-Host "Mesa $env:MESA_VERSION next to the executables in $($dirs.Count) directories"
+          echo "::add-matcher::.github/problem-matchers/catch2.json"
+          ctest --preset ${{ matrix.preset }} 2>&1 | Tee-Object -FilePath ctest-gpu.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $notRun = Select-String -Path ctest-gpu.log -Pattern "\((Skipped|Not Run)\)"
+          if ($notRun) {
+            $notRun | ForEach-Object { Write-Host "::error::Did not run on llvmpipe: $($_.Line.Trim())" }
+            exit 1
+          }
 
       - name: Annotate test results
         if: always() && hashFiles('build/${{ matrix.preset }}/junit.xml') != ''

@@ -110,6 +110,8 @@ All notable user-visible changes to Teserra are documented here. The format foll
 
 - Profiling with Tracy 0.13.1 (#107, ADR-0023): `TESERRA_ENABLE_PROFILING` (vcpkg feature `profiling`, on-demand) turns the `TESERRA_PROFILE_*` macros into Tracy zones; the new `TESERRA_PROFILE_SCOPE_DYNAMIC(name)` names a zone at run time. The timeline shows frames, the App's frame steps, every scene phase and system, every render pass, and the GL device's frame calls; the OpenGL backend adds GPU zones per pass with timer queries. Presets `windows-msvc-profile` and `ci-windows-profile` (a new CI job); builds without profiling link no Tracy, which a CTest case checks.
 
+- GPU tests and example smoke runs in CI (#110): the `windows-msvc` job runs the suite a second time on Mesa's llvmpipe (26.3.0, pinned and checksum-verified), with `TESERRA_REQUIRE_GPU_TESTS=1`, and fails if any test or example did not run. GPU tests skip through `TESERRA_SKIP_WITHOUT_GPU()` (`<teserra/test/gpu.hpp>`), which fails instead when GPU tests are required; App-level GPU tests take their backend from `TESERRA_GPU_BACKEND`.
+
 ### Changed
 
 - Passes draw into the scene target instead of the frame's output: `PassResource::SceneColor` is the scene target (`FrameTarget` gains `depthTexture`, `depthFormat` and `layout()`), `PassResource::Output` is the frame's output, and `PassContext::viewTarget()` gives each view's target. The sprite and debug passes start one render pass per run of views with the same target, and key their pipelines by the target's layout. `RenderExtraction::targetSize` is the scene target's size; `RenderExtraction::renderer` sizes the views of cameras with targets.

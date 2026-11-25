@@ -2,8 +2,10 @@
 // rendering test also on machines without an OpenGL 4.5 driver (the CI runners).
 
 #include <teserra/engine/app.hpp>
+#include <teserra/test/gpu.hpp>
 #include <teserra/test/log_capture.hpp>
 
+#include "gpu_backend.hpp"
 #include <catch2/catch_test_macros.hpp>
 
 #include <format>
@@ -22,7 +24,7 @@ TEST_CASE("App: runs frames on the real platform", "[engine][app][window]") {
     }};
     if (!app.isInitialized()) {
         REQUIRE(app.initError()->code == ErrorCode::DeviceFailure);
-        SKIP("No window system: " << std::format("{}", *app.initError()));
+        TESERRA_SKIP_WITHOUT_GPU("No window system: " << std::format("{}", *app.initError()));
     }
     int updates = 0;
 
@@ -41,14 +43,15 @@ TEST_CASE("App: renders and presents through the OpenGL device", "[engine][app][
         .title = "App render test",
         .windowSize = {320, 200},
         .windowVisible = false,
-        .backend = rhi::Backend::OpenGL,
+        .backend = test::gpuTestBackend(),
         .maxFrames = 3,
     }};
     if (!app.isInitialized()) {
         REQUIRE(app.initError()->code == ErrorCode::DeviceFailure);
-        SKIP("No window system or OpenGL 4.5 driver: " << std::format("{}", *app.initError()));
+        TESERRA_SKIP_WITHOUT_GPU(
+            "No window system or OpenGL 4.5 driver: " << std::format("{}", *app.initError()));
     }
-    REQUIRE(app.device().backend() == rhi::Backend::OpenGL);
+    REQUIRE(app.device().backend() == test::gpuTestBackend());
     int renders = 0;
 
     const int exitCode = app.run({.render = [&](App& running, rhi::CommandList& commands) {

@@ -3,6 +3,7 @@
 #include <teserra/platform/opengl_context.hpp>
 #include <teserra/platform/platform.hpp>
 #include <teserra/test/assert.hpp>
+#include <teserra/test/gpu.hpp>
 
 #include "platform_test_support.hpp"
 #include <catch2/catch_test_macros.hpp>
@@ -95,7 +96,7 @@ TEST_CASE("Window: GraphicsApi::OpenGL creates a 4.5 core context or explains wh
     if (!created) {
         CHECK(created.error().code == ErrorCode::DeviceFailure);
         CHECK(created.error().message.find("OpenGL 4.5 core context") != std::string::npos);
-        SKIP("No OpenGL 4.5 driver: " << std::format("{}", created.error()));
+        TESERRA_SKIP_WITHOUT_GPU("No OpenGL 4.5 driver: " << std::format("{}", created.error()));
     }
     OpenGlContext* context = (*created)->openGlContext();
     REQUIRE(context != nullptr);
