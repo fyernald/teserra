@@ -31,6 +31,7 @@ public:
     ComponentPoolBase(ComponentPoolBase&&) = delete;
     ComponentPoolBase& operator=(ComponentPoolBase&&) = delete;
 
+    /// The metadata of the pool's component type.
     [[nodiscard]] const ComponentMeta& meta() const noexcept { return *m_meta; }
     /// The number of entities that have the component.
     [[nodiscard]] usize size() const noexcept { return m_entities.size(); }

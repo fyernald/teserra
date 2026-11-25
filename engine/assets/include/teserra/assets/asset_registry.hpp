@@ -206,6 +206,7 @@ public:
     Asset& operator=(Asset&& other) noexcept;
     ~Asset();
 
+    /// Whether this handle refers to no asset (default-constructed or moved from).
     [[nodiscard]] bool isNull() const noexcept { return m_registry == nullptr; }
 
     /// Whether get() may be called: the asset loaded, or its load failed and a fallback is bound. False for a

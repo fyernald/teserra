@@ -64,9 +64,11 @@ public:
     Device(Device&&) = delete;
     Device& operator=(Device&&) = delete;
 
+    /// Which backend implements this device.
     [[nodiscard]] virtual Backend backend() const noexcept = 0;
     [[nodiscard]] virtual const DeviceLimits& limits() const noexcept = 0;
 
+    /// Create objects from their descriptors; a failure (validation, driver) is an Error, never an exception.
     [[nodiscard]] virtual Result<BufferHandle> createBuffer(const BufferDesc& desc) = 0;
     [[nodiscard]] virtual Result<TextureHandle> createTexture(const TextureDesc& desc) = 0;
     [[nodiscard]] virtual Result<SamplerHandle> createSampler(const SamplerDesc& desc) = 0;

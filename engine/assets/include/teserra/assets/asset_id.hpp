@@ -65,6 +65,7 @@ struct AssetId {
         return AssetId{hash};
     }
 
+    /// Whether this is the null id, which no asset has.
     [[nodiscard]] constexpr bool isNull() const noexcept { return value == 0; }
 
     friend constexpr bool operator==(AssetId, AssetId) noexcept = default;

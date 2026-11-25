@@ -99,6 +99,7 @@ struct FramePacket {
     /// pass.
     std::vector<DebugVertex> debugLines;
 
+    /// Empties every array, keeping the memory.
     void clear() noexcept {
         views.clear();
         sprites.clear();

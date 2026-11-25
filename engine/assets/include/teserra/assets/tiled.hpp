@@ -117,6 +117,7 @@ struct TiledObject {
     TiledProperties properties;
 };
 
+/// An object layer of a Tiled map: named points and shapes, such as spawn points.
 struct TiledObjectLayer {
     std::string name;
     std::vector<TiledObject> objects;

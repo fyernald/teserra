@@ -34,8 +34,10 @@ public:
     Scene(Scene&&) = delete;
     Scene& operator=(Scene&&) = delete;
 
+    /// The name given to SceneManager::create().
     [[nodiscard]] std::string_view name() const noexcept { return m_name; }
 
+    /// The scene's entities, components and resources.
     [[nodiscard]] ecs::World& world() noexcept { return m_world; }
     [[nodiscard]] const ecs::World& world() const noexcept { return m_world; }
 

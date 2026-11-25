@@ -9,6 +9,7 @@ namespace teserra {
 // Fixed-width aliases used throughout the engine (ADR-0021). Use usize for sizes and container
 // indices, fixed-width types for data formats and GPU-visible structs.
 
+/// Fixed-size integer and floating-point names used throughout the engine.
 using u8 = std::uint8_t;
 using u16 = std::uint16_t;
 using u32 = std::uint32_t;

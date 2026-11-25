@@ -105,6 +105,7 @@ struct MaterialLayout {
 /// or loaded from a `.material.json` file (MaterialLoader).
 class Material {
 public:
+    /// What a material is made of.
     struct Desc {
         assets::Asset<Shader> vertex;
         assets::Asset<Shader> fragment;
@@ -129,9 +130,11 @@ public:
     Material& operator=(const Material&) = delete;
     ~Material() = default;
 
+    /// The shader modules and state pipelines of this material are made of.
     [[nodiscard]] rhi::ShaderModuleHandle vertexShader() const { return m_vertex.get().handle(); }
     [[nodiscard]] rhi::ShaderModuleHandle fragmentShader() const { return m_fragment.get().handle(); }
     [[nodiscard]] const MaterialState& state() const noexcept { return m_state; }
+    /// Set 2 of the shaders: the parameter block and the texture slots.
     [[nodiscard]] const MaterialLayout& layout() const noexcept { return m_layout; }
     /// The layout of set 2; null for a material without parameters or textures.
     [[nodiscard]] rhi::BindGroupLayoutHandle groupLayout() const noexcept { return m_groupLayout.handle(); }
@@ -203,6 +206,7 @@ public:
     MaterialInstance& operator=(const MaterialInstance&) = delete;
     ~MaterialInstance() = default;
 
+    /// The material this instance gives values to.
     [[nodiscard]] const Material& material() const { return m_material.get(); }
 
     /// Sets parameter `name`: f32, i32, u32, Vec2, Vec3, Vec4, Color or Mat4, matching the shader's type.

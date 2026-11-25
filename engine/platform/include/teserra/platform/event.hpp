@@ -80,6 +80,7 @@ struct TextEntered {
     friend bool operator==(const TextEntered&, const TextEntered&) = default;
 };
 
+/// Anything the platform reports during a frame.
 using Event = std::variant<WindowResized, WindowCloseRequested, FocusChanged, KeyChanged, MouseButtonChanged,
                            MouseMoved, MouseScrolled, TextEntered>;
 
@@ -87,13 +88,18 @@ using Event = std::variant<WindowResized, WindowCloseRequested, FocusChanged, Ke
 /// keeps the capacity, so steady-state polling does not allocate. Main thread only.
 class EventQueue {
 public:
+    /// Appends `event`.
     void push(const Event& event) { m_events.push_back(event); }
+    /// Removes every event, keeping the memory.
     void clear() noexcept { m_events.clear(); }
 
+    /// The events in the order they arrived.
     [[nodiscard]] std::span<const Event> events() const noexcept { return m_events; }
     [[nodiscard]] usize size() const noexcept { return m_events.size(); }
+    /// Whether there are no events.
     [[nodiscard]] bool empty() const noexcept { return m_events.empty(); }
 
+    /// Iteration over the events, oldest first.
     [[nodiscard]] auto begin() const noexcept { return m_events.begin(); }
     [[nodiscard]] auto end() const noexcept { return m_events.end(); }
 

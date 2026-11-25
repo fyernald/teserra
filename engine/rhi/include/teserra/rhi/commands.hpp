@@ -106,6 +106,7 @@ struct BufferTextureCopy {
 
 /// The command a record holds.
 // NOLINTNEXTLINE(performance-enum-size): the stream layout of spike #15 has a u16 type in the header
+/// The kind of each record of a command stream.
 enum class CommandType : u16 {
     BeginRenderPass,
     EndRenderPass,
@@ -142,6 +143,7 @@ struct CommandHeader {
 };
 static_assert(sizeof(CommandHeader) == kCommandAlignment);
 
+/// The records of a command stream, one per CommandList call, read in place by backends.
 struct BeginRenderPassCommand {
     static constexpr CommandType kType = CommandType::BeginRenderPass;
     RenderPassDesc pass;

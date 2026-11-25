@@ -134,6 +134,7 @@ struct LogRecord {
 /// not create or destroy sinks (messages logged from a callback are dropped). Move-only.
 class CallbackSink {
 public:
+    /// Receives every record the sink is given.
     using Callback = std::function<void(const LogRecord&)>;
 
     /// Starts delivering messages to `callback`, which must not be empty (asserted).

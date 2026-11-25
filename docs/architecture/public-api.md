@@ -15,7 +15,7 @@ Related: [ECS](ecs.md), [renderer](renderer.md), [assets](assets.md), [overview]
 
 ## "Dream code": a tiny 2D game
 
-This is the target shape of the v0.1 API, used as a design reference. Issues that touch the public API check themselves against it; when the real API diverges, this example is updated in the same PR.
+This is the shape of the v0.1 API: a complete game in one file. **It compiles**: the build extracts this code block and compiles it as `teserra_public_api_example` (`tests/public_api/`), so the page cannot drift from the real API (#119). Issues that touch the public API check themselves against it and update it in the same PR.
 
 ```cpp
 #include <teserra/teserra.hpp>
@@ -23,78 +23,90 @@ This is the target shape of the v0.1 API, used as a design reference. Issues tha
 using namespace teserra;
 
 // Components: plain data.
-struct Player { f32 speed = 6.0f; };
-struct Coin {};
-struct Score { u32 value = 0; };   // used as a world resource
+struct Player {
+    f32 speed = 6.0F;
+};
+struct Coin {}; // a tag
+struct Score {  // used as a world resource
+    u32 value = 0;
+};
 
-// Systems: free functions with an explicit context.
-void movePlayer(SystemContext& ctx) {
-    const Input& input = ctx.input();
-    const Vec2 dir = input.axis2D(Key::A, Key::D, Key::S, Key::W);  // normalized
-    for (auto [entity, transform, player] : ctx.view<Transform, const Player>()) {
-        transform.position += Vec3{dir * player.speed * ctx.time().deltaSeconds(), 0.0f};
+// Systems: free functions that see the world through their context.
+void movePlayer(ecs::SystemContext& ctx) {
+    const auto& input = ctx.resource<const platform::Input>();
+    const Vec2 direction = input.axis2D(platform::Key::A, platform::Key::D, platform::Key::S, platform::Key::W);
+    const f32 dt = ctx.resource<const scene::Time>().deltaSeconds();
+    for (auto [entity, transform, player] : ctx.view<scene::Transform, const Player>()) {
+        transform.position += Vec3{direction * player.speed * dt, 0.0F};
     }
 }
 
-void collectCoins(SystemContext& ctx) {
-    auto players = ctx.view<const Transform, const Player>();
-    for (auto [coin, coinTransform] : ctx.view<const Transform>(with<Coin>)) {
-        for (auto [player, playerTransform, p] : players) {
-            if (distance(coinTransform.position, playerTransform.position) < 0.5f) {
-                ctx.commands().destroy(coin);
+void collectCoins(ecs::SystemContext& ctx) {
+    for (const auto [player, playerTransform, p] : ctx.view<const scene::Transform, const Player>()) {
+        for (const auto [coin, coinTransform, tag] : ctx.view<const scene::Transform, const Coin>()) {
+            if (math::length(coinTransform.position - playerTransform.position) < 0.5F) {
+                ctx.commands().destroy(coin); // applied at the end of the phase
                 ctx.resource<Score>().value += 1;
             }
         }
     }
-    ctx.debugDraw().text2D({16, 16}, std::format("Score: {}", ctx.resource<Score>().value));
 }
 
 int main(int argc, char** argv) {
-    App app{AppConfig{
-        .title = "Coin Hunt",
-        .windowSize = {1280, 720},
-        .args = {argc, argv},
-    }};
+    engine::App app{{.title = "Coin Hunt", .windowSize = {1280, 720}, .args = {argc, argv}}};
 
-    Scene& level = app.scenes().create("level");
+    scene::Scene& level = app.scenes().create("level");
     level.world().insertResource<Score>();
 
-    auto heroTexture = app.assets().load<Texture>("assets://sprites/hero.png");
-    auto coinTexture = app.assets().load<Texture>("assets://sprites/coin.png");
+    // A missing file shows the magenta fallback texture and logs an error; the game keeps running.
+    const auto heroTexture = app.assets().load<renderer::Texture>("assets://sprites/hero.png");
+    const auto coinTexture = app.assets().load<renderer::Texture>("assets://sprites/coin.png");
 
     // Camera: 18 world units tall, orthographic.
-    Entity camera = level.spawn();
-    level.add<Transform>(camera);
-    level.add<Camera>(camera, Camera{.projection = Orthographic{.height = 18.0f}});
+    const ecs::Entity camera = level.spawn();
+    level.add<scene::Transform>(camera);
+    level.add<scene::Camera>(camera, scene::Camera{.projection = scene::Orthographic{.height = 18.0F}});
 
-    Entity hero = level.spawn();
-    level.add<Transform>(hero, Transform{.position = {0.0f, 0.0f, 0.0f}});
-    level.add<SpriteRenderer>(hero, SpriteRenderer{.texture = heroTexture, .layer = 10});
+    const ecs::Entity hero = level.spawn();
+    level.add<scene::Transform>(hero);
+    level.add<scene::SpriteRenderer>(hero, scene::SpriteRenderer{.texture = heroTexture.get().handle(), .layer = 10});
     level.add<Player>(hero);
 
     for (int i = 0; i < 20; ++i) {
-        Entity coin = level.spawn();
-        level.add<Transform>(coin, Transform{.position = {f32(i - 10), 4.0f, 0.0f}});
-        level.add<SpriteRenderer>(coin, SpriteRenderer{.texture = coinTexture, .layer = 5});
+        const ecs::Entity coin = level.spawn();
+        level.add<scene::Transform>(coin, scene::Transform{.position = {static_cast<f32>(i - 10), 4.0F, 0.0F}});
+        level.add<scene::SpriteRenderer>(coin, scene::SpriteRenderer{.texture = coinTexture.get().handle(), .layer = 5});
         level.add<Coin>(coin);
     }
 
-    level.systems().add(Phase::Update, "move_player", movePlayer)
-        .reads<Player>().writes<Transform>();
-    level.systems().add(Phase::Update, "collect_coins", collectCoins)
-        .reads<Transform>().reads<Player>().reads<Coin>().writesResource<Score>()
+    level.systems()
+        .add(ecs::Phase::Update, "move_player", movePlayer)
+        .reads<Player>()
+        .writes<scene::Transform>()
+        .readsResource<platform::Input>()
+        .readsResource<scene::Time>();
+    level.systems()
+        .add(ecs::Phase::Update, "collect_coins", collectCoins)
+        .reads<scene::Transform>()
+        .reads<Player>()
+        .reads<Coin>()
+        .writesResource<Score>()
         .after("move_player");
 
-    return app.run(level);   // returns the process exit code
+    return app.run(level); // the process exit code
 }
 ```
 
 Notes on the example:
 
-- `Transform` is 3D even in 2D games (3D readiness); 2D helpers (`Vec3{vec2, z}`) keep it short.
-- Destruction during iteration goes through `ctx.commands()`; the world is changed at the end of the phase.
-- `text2D` is a v0.2 debug-draw feature (text rendering is in the backlog) and appears here to show intended direction.
-- `App::run` owns the main loop: events, fixed-step updates, variable updates, render extraction, rendering, presentation.
+- `#include <teserra/teserra.hpp>` brings in everything a game usually needs; names keep their namespaces (`engine::App`, `scene::Transform`, `ecs::SystemContext`), so it is always clear which layer a type belongs to.
+- `Transform` is 3D even in 2D games (3D readiness); `Vec3{vec2, z}` keeps 2D code short.
+- Input and time are world resources (`platform::Input`, `scene::Time`) that the App keeps current. Systems declare what they read and write, and debug builds assert on anything undeclared.
+- A tag (`Coin`) joins a view like any component; `SystemContext::has<T>()` tests one entity.
+- Destruction during iteration goes through `ctx.commands()`; the world changes at the end of the phase.
+- Text on screen (a score display) waits for text rendering (#137); `examples/demo_game` draws its own pixel font meanwhile.
+- `App::run` owns the main loop: events, fixed-step updates, variable updates, render extraction, rendering, presentation. It returns the exit code, 1 if initialization failed.
+- The full game of this shape is `examples/demo_game`: menus, collisions with events, a tilemap and a HUD.
 
 ## Application lifecycle
 
@@ -109,7 +121,7 @@ stateDiagram-v2
 ```
 
 - `AppConfig` covers window, vsync, fixed timestep, asset mount points, log levels and the RHI backend (default OpenGL).
-- Today (`teserra_engine`, iteration 4) `App` owns the platform, the window and the `rhi::Device` (`AppConfig::backend`, default OpenGL; `std::nullopt` for no device) and runs the loop with `AppCallbacks` (`onEvent`, `fixedUpdate`, `update`, and `render`, which records into the frame's `rhi::CommandList` targeting `App::backbuffer()`) in place of scenes. Since iteration 10 it also owns the `scene::SceneManager` (`app.scenes()`), and `run(scene, callbacks)` makes a scene active, switches at frame boundaries, advances its `Time` resource, keeps its `platform::Input` resource current and runs its phases (Startup once, then PreUpdate, FixedUpdate per step, Update, PostUpdate, Extract, Last); without a render callback it draws what the scene's extraction produced. `examples/scene_sprites` is the dream code above as it compiles today: `ctx.input()` and `ctx.time()` are the resources `platform::Input` and `scene::Time`, names are qualified (`scene::Transform`, `ecs::Phase`), its art is a sprite sheet loaded as `assets://sprites.png` and cut into a grid (`renderer::SpriteSheet`, `scene::spriteFromSheet()`, iteration 11), and Escape quits through an `update` callback. The App submits the commands and presents; without `render`, it clears to black. While the window is minimized it is paused: each frame waits up to `AppConfig::minimizedEventWait` (100 ms) for window events instead of spinning, handles them (closing and `quit()` still work) and runs nothing else, so fixed steps, updates and scene phases stop and scene `Time` stands still; the frame that is restored resumes without catching up the pause. The backends the build includes are linked through `OPTIONAL_DEPENDS` and passed to `rhi::createDevice()`. `App` also accepts an injected `platform::Platform`, which is how tests run it headless with a `ManualClock`. The engine flags `--frames N` and `--hidden-window` in `AppConfig::args` are what example smoke runs use. Since iteration 11 the App also owns the asset mount points (`app.mounts()`, `AppConfig::mounts`; [assets.md](assets.md#mount-points-and-files)): `assets://` and `engine://` default to directories next to the executable, and a listed directory that does not exist fails initialization. It owns the asset registry too (`app.assets()`, [assets.md](assets.md#loaders)), with loaders for images and, with a device, textures and shaders, and unloads unused assets after each frame.
+- Today (`teserra_engine`, iteration 4) `App` owns the platform, the window and the `rhi::Device` (`AppConfig::backend`, default OpenGL; `std::nullopt` for no device) and runs the loop with `AppCallbacks` (`onEvent`, `fixedUpdate`, `update`, and `render`, which records into the frame's `rhi::CommandList` targeting `App::backbuffer()`) in place of scenes. Since iteration 10 it also owns the `scene::SceneManager` (`app.scenes()`), and `run(scene, callbacks)` makes a scene active, switches at frame boundaries, advances its `Time` resource, keeps its `platform::Input` resource current and runs its phases (Startup once, then PreUpdate, FixedUpdate per step, Update, PostUpdate, Extract, Last); without a render callback it draws what the scene's extraction produced. `examples/scene_sprites` and `examples/demo_game` are larger games of the same shape as the example above. The App submits the commands and presents; without `render`, it clears to black. While the window is minimized it is paused: each frame waits up to `AppConfig::minimizedEventWait` (100 ms) for window events instead of spinning, handles them (closing and `quit()` still work) and runs nothing else, so fixed steps, updates and scene phases stop and scene `Time` stands still; the frame that is restored resumes without catching up the pause. The backends the build includes are linked through `OPTIONAL_DEPENDS` and passed to `rhi::createDevice()`. `App` also accepts an injected `platform::Platform`, which is how tests run it headless with a `ManualClock`. The engine flags `--frames N` and `--hidden-window` in `AppConfig::args` are what example smoke runs use. Since iteration 11 the App also owns the asset mount points (`app.mounts()`, `AppConfig::mounts`; [assets.md](assets.md#mount-points-and-files)): `assets://` and `engine://` default to directories next to the executable, and a listed directory that does not exist fails initialization. It owns the asset registry too (`app.assets()`, [assets.md](assets.md#loaders)), with loaders for images and, with a device, textures and shaders, and unloads unused assets after each frame.
 - Failure during initialization (no GL 4.5 support, missing asset directory) returns a non-zero exit code from `run()` after logging a clear message; it does not throw.
 
 ## Advanced use

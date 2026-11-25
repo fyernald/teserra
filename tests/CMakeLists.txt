@@ -13,6 +13,11 @@ if(TESERRA_ENABLE_SANITIZERS)
     )
 endif()
 
+# The example of docs/architecture/public-api.md must compile (#119).
+if(TARGET teserra_engine)
+    add_subdirectory(public_api)
+endif()
+
 # Snapshot tests render with the real backend and compare with golden images (#111).
 if(TARGET teserra_engine AND TARGET teserra_rhi_opengl)
     add_subdirectory(snapshot)

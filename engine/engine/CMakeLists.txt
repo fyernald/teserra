@@ -6,6 +6,7 @@ teserra_add_module(engine LAYER 6
     OPTIONAL_DEPENDS rhi_opengl
     PUBLIC_HEADERS
         include/teserra/engine/app.hpp
+        include/teserra/teserra.hpp
     SOURCES
         src/app.cpp
 )

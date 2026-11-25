@@ -162,6 +162,7 @@ public:
     [[nodiscard]] const AppConfig& config() const noexcept { return m_config; }
 
     // Services; initialization must have succeeded (asserted).
+    /// The platform: clock, file system, window system.
     [[nodiscard]] platform::Platform& platform();
     [[nodiscard]] platform::Window& window();
     /// The mount points that asset paths ("assets://...") resolve through.

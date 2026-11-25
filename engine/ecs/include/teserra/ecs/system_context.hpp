@@ -28,13 +28,16 @@ struct SystemAccess {
     std::vector<TypeKey> resourceReads;
     std::vector<TypeKey> resourceWrites;
 
+    /// Whether component `key` may be read (a write implies a read).
     [[nodiscard]] bool readsComponent(TypeKey key) const noexcept {
         return contains(componentReads, key) || contains(componentWrites, key);
     }
+    /// Whether component `key` may be written.
     [[nodiscard]] bool writesComponent(TypeKey key) const noexcept { return contains(componentWrites, key); }
     [[nodiscard]] bool readsResource(TypeKey key) const noexcept {
         return contains(resourceReads, key) || contains(resourceWrites, key);
     }
+    /// Whether resource `key` may be written.
     [[nodiscard]] bool writesResource(TypeKey key) const noexcept { return contains(resourceWrites, key); }
 
     /// Adds `key` to the sorted `keys` unless it is there.
@@ -51,14 +54,6 @@ private:
     }
 };
 
-/// The world as one system sees it while the Schedule runs it. Views and resources are checked against the
-/// system's declarations in debug builds; structural changes go through commands(), applied after the
-/// phase.
-///
-///     void movePlayer(ecs::SystemContext& ctx) {
-///         const f32 dt = ctx.resource<const scene::Time>().deltaSeconds();
-///         for (auto [entity, transform, player] : ctx.view<scene::Transform, const Player>()) { ... }
-///     }
 /// The event cursors of one system: where it is in each event type it reads.
 class EventCursors {
 public:
@@ -76,6 +71,14 @@ private:
     std::vector<std::pair<TypeKey, EventCursor>> m_cursors;
 };
 
+/// The world as one system sees it while the Schedule runs it. Views and resources are checked against the
+/// system's declarations in debug builds; structural changes go through commands(), applied after the
+/// phase.
+///
+///     void movePlayer(ecs::SystemContext& ctx) {
+///         const f32 dt = ctx.resource<const scene::Time>().deltaSeconds();
+///         for (auto [entity, transform, player] : ctx.view<scene::Transform, const Player>()) { ... }
+///     }
 class SystemContext {
 public:
     /// `cursors` holds the system's event cursors; without one, readEvents() asserts.

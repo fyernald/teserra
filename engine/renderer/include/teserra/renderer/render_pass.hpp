@@ -51,9 +51,11 @@ struct FrameTarget {
 /// What a pass declares in RenderPass::declare().
 class PassBuilder {
 public:
+    /// Declares that the pass reads, or writes, `resource`.
     void reads(PassResource resource) noexcept { m_reads |= bit(resource); }
     void writes(PassResource resource) noexcept { m_writes |= bit(resource); }
 
+    /// What the pass declared: reads, writes, or either.
     [[nodiscard]] bool readsResource(PassResource resource) const noexcept {
         return (m_reads & bit(resource)) != 0;
     }
@@ -76,6 +78,7 @@ private:
 /// What a pass works with while it records, valid during RenderPass::execute().
 class PassContext {
 public:
+    /// The device the frame records for.
     [[nodiscard]] rhi::Device& device() const noexcept { return *m_device; }
     /// The frame's render data, such as its sprites.
     [[nodiscard]] const FramePacket& packet() const noexcept { return *m_packet; }
