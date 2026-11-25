@@ -126,6 +126,8 @@ All notable user-visible changes to Teserra are documented here. The format foll
 
 - Getting started (#121): `docs/guides/getting-started.md` goes from installing the tools through the game template to a small coin collector (entities, components, systems, input, assets) and how to ship a game; the build compiles and smoke-runs its program. `examples/README.md` describes every example, and the README's quickstart starts from the template.
 
+- Release packages (#122): a version tag now also builds Release and attaches `teserra-<version>-windows-x64-examples.zip` to the draft release: every example with a window in its own folder with its DLLs, assets and the Visual C++ runtime, plus `LICENSE`, `THIRD_PARTY_NOTICES.md` and a `README.txt` that links to the release's feedback request. `package_example.py --all-examples` makes it locally and refuses DLLs missing from the notices.
+
 ### Changed
 
 - Passes draw into the scene target instead of the frame's output: `PassResource::SceneColor` is the scene target (`FrameTarget` gains `depthTexture`, `depthFormat` and `layout()`), `PassResource::Output` is the frame's output, and `PassContext::viewTarget()` gives each view's target. The sprite and debug passes start one render pass per run of views with the same target, and key their pipelines by the target's layout. `RenderExtraction::targetSize` is the scene target's size; `RenderExtraction::renderer` sizes the views of cameras with targets.

@@ -1,23 +1,35 @@
-# Drafts a GitHub Release when a version tag is pushed (docs/process/release-process.md#tags).
-# The tag must be a SemVer version (vMAJOR.MINOR.PATCH, optionally -alpha.N or -rc.N), annotated, on main,
-# with green CI, and match the version in the root CMakeLists.txt. A tag with a pre-release part becomes a
-# pre-release. The release stays a draft so its notes can be edited before publishing.
-# #122 extends this with the Release build, the examples zip and the third-party notices.
+# Drafts a GitHub Release when a version tag is pushed (docs/process/release-process.md#tags), then builds
+# Release on Windows and attaches the examples zip (#122). The tag must be a SemVer version (vMAJOR.MINOR.PATCH,
+# optionally -alpha.N or -rc.N), annotated, on main, with green CI, and match the version in the root
+# CMakeLists.txt. A tag with a pre-release part becomes a pre-release. The release stays a draft so its notes
+# can be edited before publishing.
+#
+# Pull requests that change the packaging run the package job as a dry run: the zip becomes a workflow
+# artifact, and no release is touched.
 name: Release
 
 on:
   push:
     tags: ["v*"]
+  pull_request:
+    paths:
+      - .github/workflows/release.yml
+      - tools/scripts/package_example.py
+      - tools/packaging/**
+      - THIRD_PARTY_NOTICES.md
 
 permissions:
-  contents: write
-  actions: read
+  contents: read
 
 jobs:
   draft:
     name: draft release
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    permissions:
+      contents: write
+      actions: read
     steps:
       - uses: actions/checkout@v7
         with:
@@ -73,3 +85,114 @@ jobs:
           [[ "$PRERELEASE" == true ]] && flags+=(--prerelease)
           gh release create "$TAG" "${flags[@]}"
           echo "Drafted the release for $TAG: edit the notes, then publish it." >> "$GITHUB_STEP_SUMMARY"
+
+  # The examples zip (docs/process/release-process.md#release-artifacts): every example with a window, its DLLs
+  # and assets, the Visual C++ runtime, LICENSE, THIRD_PARTY_NOTICES.md and a README. The README links to the
+  # open feedback request whose body has this release's URL (release-process.md, pre-release checklist step 3),
+  # or to the issue chooser when there is none.
+  package:
+    name: package (windows-x64)
+    needs: draft
+    # On a tag, only after the draft exists; on a pull request, the draft job is skipped.
+    if: always() && (needs.draft.result == 'success' || (github.event_name == 'pull_request' && needs.draft.result == 'skipped'))
+    runs-on: windows-latest
+    timeout-minutes: 60
+    permissions:
+      contents: write # upload to the draft release
+      issues: read # find the feedback request
+    env:
+      VCPKG_TRIPLET: x64-windows
+      PRESET: windows-msvc-release
+    steps:
+      - uses: actions/checkout@v7
+
+      # As in ci.yml: vcvars64.bat of the newest Visual Studio, exported for the later steps. It also sets
+      # VCToolsRedistDir, where the packaging script finds the Visual C++ runtime.
+      - name: Set up MSVC developer environment
+        shell: pwsh
+        run: |
+          $vswhere = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer\vswhere.exe"
+          $vs = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          $vcvars = Join-Path $vs "VC\Auxiliary\Build\vcvars64.bat"
+          $before = @{}
+          Get-ChildItem env: | ForEach-Object { $before[$_.Name] = $_.Value }
+          cmd /c "`"$vcvars`" >nul && set" | ForEach-Object {
+            if ($_ -match '^([^=]+)=(.*)$' -and $before[$Matches[1]] -ne $Matches[2]) {
+              "$($Matches[1])=$($Matches[2])" >> $env:GITHUB_ENV
+            }
+          }
+          Write-Host "MSVC environment from $vcvars"
+
+      - name: Configure vcpkg
+        shell: pwsh
+        run: |
+          $cache = Join-Path $env:RUNNER_TEMP "vcpkg-binary-cache"
+          New-Item -ItemType Directory -Force -Path $cache | Out-Null
+          "VCPKG_ROOT=$env:VCPKG_INSTALLATION_ROOT" >> $env:GITHUB_ENV
+          "VCPKG_BINARY_CACHE=$cache" >> $env:GITHUB_ENV
+          "VCPKG_BINARY_SOURCES=clear;files,$cache,readwrite" >> $env:GITHUB_ENV
+          "RUNNER_IMAGE=${env:ImageOS}-${env:ImageVersion}" >> $env:GITHUB_ENV
+
+      # CI's binary cache (same triplet, runner image and manifest); restored only, CI keeps it current.
+      - name: Restore vcpkg binary cache
+        uses: actions/cache/restore@v6
+        with:
+          path: ${{ env.VCPKG_BINARY_CACHE }}
+          key: vcpkg-${{ env.VCPKG_TRIPLET }}-${{ env.RUNNER_IMAGE }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
+          restore-keys: |
+            vcpkg-${{ env.VCPKG_TRIPLET }}-
+
+      # The package's version and README link. A pull request packages <CMake version>-pr.<number>.
+      - name: Version and feedback link
+        id: meta
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          if [[ "$GITHUB_EVENT_NAME" == push ]]; then
+            version="${TAG#v}"
+            release_url="https://github.com/$GITHUB_REPOSITORY/releases/tag/$TAG"
+            feedback="$(gh issue list --repo "$GITHUB_REPOSITORY" --label feedback --state open \
+              --search "\"$release_url\" in:body" --json url --jq '.[0].url // empty')"
+          else
+            cmake_version="$(sed -n '/^project(Teserra/,/)/s/^[[:space:]]*VERSION[[:space:]]\+\([0-9.]\+\).*/\1/p' CMakeLists.txt)"
+            version="$cmake_version-pr.$PR"
+            feedback=""
+          fi
+          feedback="${feedback:-https://github.com/$GITHUB_REPOSITORY/issues/new/choose}"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "feedback=$feedback" >> "$GITHUB_OUTPUT"
+          echo "Packaging $version; the README links to $feedback"
+
+      # Release without tests: the package needs only the engine and the examples.
+      - name: Configure
+        run: cmake --preset ${{ env.PRESET }} -DTESERRA_BUILD_TESTS=OFF -DTESERRA_WARNINGS_AS_ERRORS=ON
+
+      - name: Build
+        run: cmake --build --preset ${{ env.PRESET }}
+
+      - name: Package
+        shell: pwsh
+        run: |
+          python tools/scripts/package_example.py --build-dir build/${{ env.PRESET }} --all-examples `
+            --version "${{ steps.meta.outputs.version }}" --feedback-url "${{ steps.meta.outputs.feedback }}" --out dist
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Upload the zip as a workflow artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: teserra-${{ steps.meta.outputs.version }}-windows-x64-examples
+          path: dist/*.zip
+          if-no-files-found: error
+
+      - name: Attach the zip to the draft release
+        if: github.event_name == 'push'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          gh release upload "$TAG" dist/*.zip --clobber
+          echo "Attached $(basename dist/*.zip) to the draft release for $TAG." >> "$GITHUB_STEP_SUMMARY"
