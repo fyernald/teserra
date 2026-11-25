@@ -57,13 +57,13 @@ CHECK(allocations.count() == 0);
 
 - Micro-benchmarks use Catch2 `BENCHMARK` in `benchmarks/` ([ADR-0012](../adr/0012-testing-framework-catch2.md)), built with `TESERRA_BUILD_BENCHMARKS=ON` in Release (`RelWithDebInfo` for profiling).
 - Every benchmark documents what it measures, the data size, and the expected complexity.
-- **CI runs benchmarks in a non-blocking job** and uploads results as artifacts. CI runners are too noisy for thresholds; regressions are judged on the reference machine.
+- **CI runs benchmarks in a non-blocking job** (`bench.yml`, on pushes to main that touch core, ecs or benchmarks, and by hand) and uploads results as artifacts. CI runners are too noisy for thresholds; regressions are judged on the reference machine.
 - An optimization PR must include: the benchmark (new or existing), before/after numbers from the same machine, and the machine description.
 - A benchmark that has no consumer for two minor versions is deleted.
 
 ## v1 performance budget
 
-Reference machine: the author's development laptop/PC, documented in `benchmarks/README.md` when the first benchmark lands (CPU, GPU, RAM, OS, driver). Targets for v0.1 on that machine, at 1920×1080:
+Reference machine: the author's development PC, documented in [`benchmarks/README.md`](../../benchmarks/README.md) (AMD Ryzen 7 5700X, 32 GB, RTX 3080, Windows 10). Targets for v0.1 on that machine, at 1920×1080:
 
 | Scenario | Target |
 |---|---|

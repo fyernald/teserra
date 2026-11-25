@@ -47,6 +47,12 @@
           ]
         }
       ]
+    },
+    "benchmarks": {
+      "description": "Catch2 micro-benchmarks in benchmarks/ (TESERRA_BUILD_BENCHMARKS)",
+      "dependencies": [
+        "catch2"
+      ]
     }
   }
 }

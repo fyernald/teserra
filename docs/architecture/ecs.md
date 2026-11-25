@@ -226,4 +226,17 @@ A weapon in a hand, a turret on a ship: `<teserra/scene/hierarchy.hpp>` (#98).
 | 5. Parallel (v1.0+) | Parallel executor over declared access, job system | Same results as sequential execution in determinism tests |
 | 6. Data-driven (v0.3+) | Serialization, prefabs, editor inspection, scripting bindings from metadata | Round-trip save/load tests |
 
+**Stage 3 baseline** (#114, `benchmarks/ecs/ecs_bench.cpp`, Release on the reference machine in `benchmarks/README.md`, mean of 50 samples):
+
+| Benchmark | Mean | Per entity |
+|---|---|---|
+| create 100k | 1.42 ms | 14 ns |
+| destroy 100k (half with three components) | 1.92 ms | 19 ns |
+| iterate 1 component over 100k | 538 µs | 5.4 ns |
+| iterate 3 components over 100k | 1.10 ms | 11 ns |
+| add + remove a tag on 10k of 100k | 162 µs | 8 ns per operation |
+| view with 50% overlap over 100k | 412 µs | 8.2 ns per match |
+
+Stage 4 starts from these. A one-component view walks a dense array, yet costs 5.4 ns per entity, which points at per-element overhead in the view iterator; destroy visits every pool (#145).
+
 Reference reading (not dependencies): Michele Caini's "ECS back and forth" series (EnTT), Sander Mertens' "Building an ECS" series (flecs), Bevy ECS documentation.

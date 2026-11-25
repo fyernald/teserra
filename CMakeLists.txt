@@ -12,6 +12,9 @@ endif()
 if(TESERRA_ENABLE_PROFILING)
     list(APPEND VCPKG_MANIFEST_FEATURES "profiling")
 endif()
+if(TESERRA_BUILD_BENCHMARKS)
+    list(APPEND VCPKG_MANIFEST_FEATURES "benchmarks")
+endif()
 # The portable build needs none of the libraries of the default "engine" feature.
 if(TESERRA_PORTABLE_ONLY)
     set(VCPKG_MANIFEST_NO_DEFAULT_FEATURES ON)
@@ -41,6 +44,9 @@ include(TeserraShaders)
 # when it is consumed through add_subdirectory().
 option(TESERRA_BUILD_TESTS "Build unit, integration and GPU test executables" ${PROJECT_IS_TOP_LEVEL})
 option(TESERRA_BUILD_EXAMPLES "Build the examples in examples/" ${PROJECT_IS_TOP_LEVEL})
+# Catch2 micro-benchmarks in benchmarks/ (docs/architecture/memory-and-performance.md#benchmarking-policy); build
+# them in Release, with the windows-msvc-bench preset.
+option(TESERRA_BUILD_BENCHMARKS "Build the micro-benchmarks in benchmarks/" OFF)
 # Only the modules without OS or GPU code: core, ecs, scene, rhi with the null backend, and the portable part
 # of platform. The Linux CI job builds this before the Linux port exists (#68, ADR-0015).
 option(TESERRA_PORTABLE_ONLY "Build only core, ecs, scene, rhi + null backend and the portable part of platform" OFF)
@@ -88,6 +94,10 @@ add_subdirectory(engine/ecs)
 add_subdirectory(engine/scene)
 if(NOT TESERRA_PORTABLE_ONLY)
     add_subdirectory(engine/engine)
+endif()
+
+if(TESERRA_BUILD_BENCHMARKS)
+    add_subdirectory(benchmarks)
 endif()
 
 if(TESERRA_BUILD_EXAMPLES)

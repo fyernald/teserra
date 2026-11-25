@@ -1,0 +1,81 @@
+# Micro-benchmarks (#114, docs/architecture/memory-and-performance.md#benchmarking-policy). Non-blocking: CI
+# runners are too noisy for thresholds, so the results are uploaded for reference only; regressions are
+# judged on the reference machine (benchmarks/README.md).
+name: Benchmarks
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "engine/core/**"
+      - "engine/ecs/**"
+      - "benchmarks/**"
+  workflow_dispatch:
+
+concurrency:
+  group: bench-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  ecs:
+    name: ecs benchmarks
+    runs-on: windows-latest
+    timeout-minutes: 45
+    env:
+      VCPKG_TRIPLET: x64-windows
+      PRESET: windows-msvc-bench
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up MSVC developer environment
+        shell: pwsh
+        run: |
+          $vswhere = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer\vswhere.exe"
+          $vs = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          $vcvars = Join-Path $vs "VC\Auxiliary\Build\vcvars64.bat"
+          $before = @{}
+          Get-ChildItem env: | ForEach-Object { $before[$_.Name] = $_.Value }
+          cmd /c "`"$vcvars`" >nul && set" | ForEach-Object {
+            if ($_ -match '^([^=]+)=(.*)$' -and $before[$Matches[1]] -ne $Matches[2]) {
+              "$($Matches[1])=$($Matches[2])" >> $env:GITHUB_ENV
+            }
+          }
+
+      - name: Configure vcpkg
+        shell: pwsh
+        run: |
+          $cache = Join-Path $env:RUNNER_TEMP "vcpkg-binary-cache"
+          New-Item -ItemType Directory -Force -Path $cache | Out-Null
+          "VCPKG_ROOT=$env:VCPKG_INSTALLATION_ROOT" >> $env:GITHUB_ENV
+          "VCPKG_BINARY_CACHE=$cache" >> $env:GITHUB_ENV
+          "VCPKG_BINARY_SOURCES=clear;files,$cache,readwrite" >> $env:GITHUB_ENV
+          "RUNNER_IMAGE=${env:ImageOS}-${env:ImageVersion}" >> $env:GITHUB_ENV
+
+      - name: Restore vcpkg binary cache
+        uses: actions/cache/restore@v6
+        with:
+          path: ${{ env.VCPKG_BINARY_CACHE }}
+          key: vcpkg-${{ env.VCPKG_TRIPLET }}-${{ env.RUNNER_IMAGE }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
+          restore-keys: |
+            vcpkg-${{ env.VCPKG_TRIPLET }}-
+
+      - name: Configure
+        run: cmake --preset ${{ env.PRESET }}
+
+      - name: Build
+        run: cmake --build --preset ${{ env.PRESET }}
+
+      - name: Run
+        shell: pwsh
+        run: |
+          build/${{ env.PRESET }}/benchmarks/teserra_ecs_bench.exe "[ecs]" --benchmark-samples 50 --reporter console --out ecs-bench.txt
+          Get-Content ecs-bench.txt
+
+      - name: Upload results
+        uses: actions/upload-artifact@v7
+        with:
+          name: ecs-benchmarks
+          path: ecs-bench.txt
