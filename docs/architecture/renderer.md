@@ -65,7 +65,7 @@ flowchart LR
     F --> G[submit + present<br/>endFrame]
 ```
 
-- `Renderer::render(const FramePacket&, const FrameTarget&, rhi::CommandList&)` records the frame into a command list it is given: `engine::App` owns `beginFrame()`, submission and present, so the renderer records between them. It starts the frame's upload memory, uploads each view's `CameraData`, then runs the passes. Views are sorted by `order` (stable).
+- `Renderer::render(const FramePacket&, const FrameTarget& output, rhi::CommandList&)` records the frame into a command list it is given: `engine::App` owns `beginFrame()`, submission and present, so the renderer records between them. It (re)creates the scene target if the output changed ([render targets](#render-targets)), starts the frame's upload memory, uploads each view's `CameraData`, runs the passes, and last its own composite pass, which writes `output`. Views are sorted by `order` (stable).
 - **Upload ring** (`UploadRing`): one persistently mapped `Upload` buffer (`Uniform | Vertex | Index | CopySrc`) with a partition of `RendererConfig::uploadBytesPerFrame` (default 4 MiB, rounded up to 256) per frame slot. `beginFrame()` takes `Device::frameSlot()` and empties that partition, which the GPU no longer reads once the device's `beginFrame()` has waited for the slot; `allocate(size, alignment)` sub-allocates from it. It asserts when the partition is full and when the device has moved to another slot without the ring's `beginFrame()`, which would write into data still in flight.
 - **Frame bind group** (set 0, `rhi::kFrameGroup`): one group over the whole ring with the view's `CameraData` (288 bytes, std140) as a uniform buffer with a dynamic offset. `PassContext::bindView(cmd, view)` binds it with the view's offset; pipelines of passes put `Renderer::frameGroupLayout()` at set 0.
 - **Frame context** per frame slot (`kMaxFramesInFlight = 2`): an upload ring buffer partition, the frame's view uniform data, transient bind groups. Reset in `beginFrame()` after the RHI fence for that slot completes.
@@ -81,7 +81,7 @@ flowchart LR
   };
   ```
 
-  In v1 passes run in the order they were added and `declare()` is used only for validation and debug labeling: `PassBuilder::reads()` / `writes()` take a `PassResource` (v1: `SceneColor`, the frame's `FrameTarget`), and `PassContext::target(resource)` asserts that the running pass declared it. A future render graph uses the same declarations to order passes, alias transient targets and insert barriers, so v1 passes do not need rewriting.
+  In v1 passes run in the order they were added and `declare()` is used only for validation and debug labeling: `PassBuilder::reads()` / `writes()` take a `PassResource` (`SceneColor`: the scene target with its depth, and the targets of views; `Output`: the frame's texture, written only by the composite pass), and `PassContext::target(resource)` and `viewTarget(view)` assert that the running pass declared it. A future render graph uses the same declarations to order passes, alias transient targets and insert barriers, so v1 passes do not need rewriting.
 - Every pass wraps its commands in `cmd.pushDebugGroup(name())` for GPU debuggers and profiling.
 
 ## Cameras
@@ -95,7 +95,7 @@ struct Camera {
     Rect viewport{.position = Vec2{0.0F}, .size = Vec2{1.0F}};  // normalized, top-left origin
     i32 order = 0;
     Color clearColor{.r = 0.0F, .g = 0.0F, .b = 0.0F, .a = 1.0F};
-    // render target: with render targets (#95); the frame's target until then
+    RenderTargetHandle target{};  // null: the main scene target
 };
 ```
 
@@ -115,7 +115,7 @@ Goal: draw tens of thousands of sprites with few draw calls and **zero heap allo
 3. **Expand.** For each sprite, `SpriteBatcher::writeVertices()` writes four `SpriteVertex`es in draw order directly into the frame's upload ring buffer: `position: Float3`, `uv: Float2`, `color: Unorm8x4` (24 bytes; `kSpriteVertexBuffer` and `kSpriteVertexAttributes` describe it as RHI data). The corners go top-left, bottom-left, bottom-right, top-right, counter-clockwise with +Y up for the index pattern `0 1 2, 0 2 3`. Positions are transformed on the CPU from the full 3D world matrix; the tint is stored as linear bytes. `SpriteBatch { texture, blend, firstSprite, spriteCount }` gives each draw's first vertex as `firstSprite * 4`.
 4. **Draw.** A static index buffer holds the quad pattern for the maximum batch size (16-bit indices, 16 383 quads per batch). Each batch is one `drawIndexed` with a vertex offset.
 
-`SpritePass` (`<teserra/renderer/sprite_pass.hpp>`, `SpritePass::create(device, renderer.frameGroupLayout(), {filter})`) does all four with the built-in `sprite_unlit` material (texture × tint; shaders embedded in `teserra_renderer`). It declares `writes(SceneColor)`, clears it to the first view's clear color, and for every view sets the viewport and scissor from `RenderView::viewport`, binds the view's camera (set 0), the frame's vertices from one ring allocation and the static index buffer, then per batch binds the pipeline only when the blend mode changes and the texture's material group (set 2) only when the texture changes. Pipelines (per target format and blend mode) and one bind group per texture are created on first use and kept, so a steady-state frame creates no GPU objects; `forgetTexture()` drops a texture's group before the texture is destroyed. `stats()` reports sprites, batches and draw calls of the last frame. `examples/sprite_stress` draws 1 000 or 10 000 sprites with 16 textures in 16 draws.
+`SpritePass` (`<teserra/renderer/sprite_pass.hpp>`, `SpritePass::create(device, renderer.frameGroupLayout(), {filter})`) does all four with the built-in `sprite_unlit` material (texture × tint; shaders embedded in `teserra_renderer`). It declares `writes(SceneColor)` and starts one render pass for each run of views with the same target; the first pass into a target clears its color to the view's clear color and its depth to 1, and the scene target is cleared even when no view renders into it. For every view it sets the viewport and scissor from `RenderView::viewport`, binds the view's camera (set 0), the frame's vertices from one ring allocation and the static index buffer, then per batch binds the pipeline only when the blend mode changes and the texture's material group (set 2) only when the texture changes. Sprites and chunks whose texture is the target being drawn are left out of it (a texture is never sampled while it is rendered into). Pipelines (per target layout and blend mode) and one bind group per texture are created on first use and kept, so a steady-state frame creates no GPU objects; `forgetTexture()` drops a texture's group before the texture is destroyed. `stats()` reports sprites, batches and draw calls of the last frame. `examples/sprite_stress` draws 1 000 or 10 000 sprites with 16 textures in 16 draws.
 
 The vertex layout is declared as an RHI `VertexLayout`, never hard-coded in the RHI. CPU expansion is the simplest correct approach; **instanced** sprites (per-instance data + vertex pulling) are a benchmark-driven optimization in the backlog.
 
@@ -156,6 +156,14 @@ Rendering (#89):
 - Size policies: **match swapchain** (default) or **fixed resolution** (pixel-art games render at e.g. 320×180 and the composite pass scales by the largest integer factor, letterboxing the rest).
 - The main scene target always has a depth attachment (`Depth32Float`), even though v1 2D materials rarely use it.
 
+**Today** (#95, `<teserra/renderer/render_target.hpp>`):
+
+- **The scene target** belongs to the renderer: a color texture (`RenderTarget | Sampled`) in the output's format, so the composite copies one to one and passes need one pipeline per format, and a `Depth32Float` texture. `RendererConfig::scene` (`SceneTargetConfig {resolution, letterboxColor}`; `AppConfig::sceneTarget` in the App) gives its size: `{0, 0}` matches the output, anything else is fixed. `render()` recreates it when the output's size or format changes, or after `setSceneTarget()`; `device.destroy()` keeps the old textures (and the composite's old bind group) until the frames in flight that used them are done, which the null device's `pendingDestructionCount()` lets tests verify. `sceneSize(outputSize)` is what cameras of the scene see; the App passes it to extraction as `RenderExtraction::targetSize`.
+- **The composite pass** is internal and always last: it clears the output to the letterbox color, sets the viewport to `compositeRect(sceneSize, outputSize)` and draws one triangle sampling the scene target with a nearest sampler. `compositeRect()` takes the largest whole factor that fits and centers the result on whole pixels; an output smaller than the scene scales it down to fit. `outputToScene(rect, pixel)` maps the mouse back to scene pixels. It is the only place where presentation scaling happens.
+- **Camera targets:** `Renderer::createRenderTarget({size, colorFormat, depthFormat})` returns a `RenderTargetHandle`; `renderTarget(handle)` gives its `FrameTarget`, whose color texture sprites can show (minimaps). A camera with `Camera::target` renders into it; `RenderView::target` carries it, extraction sizes the view from `RenderExtraction::renderer`, and cameras of destroyed targets are left out. The renderer drops views of destroyed targets (asserted). Views render in `order`, so the camera of a target renders before the views that show it by having a lower order.
+- **Synchronization:** render to a target, then sample it in a later render pass, is ordered by the RHI; the renderer records no barrier (Vulkan readiness). An OpenGL test reads back a scaled frame to check crisp edges and the letterbox.
+- `examples/pixel_perfect` renders at 320×180 with nearest sprite filtering (`AppConfig::spritePass`), moves in whole art pixels, follows the hero with a child camera, and shows a minimap from a second camera; F2 switches to the window's resolution.
+
 ## Debug draw
 
 Immediate-mode API available to systems through the frame context:
@@ -175,7 +183,8 @@ Shapes accumulate in a `DebugDrawList` (line vertices in 3D) and are drawn in th
 - **Toggles:** `setEnabled(false)` ignores shapes at runtime (the tilemap example binds it to F1). `TESERRA_WITH_DEBUG_DRAW=OFF` makes every call an empty inline function (`kDebugDrawCompiled`).
 - **Systems** draw through the scene's `renderer::DebugDrawList` resource (`.writesResource<renderer::DebugDrawList>()`). The ECS cannot see renderer types, so a resource stands in for the frame context. Extraction appends the list's lines to `FramePacket::debugLines` and clears the list: lines last one frame, and a frame without a target drops them.
 - **The pass:** `renderer::DebugPass`, added by the App after the sprite pass, loads the scene color and draws the lines with the built-in `debug_lines` material (`LineList`, alpha blending): one upload and one draw per view. A frame without lines records nothing.
-- **Not yet:** depth testing. Scene targets have no depth attachment until render targets (#95); the option comes with it.
+- **Targets:** the pass loads each view's target, color and depth, one render pass per run of views with the same target, with pipelines per target layout.
+- **Not yet:** depth testing. Scene targets have a depth attachment since #95, but nothing in 2D writes depth yet, so the option waits for a material that does.
 
 ## 3D readiness checklist
 

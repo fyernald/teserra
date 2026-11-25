@@ -10,6 +10,7 @@ teserra_add_module(renderer LAYER 3
         include/teserra/renderer/debug_pass.hpp
         include/teserra/renderer/frame_packet.hpp
         include/teserra/renderer/render_pass.hpp
+        include/teserra/renderer/render_target.hpp
         include/teserra/renderer/renderer.hpp
         include/teserra/renderer/sprite_batcher.hpp
         include/teserra/renderer/sprite_pass.hpp
@@ -19,7 +20,10 @@ teserra_add_module(renderer LAYER 3
         src/assets.cpp
         src/camera.cpp
         src/chunk_mesh_cache.cpp
+        src/composite_pass.cpp
+        src/composite_pass.hpp
         src/debug_pass.cpp
+        src/render_target.cpp
         src/renderer.cpp
         src/sprite_batcher.cpp
         src/sprite_pass.cpp
@@ -29,13 +33,14 @@ teserra_add_module(renderer LAYER 3
 
 # The built-in materials' shaders and the fallbacks of shader assets, compiled at build time and embedded:
 # <teserra_renderer/shaders.hpp> declares teserra::renderer::shaders::kSpriteUnlitVert, kSpriteUnlitFrag,
-# kDebugLinesVert, kDebugLinesFrag,
-# kErrorVert and kErrorFrag. shaders/ also holds the includes every engine shader uses (teserra/camera.glsl).
+# kDebugLinesVert, kDebugLinesFrag, kCompositeVert, kCompositeFrag, kErrorVert and kErrorFrag. shaders/ also holds the includes every engine shader uses (teserra/camera.glsl).
 teserra_add_shaders(teserra_renderer EMBED
     NAMESPACE teserra::renderer::shaders
     HEADER teserra_renderer/shaders.hpp
     INCLUDE_DIRECTORIES shaders
     SOURCES
+        shaders/composite.vert
+        shaders/composite.frag
         shaders/debug_lines.vert
         shaders/debug_lines.frag
         shaders/error.vert

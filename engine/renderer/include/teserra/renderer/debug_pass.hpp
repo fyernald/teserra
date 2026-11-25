@@ -22,8 +22,9 @@ struct DebugPassStats {
     u32 drawCalls = 0;
 };
 
-/// Loads SceneColor (keeps what is there) and draws the frame's debug lines, one draw call per view. The
-/// pipeline of each target format is created when first needed; a steady-state frame creates nothing and
+/// Loads the target of each view (keeps what is there) and draws the frame's debug lines, one draw call per
+/// view; consecutive views with the same target share a render pass. The pipeline of each target layout is
+/// created when first needed; a steady-state frame creates nothing and
 /// allocates nothing. A frame without lines records nothing.
 class DebugPass final : public RenderPass {
 public:
@@ -46,13 +47,14 @@ public:
 private:
     struct Pipeline {
         rhi::Format format = rhi::Format::Undefined;
+        rhi::Format depthFormat = rhi::Format::Undefined;
         rhi::GraphicsPipelineHandle pipeline;
     };
 
     explicit DebugPass(rhi::Device& device) noexcept
         : m_device(device) {}
 
-    [[nodiscard]] rhi::GraphicsPipelineHandle pipeline(rhi::Format format);
+    [[nodiscard]] rhi::GraphicsPipelineHandle pipeline(const FrameTarget& target);
 
     rhi::Device& m_device;
     rhi::ShaderModuleHandle m_vertexShader;

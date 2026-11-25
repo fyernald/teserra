@@ -16,6 +16,7 @@
 #include <teserra/platform/window.hpp>
 #include <teserra/renderer/chunk_mesh_cache.hpp>
 #include <teserra/renderer/renderer.hpp>
+#include <teserra/renderer/sprite_pass.hpp>
 #include <teserra/rhi/command_list.hpp>
 #include <teserra/rhi/device.hpp>
 #include <teserra/rhi/handles.hpp>
@@ -61,6 +62,12 @@ struct AppConfig {
     /// initialization fails. std::nullopt runs without a device: the window gets no graphics context and
     /// nothing is rendered or presented, e.g. for tests and tools.
     std::optional<rhi::Backend> backend = rhi::Backend::OpenGL;
+    /// The size of the scene renderer's main target and how it is presented (renderer.md#render-targets):
+    /// e.g. `.sceneTarget = {.resolution = {320, 180}}` renders pixel art at 320x180 and scales it by whole
+    /// factors to the window, letterboxed. The default matches the window.
+    renderer::SceneTargetConfig sceneTarget{};
+    /// The scene renderer's sprite pass: pixel art wants `.filter = rhi::Filter::Nearest`.
+    renderer::SpritePassConfig spritePass{};
     /// Length of one fixedUpdate step.
     std::chrono::nanoseconds fixedStep = platform::FixedStepAccumulator::kDefaultStep;
     /// Fixed steps run at most per frame; the rest are dropped after a stall.
@@ -134,9 +141,9 @@ public:
     /// FixedUpdate and fixedUpdate x N -> Update -> update -> PostUpdate -> Extract -> render -> Last.
     /// The active scene's Time resource advances every frame before PreUpdate, and its platform::Input
     /// resource (inserted the first frame) is set to input() after the events. Before Extract, its
-    /// scene::RenderExtraction gets the swapchain's size; without a render callback, the App renders what
-    /// extraction produced with its own renderer and sprite pass. Switches requested with
-    /// scenes().switchTo() take effect at the next frame boundary.
+    /// scene::RenderExtraction gets the size of the scene target (the swapchain's with a render callback) and
+    /// the renderer; without a render callback, the App renders what extraction produced with renderer().
+    /// Switches requested with scenes().switchTo() take effect at the next frame boundary.
     [[nodiscard]] int run(scene::Scene& scene, const AppCallbacks& callbacks = {});
 
     /// Ends run() after the current frame, which returns `exitCode`; the last call wins. A close
@@ -165,6 +172,11 @@ public:
     [[nodiscard]] assets::AssetRegistry& assets();
     /// The GPU device; AppConfig::backend must not be std::nullopt (asserted).
     [[nodiscard]] rhi::Device& device();
+    /// The renderer that draws scenes when there is no render callback, created on first use with
+    /// AppConfig::sceneTarget, its sprite pass and its debug pass; nullptr if it could not be created
+    /// (logged, and run() then ends with 1). Games create the render targets of cameras with it. Needs a
+    /// device (asserted).
+    [[nodiscard]] renderer::Renderer* renderer();
     /// The swapchain image of the current frame, to render into during AppCallbacks::render; a null handle
     /// outside it.
     [[nodiscard]] rhi::TextureHandle backbuffer() const noexcept { return m_backbuffer; }
@@ -188,8 +200,6 @@ private:
     void render(const AppCallbacks& callbacks, scene::Scene* active);
     // Whether the window has no image to render into: a device with a swapchain of zero size.
     [[nodiscard]] bool hasNoImage() const noexcept;
-    // The renderer that draws scenes, created the first time a scene is rendered; nullptr if that failed.
-    renderer::Renderer* sceneRenderer();
 
     AppConfig m_config;
     std::optional<Error> m_initError;

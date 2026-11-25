@@ -1,5 +1,6 @@
 // App with a rendered scene, on the Null backend: the active scene's Input resource follows the events,
-// extraction gets the swapchain's size, and without a render callback the App draws the extracted sprites.
+// extraction gets the scene target's size, without a render callback the App draws the extracted sprites, and
+// cameras can render at a fixed resolution or into their own targets.
 
 #include <teserra/engine/app.hpp>
 #include <teserra/platform/key.hpp>
@@ -16,6 +17,7 @@
 
 #include <array>
 #include <cstddef>
+#include <format>
 #include <memory>
 #include <string>
 #include <utility>
@@ -177,4 +179,57 @@ TEST_CASE("App: steady-state frames of a rendered scene do not allocate",
     CHECK(allocations == 0);
     CHECK(level.world().resource<scene::RenderExtraction>().packet.sprites.size() ==
           10); // x up to 8.9, half a sprite wide: 0 to 9
+}
+
+TEST_CASE("App: a fixed scene resolution sizes extraction and is scaled to the window",
+          "[engine][app][scene][render][targets]") {
+    AppConfig config = nullConfig(1);
+    config.sceneTarget = {.resolution = {320, 180}};
+    App app(config, std::make_unique<test::HeadlessPlatform>());
+    REQUIRE(app.isInitialized());
+    scene::Scene& level = app.scenes().create("level");
+    buildScene(level, whiteTexture(app), 1);
+
+    CHECK(app.run(level) == 0);
+    // Cameras see the 320x180 scene target, which the composite scales 2x into the 640x360 window.
+    const auto& extraction = level.world().resource<scene::RenderExtraction>();
+    CHECK(extraction.targetSize == UVec2{320, 180});
+    REQUIRE(extraction.packet.views.size() == 1);
+    CHECK(extraction.packet.views[0].camera.viewportSize == Vec2{320.0F, 180.0F});
+    REQUIRE(app.renderer() != nullptr);
+    CHECK(app.renderer()->composite({640, 360}).scale == 2.0F);
+    const auto& device = static_cast<rhi::null::NullDevice&>(app.device());
+    REQUIRE(device.submitted().size() == 1);
+    const std::string commands = rhi::describeCommands(*device.submitted()[0]);
+    CHECK(commands.find("SetViewport x=0 y=0 width=640 height=360") != std::string::npos);
+}
+
+TEST_CASE("App: a camera renders into a render target that a sprite shows",
+          "[engine][app][scene][render][targets]") {
+    App app(nullConfig(2), std::make_unique<test::HeadlessPlatform>());
+    REQUIRE(app.isInitialized());
+    scene::Scene& level = app.scenes().create("level");
+    buildScene(level, whiteTexture(app), 1);
+    REQUIRE(app.renderer() != nullptr);
+    const renderer::RenderTargetHandle minimap = *app.renderer()->createRenderTarget({.size = {64, 64}});
+    const ecs::Entity mapCamera = level.spawn();
+    level.add<scene::Transform>(mapCamera);
+    level.add<scene::Camera>(mapCamera, scene::Camera{.order = -1, .target = minimap});
+    // The minimap on screen.
+    const ecs::Entity map = level.spawn();
+    level.add<scene::Transform>(map, scene::Transform{.position = {-3.0F, 0.0F, 0.0F}});
+    level.add<scene::SpriteRenderer>(
+        map, scene::SpriteRenderer{.texture = app.renderer()->renderTarget(minimap)->texture});
+
+    CHECK(app.run(level) == 0);
+    const auto& extraction = level.world().resource<scene::RenderExtraction>();
+    REQUIRE(extraction.packet.views.size() == 2);
+    const auto& device = static_cast<rhi::null::NullDevice&>(app.device());
+    REQUIRE(device.submitted().size() == 1);
+    const std::string commands = rhi::describeCommands(*device.submitted()[0]);
+    // Sprites: the minimap's pass, then the scene's; then the composite.
+    CHECK(countOf(commands, "BeginRenderPass") == 3);
+    CHECK(commands.find(
+              std::format("BeginRenderPass color0={}", app.renderer()->renderTarget(minimap)->texture)) <
+          commands.find("PushDebugGroup \"Composite\""));
 }

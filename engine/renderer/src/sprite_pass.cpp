@@ -159,9 +159,10 @@ void SpritePass::forgetTexture(rhi::TextureHandle texture) {
     });
 }
 
-rhi::GraphicsPipelineHandle SpritePass::pipeline(rhi::Format format, SpriteBlend blend) {
+rhi::GraphicsPipelineHandle SpritePass::pipeline(const FrameTarget& target, SpriteBlend blend) {
     const auto found = std::ranges::find_if(m_pipelines, [&](const Pipeline& cached) {
-        return cached.format == format && cached.blend == blend;
+        return cached.format == target.format && cached.depthFormat == target.depthFormat &&
+               cached.blend == blend;
     });
     if (found != m_pipelines.end()) {
         return found->pipeline;
@@ -173,7 +174,8 @@ rhi::GraphicsPipelineHandle SpritePass::pipeline(rhi::Format format, SpriteBlend
         .vertexBuffers = std::span(&kSpriteVertexBuffer, 1),
         .vertexAttributes = kSpriteVertexAttributes,
         .colorBlend = {blendState(blend)},
-        .targets = {.colorFormats = {format}},
+        // Depth test and write stay off (the default): sprites are sorted back to front.
+        .targets = target.layout(),
         .debugName = "sprite_unlit",
     });
     if (!created) {
@@ -184,7 +186,8 @@ rhi::GraphicsPipelineHandle SpritePass::pipeline(rhi::Format format, SpriteBlend
         TESERRA_LOG_DEBUG(LogCategory::Renderer, "Created the {} sprite pipeline", blendName(blend));
     }
     const rhi::GraphicsPipelineHandle handle = created.value_or(rhi::GraphicsPipelineHandle{});
-    m_pipelines.push_back({.format = format, .blend = blend, .pipeline = handle});
+    m_pipelines.push_back(
+        {.format = target.format, .depthFormat = target.depthFormat, .blend = blend, .pipeline = handle});
     return handle;
 }
 
@@ -208,10 +211,10 @@ rhi::BindGroupHandle SpritePass::textureGroup(rhi::TextureHandle texture, bool t
     return *created;
 }
 
-bool SpritePass::bindDraw(rhi::CommandList& commands, Bound& bound, rhi::Format format, SpriteBlend blend,
-                          rhi::TextureHandle texture, bool tilemap, rhi::BufferHandle vertices,
-                          u64 vertexOffset) {
-    const rhi::GraphicsPipelineHandle drawPipeline = pipeline(format, blend);
+bool SpritePass::bindDraw(rhi::CommandList& commands, Bound& bound, const FrameTarget& target,
+                          SpriteBlend blend, rhi::TextureHandle texture, bool tilemap,
+                          rhi::BufferHandle vertices, u64 vertexOffset) {
+    const rhi::GraphicsPipelineHandle drawPipeline = pipeline(target, blend);
     const rhi::BindGroupHandle group = textureGroup(texture, tilemap);
     if (drawPipeline.isNull() || group.isNull()) {
         return false; // logged when creation failed
@@ -235,7 +238,6 @@ void SpritePass::execute(PassContext& context, rhi::CommandList& commands) {
     const std::span<const SpriteDrawItem> sprites = context.packet().sprites;
     const std::span<const TilemapChunkDrawItem> chunks = context.packet().tilemapChunks;
     const std::span<const RenderView> views = context.views();
-    const FrameTarget& target = context.target(PassResource::SceneColor);
     m_stats = {.sprites = static_cast<u32>(sprites.size())};
 
     m_batcher.prepare(sprites);
@@ -257,13 +259,6 @@ void SpritePass::execute(PassContext& context, rhi::CommandList& commands) {
     std::ranges::stable_sort(m_chunkOrder, {}, [&](u32 chunk) { return chunks[chunk].layer; });
     m_stats.tilemapChunks = static_cast<u32>(m_chunkOrder.size());
 
-    const Color clear = views.empty() ? Color{} : views.front().clearColor;
-    commands.beginRenderPass({.colorAttachments = {{
-                                  .texture = target.texture,
-                                  .loadOp = rhi::LoadOp::Clear,
-                                  .storeOp = rhi::StoreOp::Store,
-                                  .clearColor = {clear.r, clear.g, clear.b, clear.a},
-                              }}});
     // Without sprite vertices (no sprites, or allocate() asserted) the batches are left out; chunks still
     // draw.
     const UploadRing::Allocation* spriteVertices = vertices ? &*vertices : nullptr;
@@ -271,57 +266,105 @@ void SpritePass::execute(PassContext& context, rhi::CommandList& commands) {
         spriteVertices != nullptr ? m_batcher.batches() : std::span<const SpriteBatch>{};
     const std::span<const u32> order = m_batcher.order();
     const bool anything = !batches.empty() || !m_chunkOrder.empty();
-    for (usize view = 0; anything && view < views.size(); ++view) {
-        const rhi::Viewport area = viewportOf(views[view], target.size);
-        commands.setViewport(area);
-        commands.setScissor({.x = static_cast<u32>(std::max(area.x, 0.0F)),
-                             .y = static_cast<u32>(std::max(area.y, 0.0F)),
-                             .width = static_cast<u32>(area.width),
-                             .height = static_cast<u32>(area.height)});
-        context.bindView(commands, view);
-        commands.bindIndexBuffer(m_indices, rhi::IndexType::Uint16);
-        Bound bound;
 
-        usize nextChunk = 0;
-        // Draws the chunks not drawn yet whose layer is at most `layer`.
-        const auto drawChunksUpTo = [&](i32 layer) {
-            for (; nextChunk < m_chunkOrder.size() && chunks[m_chunkOrder[nextChunk]].layer <= layer;
-                 ++nextChunk) {
-                const TilemapChunkDrawItem& chunk = chunks[m_chunkOrder[nextChunk]];
-                if (bindDraw(commands, bound, target.format, chunk.blend, chunk.texture, true,
-                             chunk.vertexBuffer, 0)) {
-                    commands.drawIndexed({.indexCount = chunk.quadCount * 6});
-                    ++m_stats.drawCalls;
-                }
-            }
-        };
-        for (const SpriteBatch& batch : batches) {
-            u32 first = batch.firstSprite;
-            const u32 end = batch.firstSprite + batch.spriteCount;
-            while (first < end) {
-                drawChunksUpTo(sprites[order[first]].layer);
-                // The sprites below the next chunk's layer draw together; without chunks left, the whole
-                // rest.
-                u32 last = end;
-                if (nextChunk < m_chunkOrder.size()) {
-                    const i16 chunkLayer = chunks[m_chunkOrder[nextChunk]].layer;
-                    last = first + 1;
-                    while (last < end && sprites[order[last]].layer < chunkLayer) {
-                        ++last;
-                    }
-                }
-                if (bindDraw(commands, bound, target.format, batch.blend, batch.texture, false,
-                             spriteVertices->buffer, spriteVertices->offset)) {
-                    commands.drawIndexed(
-                        {.indexCount = (last - first) * 6, .vertexOffset = static_cast<i32>(first * 4)});
-                    ++m_stats.drawCalls;
-                }
-                first = last;
+    // Begins a render pass into `target`; the frame's first pass into it clears it.
+    m_clearedTargets.clear();
+    const auto beginTarget = [&](const FrameTarget& target, const Color& clear) {
+        const bool first = std::ranges::find(m_clearedTargets, target.texture) == m_clearedTargets.end();
+        if (first) {
+            m_clearedTargets.push_back(target.texture);
+        }
+        const rhi::LoadOp load = first ? rhi::LoadOp::Clear : rhi::LoadOp::Load;
+        commands.beginRenderPass({.colorAttachments = {{
+                                      .texture = target.texture,
+                                      .loadOp = load,
+                                      .storeOp = rhi::StoreOp::Store,
+                                      .clearColor = {clear.r, clear.g, clear.b, clear.a},
+                                  }},
+                                  .depthStencil = {.texture = target.depthTexture,
+                                                   .depthLoadOp = load,
+                                                   .depthStoreOp = rhi::StoreOp::Store}});
+    };
+
+    usize view = 0;
+    while (view < views.size()) {
+        // The views before runEnd render into the same target, in one render pass.
+        const FrameTarget& target = context.viewTarget(view);
+        usize runEnd = view + 1;
+        while (runEnd < views.size() && context.viewTarget(runEnd).texture == target.texture) {
+            ++runEnd;
+        }
+        beginTarget(target, views[view].clearColor);
+        for (; view < runEnd; ++view) {
+            if (anything) {
+                drawView(context, commands, view, target, batches, order, spriteVertices, sprites, chunks);
             }
         }
-        drawChunksUpTo(std::numeric_limits<i32>::max());
+        commands.endRenderPass();
     }
-    commands.endRenderPass();
+    // The composite pass shows the scene target, so it is cleared even when no view renders into it.
+    const FrameTarget& scene = context.target(PassResource::SceneColor);
+    if (std::ranges::find(m_clearedTargets, scene.texture) == m_clearedTargets.end()) {
+        beginTarget(scene, Color{});
+        commands.endRenderPass();
+    }
+}
+
+void SpritePass::drawView(PassContext& context, rhi::CommandList& commands, usize view,
+                          const FrameTarget& target, std::span<const SpriteBatch> batches,
+                          std::span<const u32> order, const UploadRing::Allocation* spriteVertices,
+                          std::span<const SpriteDrawItem> sprites,
+                          std::span<const TilemapChunkDrawItem> chunks) {
+    const rhi::Viewport area = viewportOf(context.views()[view], target.size);
+    commands.setViewport(area);
+    commands.setScissor({.x = static_cast<u32>(std::max(area.x, 0.0F)),
+                         .y = static_cast<u32>(std::max(area.y, 0.0F)),
+                         .width = static_cast<u32>(area.width),
+                         .height = static_cast<u32>(area.height)});
+    context.bindView(commands, view);
+    commands.bindIndexBuffer(m_indices, rhi::IndexType::Uint16);
+    Bound bound;
+
+    usize nextChunk = 0;
+    // Draws the chunks not drawn yet whose layer is at most `layer`.
+    const auto drawChunksUpTo = [&](i32 layer) {
+        for (; nextChunk < m_chunkOrder.size() && chunks[m_chunkOrder[nextChunk]].layer <= layer;
+             ++nextChunk) {
+            const TilemapChunkDrawItem& chunk = chunks[m_chunkOrder[nextChunk]];
+            if (chunk.texture != target.texture &&
+                bindDraw(commands, bound, target, chunk.blend, chunk.texture, true, chunk.vertexBuffer, 0)) {
+                commands.drawIndexed({.indexCount = chunk.quadCount * 6});
+                ++m_stats.drawCalls;
+            }
+        }
+    };
+    for (const SpriteBatch& batch : batches) {
+        u32 first = batch.firstSprite;
+        const u32 end = batch.firstSprite + batch.spriteCount;
+        while (first < end) {
+            drawChunksUpTo(sprites[order[first]].layer);
+            // The sprites below the next chunk's layer draw together; without chunks left, the whole rest.
+            u32 last = end;
+            if (nextChunk < m_chunkOrder.size()) {
+                const i16 chunkLayer = chunks[m_chunkOrder[nextChunk]].layer;
+                last = first + 1;
+                while (last < end && sprites[order[last]].layer < chunkLayer) {
+                    ++last;
+                }
+            }
+            // A sprite showing the target being drawn (a minimap seen by its own camera) is left out of it:
+            // a texture cannot be sampled while it is rendered into.
+            if (batch.texture != target.texture &&
+                bindDraw(commands, bound, target, batch.blend, batch.texture, false, spriteVertices->buffer,
+                         spriteVertices->offset)) {
+                commands.drawIndexed(
+                    {.indexCount = (last - first) * 6, .vertexOffset = static_cast<i32>(first * 4)});
+                ++m_stats.drawCalls;
+            }
+            first = last;
+        }
+    }
+    drawChunksUpTo(std::numeric_limits<i32>::max());
 }
 
 } // namespace teserra::renderer

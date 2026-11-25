@@ -9,6 +9,7 @@
 #include <teserra/renderer/camera_data.hpp>
 #include <teserra/renderer/chunk_mesh_cache.hpp>
 #include <teserra/renderer/frame_packet.hpp>
+#include <teserra/renderer/renderer.hpp>
 #include <teserra/scene/render_components.hpp>
 #include <teserra/scene/tilemap.hpp>
 
@@ -21,9 +22,12 @@ namespace teserra::scene {
 /// Extract and renders `packet` after it. The vectors keep their capacity, so a steady-state frame allocates
 /// nothing.
 struct RenderExtraction {
-    /// Pixels of the target the views render into, set by the App every frame. While it is zero (no device,
-    /// minimized window), nothing is extracted.
+    /// Pixels of the main scene target, which cameras without a target of their own render into, set by the
+    /// App every frame. While it is zero (no device, minimized window), nothing is extracted.
     UVec2 targetSize{0U};
+    /// Where the render targets of cameras (Camera::target) come from, set by the App: their sizes give the
+    /// views' aspect ratios. Cameras with a target are left out without it, or when their target is gone.
+    const renderer::Renderer* renderer = nullptr;
     /// The frame's views (one per Camera with a GlobalTransform) and visible sprites, refilled by every
     /// Extract. Views with the same Camera::order render in an unspecified order.
     renderer::FramePacket packet;

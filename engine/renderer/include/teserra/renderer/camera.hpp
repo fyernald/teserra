@@ -41,7 +41,9 @@ struct Camera {
     /// Views render in ascending order.
     i32 order = 0;
     Color clearColor{.r = 0.0F, .g = 0.0F, .b = 0.0F, .a = 1.0F};
-    // Next: the render target (#95); the frame's target until then.
+    /// What the camera renders into: a target of the renderer (Renderer::createRenderTarget()), such as a
+    /// minimap that sprites then show, or the null handle for the main scene target.
+    RenderTargetHandle target{};
 };
 
 /// The projection matrix of `camera` for a viewport of the given width / height.
@@ -52,7 +54,8 @@ struct Camera {
 [[nodiscard]] CameraData cameraData(const Camera& camera, const Mat4& world, UVec2 targetSize,
                                     f32 time = 0.0F) noexcept;
 
-/// A view for the FramePacket: cameraData() with the camera's clear color, order and viewport.
+/// A view for the FramePacket: cameraData() with the camera's clear color, order, viewport and target.
+/// `targetSize` is the size of the camera's target.
 [[nodiscard]] RenderView renderView(const Camera& camera, const Mat4& world, UVec2 targetSize,
                                     f32 time = 0.0F) noexcept;
 

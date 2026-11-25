@@ -7,12 +7,14 @@
 #include <teserra/core/types.hpp>
 #include <teserra/renderer/render_pass.hpp>
 #include <teserra/renderer/sprite_batcher.hpp>
+#include <teserra/renderer/upload_ring.hpp>
 #include <teserra/rhi/device.hpp>
 #include <teserra/rhi/format.hpp>
 #include <teserra/rhi/handles.hpp>
 #include <teserra/rhi/sampler.hpp>
 
 #include <memory>
+#include <span>
 #include <string_view>
 #include <vector>
 
@@ -37,10 +39,13 @@ struct SpritePassStats {
     u32 drawCalls = 0;
 };
 
-/// Clears SceneColor to the first view's clear color and draws the frame's sprites for every view, in
-/// SpriteBatcher order, and its tilemap chunks: each before the first sprite of its layer or a higher one.
-/// Pipelines (one per target format and blend mode) and the bind group of each texture are created when first
-/// needed and kept, so a steady-state frame creates no GPU objects and allocates nothing.
+/// Draws the frame's sprites for every view, in SpriteBatcher order, and its tilemap chunks: each before the
+/// first sprite of its layer or a higher one. Consecutive views with the same target share a render pass; the
+/// first pass into a target clears its color to the view's clear color and its depth to 1. The scene target
+/// is cleared even when no view renders into it. Sprites and chunks whose texture is the target being drawn
+/// (a minimap seen by its own camera) are left out of that target. Pipelines (one per target layout and blend
+/// mode) and the bind group of each texture are created when first needed and kept, so a steady-state frame
+/// creates no GPU objects and allocates nothing.
 class SpritePass final : public RenderPass {
 public:
     /// `frameLayout` is Renderer::frameGroupLayout(), set 0 of the pass's pipelines.
@@ -64,6 +69,7 @@ public:
 private:
     struct Pipeline {
         rhi::Format format = rhi::Format::Undefined;
+        rhi::Format depthFormat = rhi::Format::Undefined;
         SpriteBlend blend = SpriteBlend::Alpha;
         rhi::GraphicsPipelineHandle pipeline;
     };
@@ -81,15 +87,20 @@ private:
 
     explicit SpritePass(rhi::Device& device);
 
-    // The pipeline for `blend` into targets of `format`, created on first use; null if creation failed.
-    [[nodiscard]] rhi::GraphicsPipelineHandle pipeline(rhi::Format format, SpriteBlend blend);
+    // The pipeline for `blend` into targets like `target`, created on first use; null if creation failed.
+    [[nodiscard]] rhi::GraphicsPipelineHandle pipeline(const FrameTarget& target, SpriteBlend blend);
     // The material group (set 2) of `texture` with the sprite or the tilemap sampler, created on first use;
     // null if creation failed.
     [[nodiscard]] rhi::BindGroupHandle textureGroup(rhi::TextureHandle texture, bool tilemap);
     // Binds what a draw needs; false if its pipeline or group could not be created.
-    [[nodiscard]] bool bindDraw(rhi::CommandList& commands, Bound& bound, rhi::Format format,
+    [[nodiscard]] bool bindDraw(rhi::CommandList& commands, Bound& bound, const FrameTarget& target,
                                 SpriteBlend blend, rhi::TextureHandle texture, bool tilemap,
                                 rhi::BufferHandle vertices, u64 vertexOffset);
+    // Draws the batches and chunks of view `view` into `target`, inside the render pass of its target.
+    void drawView(PassContext& context, rhi::CommandList& commands, usize view, const FrameTarget& target,
+                  std::span<const SpriteBatch> batches, std::span<const u32> order,
+                  const UploadRing::Allocation* spriteVertices, std::span<const SpriteDrawItem> sprites,
+                  std::span<const TilemapChunkDrawItem> chunks);
 
     rhi::Device& m_device;
     SpriteBatcher m_batcher;
@@ -104,6 +115,8 @@ private:
     std::vector<TextureGroup> m_textureGroups;
     // The packet's tilemap chunks with quads, ordered by layer; reused every frame.
     std::vector<u32> m_chunkOrder;
+    // The targets cleared this frame; reused every frame.
+    std::vector<rhi::TextureHandle> m_clearedTargets;
     SpritePassStats m_stats;
 };
 

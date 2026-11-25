@@ -12,6 +12,7 @@
 #include <teserra/rhi/device.hpp>
 #include <teserra/rhi/format.hpp>
 #include <teserra/rhi/handles.hpp>
+#include <teserra/rhi/pipeline.hpp>
 
 #include <cstddef>
 #include <span>
@@ -21,18 +22,30 @@ namespace teserra::renderer {
 
 class UploadRing;
 
-/// The frame resources passes read and write. v1 has the frame's output; scene depth and offscreen targets
-/// follow with render targets (#95).
+/// The frame resources passes read and write (docs/architecture/renderer.md#render-targets).
 enum class PassResource : u8 {
-    /// The texture the frame is rendered into, usually the swapchain image.
+    /// The main scene target, color and depth, which views render into unless their camera has a target of
+    /// its own. Declaring it also covers the targets of views (PassContext::viewTarget()).
     SceneColor,
+    /// The texture the frame is presented from, usually the swapchain image. The renderer's composite pass
+    /// writes it after every other pass, from SceneColor.
+    Output,
 };
 
-/// The texture of a frame resource.
+/// The textures of a frame resource.
 struct FrameTarget {
     rhi::TextureHandle texture{};
     rhi::Format format = rhi::Format::Undefined;
     UVec2 size{0U};
+    /// The depth attachment that goes with `texture`; null without one.
+    rhi::TextureHandle depthTexture{};
+    /// Format::Undefined without depth.
+    rhi::Format depthFormat = rhi::Format::Undefined;
+
+    /// The attachment formats of render passes into this target, for pipelines that draw into it.
+    [[nodiscard]] rhi::RenderTargetLayout layout() const noexcept {
+        return {.colorFormats = {format}, .depthStencilFormat = depthFormat};
+    }
 };
 
 /// What a pass declares in RenderPass::declare().
@@ -71,8 +84,11 @@ public:
     /// The frame's views, sorted by RenderView::order.
     [[nodiscard]] std::span<const RenderView> views() const noexcept { return m_views; }
     [[nodiscard]] u32 frameSlot() const noexcept { return m_device->frameSlot(); }
-    /// The texture of `resource`. Asserts that the pass declared it in declare().
+    /// The textures of `resource`. Asserts that the pass declared it in declare().
     [[nodiscard]] const FrameTarget& target(PassResource resource) const;
+    /// The target view `view` (an index into views()) renders into: its camera's render target, or the main
+    /// scene target. Asserts that the pass declared SceneColor.
+    [[nodiscard]] const FrameTarget& viewTarget(usize view) const;
     /// Binds the camera of view `view` (an index into views()) at set 0, rhi::kFrameGroup. Pipelines include
     /// Renderer::frameGroupLayout() at set 0 of their layout. Call it inside a render pass.
     void bindView(rhi::CommandList& commands, usize view) const;
@@ -88,7 +104,9 @@ private:
     std::span<const RenderView> m_views{};
     std::span<const u32> m_viewOffsets{};
     rhi::BindGroupHandle m_frameGroup{};
-    const FrameTarget* m_target = nullptr;
+    const FrameTarget* m_scene = nullptr;
+    const FrameTarget* m_output = nullptr;
+    std::span<const FrameTarget> m_viewTargets{};
     const PassBuilder* m_declared = nullptr;
     std::string_view m_passName{};
 };

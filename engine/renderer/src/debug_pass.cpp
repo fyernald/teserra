@@ -60,8 +60,10 @@ void DebugPass::declare(PassBuilder& builder) {
     builder.writes(PassResource::SceneColor);
 }
 
-rhi::GraphicsPipelineHandle DebugPass::pipeline(rhi::Format format) {
-    const auto found = std::ranges::find(m_pipelines, format, &Pipeline::format);
+rhi::GraphicsPipelineHandle DebugPass::pipeline(const FrameTarget& target) {
+    const auto found = std::ranges::find_if(m_pipelines, [&](const Pipeline& cached) {
+        return cached.format == target.format && cached.depthFormat == target.depthFormat;
+    });
     if (found != m_pipelines.end()) {
         return found->pipeline;
     }
@@ -77,7 +79,8 @@ rhi::GraphicsPipelineHandle DebugPass::pipeline(rhi::Format format) {
                         .dstColor = rhi::BlendFactor::OneMinusSrcAlpha,
                         .srcAlpha = rhi::BlendFactor::One,
                         .dstAlpha = rhi::BlendFactor::OneMinusSrcAlpha}},
-        .targets = {.colorFormats = {format}},
+        // No depth test yet: nothing in 2D writes depth.
+        .targets = target.layout(),
         .debugName = "debug_lines",
     });
     if (!created) {
@@ -87,7 +90,7 @@ rhi::GraphicsPipelineHandle DebugPass::pipeline(rhi::Format format) {
         TESERRA_LOG_DEBUG(LogCategory::Renderer, "Created the debug line pipeline");
     }
     const rhi::GraphicsPipelineHandle handle = created.value_or(rhi::GraphicsPipelineHandle{});
-    m_pipelines.push_back({.format = format, .pipeline = handle});
+    m_pipelines.push_back({.format = target.format, .depthFormat = target.depthFormat, .pipeline = handle});
     return handle;
 }
 
@@ -97,11 +100,6 @@ void DebugPass::execute(PassContext& context, rhi::CommandList& commands) {
     if (vertices.size() < 2 || context.views().empty()) {
         return;
     }
-    const FrameTarget& target = context.target(PassResource::SceneColor);
-    const rhi::GraphicsPipelineHandle linePipeline = pipeline(target.format);
-    if (linePipeline.isNull()) {
-        return; // logged when creation failed
-    }
     const std::span<const std::byte> bytes = std::as_bytes(vertices.first(vertices.size() & ~usize{1}));
     const std::optional<UploadRing::Allocation> upload =
         context.uploads().allocate(bytes.size(), kVertexAlignment);
@@ -110,26 +108,43 @@ void DebugPass::execute(PassContext& context, rhi::CommandList& commands) {
     }
     std::ranges::copy(bytes, upload->memory.begin());
 
-    commands.beginRenderPass(
-        {.colorAttachments = {
-             {.texture = target.texture, .loadOp = rhi::LoadOp::Load, .storeOp = rhi::StoreOp::Store}}});
     const std::span<const RenderView> views = context.views();
-    for (usize view = 0; view < views.size(); ++view) {
-        const Vec2 size{static_cast<f32>(target.size.x), static_cast<f32>(target.size.y)};
-        const Vec2 position = views[view].viewport.position * size;
-        const Vec2 extent = views[view].viewport.size * size;
-        commands.setViewport({.x = position.x, .y = position.y, .width = extent.x, .height = extent.y});
-        commands.setScissor({.x = static_cast<u32>(std::max(position.x, 0.0F)),
-                             .y = static_cast<u32>(std::max(position.y, 0.0F)),
-                             .width = static_cast<u32>(extent.x),
-                             .height = static_cast<u32>(extent.y)});
-        commands.bindPipeline(linePipeline);
-        context.bindView(commands, view);
-        commands.bindVertexBuffer(0, upload->buffer, upload->offset);
-        commands.draw({.vertexCount = static_cast<u32>(bytes.size() / sizeof(DebugVertex))});
-        ++m_stats.drawCalls;
+    usize view = 0;
+    while (view < views.size()) {
+        // The views before runEnd render into the same target, in one render pass.
+        const FrameTarget& target = context.viewTarget(view);
+        usize runEnd = view + 1;
+        while (runEnd < views.size() && context.viewTarget(runEnd).texture == target.texture) {
+            ++runEnd;
+        }
+        const rhi::GraphicsPipelineHandle linePipeline = pipeline(target);
+        if (linePipeline.isNull()) {
+            view = runEnd; // logged when creation failed
+            continue;
+        }
+        commands.beginRenderPass({.colorAttachments = {{.texture = target.texture,
+                                                        .loadOp = rhi::LoadOp::Load,
+                                                        .storeOp = rhi::StoreOp::Store}},
+                                  .depthStencil = {.texture = target.depthTexture,
+                                                   .depthLoadOp = rhi::LoadOp::Load,
+                                                   .depthStoreOp = rhi::StoreOp::Store}});
+        for (; view < runEnd; ++view) {
+            const Vec2 size{static_cast<f32>(target.size.x), static_cast<f32>(target.size.y)};
+            const Vec2 position = views[view].viewport.position * size;
+            const Vec2 extent = views[view].viewport.size * size;
+            commands.setViewport({.x = position.x, .y = position.y, .width = extent.x, .height = extent.y});
+            commands.setScissor({.x = static_cast<u32>(std::max(position.x, 0.0F)),
+                                 .y = static_cast<u32>(std::max(position.y, 0.0F)),
+                                 .width = static_cast<u32>(extent.x),
+                                 .height = static_cast<u32>(extent.y)});
+            commands.bindPipeline(linePipeline);
+            context.bindView(commands, view);
+            commands.bindVertexBuffer(0, upload->buffer, upload->offset);
+            commands.draw({.vertexCount = static_cast<u32>(bytes.size() / sizeof(DebugVertex))});
+            ++m_stats.drawCalls;
+        }
+        commands.endRenderPass();
     }
-    commands.endRenderPass();
 }
 
 } // namespace teserra::renderer
