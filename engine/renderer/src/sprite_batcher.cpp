@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <bit>
 #include <cmath>
+#include <cstdint>
 #include <cstring>
 
 namespace teserra::renderer {
@@ -14,9 +15,18 @@ namespace {
 // Bits of the sort key, from the top.
 constexpr u32 kDepthBits = 24;
 constexpr u32 kBatchBits = 24;
-// The batch id: the texture's slot index above the 2 bits of the blend mode.
+// The batch id: the texture's slot index, 6 bits of the material instance, and the 2 bits of the blend mode.
+// The material bits only group sprites; batches compare the instances themselves.
 constexpr u32 kBlendBits = 2;
-constexpr u32 kMaxTextureIndex = (1U << (kBatchBits - kBlendBits)) - 1;
+constexpr u32 kMaterialBits = 6;
+constexpr u32 kMaxTextureIndex = (1U << (kBatchBits - kMaterialBits - kBlendBits)) - 1;
+
+u64 materialBits(const MaterialInstance* material) noexcept {
+    // Instances are at least 8-byte aligned; the bits above that differ between them.
+    return material == nullptr ? 0
+                               : ((reinterpret_cast<std::uintptr_t>(material) >> 3U) % 63U) +
+                                     1U; // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
+}
 
 // The bits of a float, mapped so that unsigned order is numeric order: negative values have all bits
 // flipped, positive ones only the sign bit.
@@ -37,7 +47,8 @@ u64 spriteSortKey(const SpriteDrawItem& sprite) noexcept {
     const u32 textureIndex = sprite.texture.index();
     TESERRA_ASSERT(textureIndex <= kMaxTextureIndex, "Sprite texture slot {} does not fit the sort key",
                    textureIndex);
-    const u64 batch = (u64{textureIndex & kMaxTextureIndex} << kBlendBits) | static_cast<u64>(sprite.blend);
+    const u64 batch = (u64{textureIndex & kMaxTextureIndex} << (kMaterialBits + kBlendBits)) |
+                      (materialBits(sprite.material) << kBlendBits) | static_cast<u64>(sprite.blend);
     return (layer << (kDepthBits + kBatchBits)) | (depth << kBatchBits) | batch;
 }
 
@@ -67,13 +78,16 @@ void SpriteBatcher::prepare(std::span<const SpriteDrawItem> sprites) {
         if (!m_batches.empty()) {
             SpriteBatch& last = m_batches.back();
             if (last.texture == sprite.texture && last.blend == sprite.blend &&
-                last.spriteCount < m_maxSpritesPerBatch) {
+                last.material == sprite.material && last.spriteCount < m_maxSpritesPerBatch) {
                 ++last.spriteCount;
                 continue;
             }
         }
-        m_batches.push_back(
-            {.texture = sprite.texture, .blend = sprite.blend, .firstSprite = position, .spriteCount = 1});
+        m_batches.push_back({.texture = sprite.texture,
+                             .blend = sprite.blend,
+                             .material = sprite.material,
+                             .firstSprite = position,
+                             .spriteCount = 1});
     }
 }
 

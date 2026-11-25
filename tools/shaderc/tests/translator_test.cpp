@@ -62,6 +62,14 @@ std::vector<std::uint32_t> descriptorSetDecorations(const std::vector<std::uint3
     return sets;
 }
 
+// The bindings without their block members, which a test of their own checks.
+std::vector<ShaderBinding> withoutMembers(std::vector<ShaderBinding> bindings) {
+    for (ShaderBinding& binding : bindings) {
+        binding.members.clear();
+    }
+    return bindings;
+}
+
 std::string translationError(std::string_view name) {
     const Translated result = translateFixture(name);
     CHECK_FALSE(result.translation.succeeded());
@@ -80,7 +88,7 @@ TEST_CASE("shaderc translation: reflection of a sprite vertex shader", "[shaderc
 
     REQUIRE(result.translation.succeeded());
     CHECK(result.translation.diagnostics.empty());
-    CHECK(result.translation.reflection.bindings ==
+    CHECK(withoutMembers(result.translation.reflection.bindings) ==
           std::vector<ShaderBinding>{
               {.group = 0, .binding = 0, .type = BindingType::UniformBuffer, .size = 80, .name = "Frame"},
               {.group = 3, .binding = 0, .type = BindingType::UniformBuffer, .size = 64, .name = "Draw"},
@@ -100,7 +108,7 @@ TEST_CASE("shaderc translation: reflection of a sprite fragment shader", "[shade
     const Translated result = translateFixture("sprite/sprite.frag");
 
     REQUIRE(result.translation.succeeded());
-    CHECK(result.translation.reflection.bindings ==
+    CHECK(withoutMembers(result.translation.reflection.bindings) ==
           std::vector<ShaderBinding>{
               {.group = 0, .binding = 0, .type = BindingType::UniformBuffer, .size = 80, .name = "Frame"},
               {.group = 2, .binding = 0, .type = BindingType::UniformBuffer, .size = 16, .name = "Material"},
@@ -109,12 +117,32 @@ TEST_CASE("shaderc translation: reflection of a sprite fragment shader", "[shade
     CHECK(result.translation.reflection.vertexInputs.empty()); // fragment inputs are not vertex inputs
 }
 
+TEST_CASE("shaderc translation: the members of blocks, for material parameters", "[shaderc][translator]") {
+    const Translated fragment = translateFixture("sprite/sprite.frag");
+    REQUIRE(fragment.translation.succeeded());
+    const std::vector<ShaderBinding>& bindings = fragment.translation.reflection.bindings;
+    REQUIRE(bindings.size() == 3);
+    CHECK(bindings[0].members ==
+          std::vector<rhi::ShaderBlockMember>{
+              {.name = "viewProjection", .offset = 0, .size = 64, .rows = 4, .columns = 4},
+              {.name = "time", .offset = 64, .size = 4},
+          });
+    CHECK(bindings[1].members ==
+          std::vector<rhi::ShaderBlockMember>{{.name = "tint", .size = 16, .rows = 4}});
+    CHECK(bindings[2].members.empty()); // a texture
+
+    const Translated vertex = translateFixture("sprite/sprite.vert");
+    REQUIRE(vertex.translation.succeeded());
+    CHECK(vertex.translation.reflection.bindings[1].members ==
+          std::vector<rhi::ShaderBlockMember>{{.name = "model", .size = 64, .rows = 4, .columns = 4}});
+}
+
 TEST_CASE("shaderc translation: storage buffers in a compute shader", "[shaderc][translator]") {
     const Translated result = translateFixture("fill.comp");
 
     REQUIRE(result.translation.succeeded());
     // The size of a block that holds only a runtime-sized array is 0.
-    CHECK(result.translation.reflection.bindings ==
+    CHECK(withoutMembers(result.translation.reflection.bindings) ==
           std::vector<ShaderBinding>{
               {.group = 0, .binding = 0, .type = BindingType::StorageBuffer, .size = 0, .name = "Values"},
           });

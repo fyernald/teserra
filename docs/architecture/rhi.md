@@ -273,7 +273,7 @@ Format version 1 (`kShaderBlobVersion`), all values little-endian `u32`, every p
 | 12 | Section count |
 | 16 | Section table: `{type, offset, size}` per section, offsets from the start of the blob |
 
-Sections: 1 = SPIR-V, 2 = GLSL, 3 = reflection. The reflection section has three counts (bindings, vertex inputs, push-constant size), 24-byte binding records `{group, binding, type, size, name offset, name length}`, 20-byte input records `{location, scalar type, components, name offset, name length}`, and then the names. The reader:
+Sections: 1 = SPIR-V, 2 = GLSL, 3 = reflection, 4 = block members. The reflection section has three counts (bindings, vertex inputs, push-constant size), 24-byte binding records `{group, binding, type, size, name offset, name length}`, 20-byte input records `{location, scalar type, components, name offset, name length}`, and then the names. The block member section (#97, what materials set parameters through) has a count, 36-byte records `{binding index, offset, size, scalar type, rows, columns, array size, name offset, name length}` for the top-level scalar, vector and matrix members of each buffer's block (`ShaderBinding::members`), and then the names; blobs without it read with no members, so it needed no new version. The reader:
 
 - **skips** sections of unknown types, so a later section (e.g. MSL) does not need a new version;
 - fails with `ErrorCode::Unsupported` for another version;

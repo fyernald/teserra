@@ -21,6 +21,9 @@ constexpr std::size_t kSectionEntrySize = 12;     // type, offset, size
 constexpr std::size_t kReflectionHeaderSize = 12; // binding count, vertex input count, push-constant size
 constexpr std::size_t kBindingRecordSize = 24;    // group, binding, type, size, name offset, name length
 constexpr std::size_t kInputRecordSize = 20; // location, scalar type, components, name offset, name length
+// The block member section, which readers before it skip: a count, then per member the index of its binding,
+// offset, size, scalar type, rows, columns, array size, name offset and name length, then the names.
+constexpr std::size_t kMemberRecordSize = 36;
 
 // For messages.
 std::string_view stageName(ShaderStage stage) noexcept {
@@ -40,6 +43,7 @@ std::string_view stageName(ShaderStage stage) noexcept {
 constexpr u32 kSpirvSection = 1;
 constexpr u32 kGlslSection = 2;
 constexpr u32 kReflectionSection = 3;
+constexpr u32 kBlockMemberSection = 4;
 
 class Writer {
 public:
@@ -88,6 +92,33 @@ std::vector<std::byte> reflectionSection(const ShaderReflection& reflection) {
         writer.u32Value(input.components);
         writer.u32Value(addName(input.name));
         writer.u32Value(static_cast<u32>(input.name.size()));
+    }
+    writer.text(names);
+    writer.align();
+    return std::move(writer).take();
+}
+
+std::vector<std::byte> blockMemberSection(const ShaderReflection& reflection) {
+    std::string names;
+    u32 count = 0;
+    for (const ShaderBinding& binding : reflection.bindings) {
+        count += static_cast<u32>(binding.members.size());
+    }
+    Writer writer;
+    writer.u32Value(count);
+    for (u32 index = 0; index < reflection.bindings.size(); ++index) {
+        for (const ShaderBlockMember& member : reflection.bindings[index].members) {
+            writer.u32Value(index);
+            writer.u32Value(member.offset);
+            writer.u32Value(member.size);
+            writer.u32Value(static_cast<u32>(member.scalarType));
+            writer.u32Value(member.rows);
+            writer.u32Value(member.columns);
+            writer.u32Value(member.arraySize);
+            writer.u32Value(static_cast<u32>(names.size()));
+            writer.u32Value(static_cast<u32>(member.name.size()));
+            names += member.name;
+        }
     }
     writer.text(names);
     writer.align();
@@ -213,14 +244,52 @@ Result<ShaderReflection> readReflection(std::span<const std::byte> section) {
     return reflection;
 }
 
+Result<void> readBlockMembers(std::span<const std::byte> section, ShaderReflection& reflection) {
+    const Reader reader(section);
+    const std::optional<u32> count = reader.u32At(0);
+    const u64 recordsSize = u64{count.value_or(0)} * kMemberRecordSize;
+    const std::optional<std::span<const std::byte>> records =
+        count ? reader.range(4, recordsSize) : std::nullopt;
+    if (!records) {
+        return fail(ErrorCode::InvalidData, Module::Rhi,
+                    "The block member section of the shader blob is truncated");
+    }
+    const Reader strings(section.subspan(4 + static_cast<std::size_t>(recordsSize)));
+    for (u32 i = 0; i < *count; ++i) {
+        const Reader record(records->subspan(i * kMemberRecordSize, kMemberRecordSize));
+        const u32 binding = record.u32At(0).value_or(0);
+        const u32 scalarType = record.u32At(12).value_or(0);
+        const u32 rows = record.u32At(16).value_or(0);
+        const u32 columns = record.u32At(20).value_or(0);
+        const std::optional<std::span<const std::byte>> text =
+            strings.range(record.u32At(28).value_or(0), record.u32At(32).value_or(0));
+        if (binding >= reflection.bindings.size() || scalarType > static_cast<u32>(ShaderScalarType::Uint) ||
+            rows < 1 || rows > 4 || columns < 1 || columns > 4 || !text) {
+            return fail(ErrorCode::InvalidData, Module::Rhi, "Block member {} of the shader blob is invalid",
+                        i);
+        }
+        reflection.bindings[binding].members.push_back(
+            {.name = std::string(asText(*text)),
+             .offset = record.u32At(4).value_or(0),
+             .size = record.u32At(8).value_or(0),
+             .scalarType = static_cast<ShaderScalarType>(scalarType),
+             .rows = rows,
+             .columns = columns,
+             .arraySize = record.u32At(24).value_or(0)});
+    }
+    return {};
+}
+
 } // namespace
 
 std::vector<std::byte> writeShaderBlob(const ShaderBlobContents& contents) {
     const std::vector<std::byte> reflection = reflectionSection(contents.reflection);
-    const std::array<std::pair<u32, std::span<const std::byte>>, 3> sections{{
+    const std::vector<std::byte> members = blockMemberSection(contents.reflection);
+    const std::array<std::pair<u32, std::span<const std::byte>>, 4> sections{{
         {kSpirvSection, contents.spirv},
         {kGlslSection, std::as_bytes(std::span(contents.glsl))},
         {kReflectionSection, reflection},
+        {kBlockMemberSection, members},
     }};
 
     Writer writer;
@@ -274,6 +343,7 @@ Result<ShaderBlobContents> readShaderBlob(std::span<const std::byte> blob) {
     std::optional<std::span<const std::byte>> spirv;
     std::optional<std::span<const std::byte>> glsl;
     std::optional<std::span<const std::byte>> reflection;
+    std::optional<std::span<const std::byte>> members;
     for (u32 i = 0; i < sectionCount; ++i) {
         const std::size_t entry = kHeaderSize + std::size_t{i} * kSectionEntrySize;
         const u32 type = reader.u32At(entry).value_or(0);
@@ -283,10 +353,11 @@ Result<ShaderBlobContents> readShaderBlob(std::span<const std::byte> blob) {
             return fail(ErrorCode::InvalidData, Module::Rhi,
                         "Section {} of the shader blob lies outside the blob", i);
         }
-        std::optional<std::span<const std::byte>>* known = type == kSpirvSection        ? &spirv
-                                                           : type == kGlslSection       ? &glsl
-                                                           : type == kReflectionSection ? &reflection
-                                                                                        : nullptr;
+        std::optional<std::span<const std::byte>>* known = type == kSpirvSection         ? &spirv
+                                                           : type == kGlslSection        ? &glsl
+                                                           : type == kReflectionSection  ? &reflection
+                                                           : type == kBlockMemberSection ? &members
+                                                                                         : nullptr;
         if (known == nullptr) {
             continue; // a section of a later format revision
         }
@@ -304,6 +375,9 @@ Result<ShaderBlobContents> readShaderBlob(std::span<const std::byte> blob) {
         return fail(ErrorCode::InvalidData, Module::Rhi, "The shader blob has no reflection section");
     }
     TESERRA_TRY_ASSIGN(ShaderReflection parsed, readReflection(*reflection));
+    if (members) { // blobs written before members were reflected have none
+        TESERRA_TRY(readBlockMembers(*members, parsed));
+    }
     return ShaderBlobContents{.stage = static_cast<ShaderStage>(stage),
                               .spirv = *spirv,
                               .glsl = glsl ? asText(*glsl) : std::string_view(),

@@ -16,3 +16,15 @@ target_compile_definitions(teserra_engine_tests PRIVATE
 )
 
 teserra_add_header_check(engine)
+
+# Shaders of the GPU tests, compiled and embedded: <engine_tests/shaders.hpp> declares
+# teserra::test::shaders::kTintVert and kTintFrag (a sprite material). The renderer's shaders/ holds the
+# engine's shader includes (teserra/camera.glsl).
+teserra_add_shaders(teserra_engine_tests EMBED
+    NAMESPACE teserra::test::shaders
+    HEADER engine_tests/shaders.hpp
+    INCLUDE_DIRECTORIES ../../renderer/shaders
+    SOURCES
+        shaders/tint.vert
+        shaders/tint.frag
+)

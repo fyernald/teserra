@@ -126,10 +126,43 @@ private:
         }
         m_result.reflection.bindings.push_back(
             {.group = set, .binding = binding, .type = type, .size = size, .name = resource.name});
+        if (type != BindingType::SampledTexture) {
+            addMembers(m_compiler.get_type(resource.base_type_id), m_result.reflection.bindings.back());
+        }
 
         // Only SPIRV-Cross's copy of the module changes: the blob keeps the original decorations.
         m_compiler.set_decoration(resource.id, spv::DecorationBinding, rhi::flatBinding(set, binding));
         m_compiler.unset_decoration(resource.id, spv::DecorationDescriptorSet);
+    }
+
+    // The top-level members of a block that parameters can be set through; members that are structs are left
+    // out.
+    void addMembers(const spirv_cross::SPIRType& block, rhi::ShaderBinding& binding) {
+        for (std::uint32_t i = 0; i < block.member_types.size(); ++i) {
+            const spirv_cross::SPIRType& member = m_compiler.get_type(block.member_types[i]);
+            rhi::ShaderScalarType scalarType = rhi::ShaderScalarType::Float;
+            switch (member.basetype) {
+                case spirv_cross::SPIRType::Float:
+                    break;
+                case spirv_cross::SPIRType::Int:
+                    scalarType = rhi::ShaderScalarType::Int;
+                    break;
+                case spirv_cross::SPIRType::UInt:
+                    scalarType = rhi::ShaderScalarType::Uint;
+                    break;
+                default:
+                    continue;
+            }
+            binding.members.push_back({
+                .name = m_compiler.get_member_name(block.self, i),
+                .offset = m_compiler.type_struct_member_offset(block, i),
+                .size = static_cast<std::uint32_t>(m_compiler.get_declared_struct_member_size(block, i)),
+                .scalarType = scalarType,
+                .rows = member.vecsize,
+                .columns = member.columns,
+                .arraySize = member.array.empty() ? 0 : member.array[0],
+            });
+        }
     }
 
     void addVertexInput(const spirv_cross::Resource& input) {
