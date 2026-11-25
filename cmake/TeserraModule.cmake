@@ -146,3 +146,41 @@ function(teserra_link_third_party name visibility)
     endforeach()
     target_link_libraries(${target} ${visibility} ${ARGN})
 endfunction()
+
+# teserra_check_public_includes(<target>)
+#
+# Fails configuration if a source of <target> (a game or example) reaches past Teserra's public API: every
+# `#include <teserra/...>` must name a header in an engine module's include/ directory (or a generated one
+# under the build tree), and quoted includes must name files in the target's own directory, without "..".
+function(teserra_check_public_includes target)
+    get_target_property(sources ${target} SOURCES)
+    get_target_property(directory ${target} SOURCE_DIR)
+    file(GLOB public_roots LIST_DIRECTORIES true
+        "${PROJECT_SOURCE_DIR}/engine/*/include"
+        "${PROJECT_BINARY_DIR}/engine/*/include")
+    foreach(source IN LISTS sources)
+        cmake_path(ABSOLUTE_PATH source BASE_DIRECTORY "${directory}" OUTPUT_VARIABLE path)
+        file(STRINGS "${path}" includes REGEX "^[ \t]*#[ \t]*include")
+        foreach(line IN LISTS includes)
+            if(line MATCHES "<(teserra/[^>]+)>")
+                set(header "${CMAKE_MATCH_1}")
+                set(found FALSE)
+                foreach(root IN LISTS public_roots)
+                    if(EXISTS "${root}/${header}")
+                        set(found TRUE)
+                    endif()
+                endforeach()
+                if(NOT found)
+                    message(FATAL_ERROR "${path}: <${header}> is not a public Teserra header "
+                                        "(docs/architecture/public-api.md)")
+                endif()
+            elseif(line MATCHES "\"([^\"]+)\"")
+                set(header "${CMAKE_MATCH_1}")
+                if(header MATCHES "[.][.]" OR NOT EXISTS "${directory}/${header}")
+                    message(FATAL_ERROR "${path}: \"${header}\" is not a file of ${target}; games include only "
+                                        "their own files and Teserra's public headers")
+                endif()
+            endif()
+        endforeach()
+    endforeach()
+endfunction()
