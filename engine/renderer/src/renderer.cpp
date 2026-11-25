@@ -2,6 +2,7 @@
 
 #include <teserra/core/assert.hpp>
 #include <teserra/core/log.hpp>
+#include <teserra/core/profile.hpp>
 #include <teserra/renderer/camera_data.hpp>
 #include <teserra/rhi/binding.hpp>
 #include <teserra/rhi/limits.hpp>
@@ -226,6 +227,7 @@ UVec2 Renderer::targetSize(RenderTargetHandle target, UVec2 outputSize) const no
 }
 
 void Renderer::render(const FramePacket& packet, const FrameTarget& output, rhi::CommandList& commands) {
+    TESERRA_PROFILE_FUNCTION();
     m_uploads.beginFrame();
     if (!updateSceneTarget(output)) {
         // Nothing to draw into: the output shows the letterbox color.
@@ -276,6 +278,7 @@ void Renderer::render(const FramePacket& packet, const FrameTarget& output, rhi:
     context.m_output = &output;
     context.m_viewTargets = m_viewTargets;
     const auto run = [&](RenderPass& pass, const PassBuilder& declared) {
+        TESERRA_PROFILE_SCOPE_DYNAMIC(pass.name());
         context.m_declared = &declared;
         context.m_passName = pass.name();
         commands.pushDebugGroup(context.m_passName);

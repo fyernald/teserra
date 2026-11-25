@@ -43,8 +43,11 @@ CHECK(allocations.count() == 0);
 
 ## Profiling
 
-- Instrumentation macros (`TESERRA_PROFILE_SCOPE`, `TESERRA_PROFILE_FUNCTION`, `TESERRA_PROFILE_FRAME_MARK`) exist from the core iteration as no-ops and are placed in every engine subsystem's main entry points as they are written.
-- **Tracy** is enabled with the `profile` preset (`TESERRA_ENABLE_PROFILING=ON`). GPU zones come from the RHI backend; passes push debug groups.
+- Instrumentation macros (`TESERRA_PROFILE_SCOPE`, `TESERRA_PROFILE_SCOPE_DYNAMIC`, `TESERRA_PROFILE_FUNCTION`, `TESERRA_PROFILE_FRAME_MARK`) exist from the core iteration and are placed in every engine subsystem's main entry points as they are written. Without profiling they expand to nothing.
+- **Tracy 0.13.1** is enabled with the `windows-msvc-profile` preset (`TESERRA_ENABLE_PROFILING=ON`, `RelWithDebInfo`; vcpkg feature `profiling`, Tracy's `on-demand` mode, so a run records only while a viewer is connected). Use the matching viewer version. Builds without it link no Tracy at all; a CTest case checks that an `OFF` build carries no Tracy strings and a profile build does.
+- **What the timeline shows (#107):** frames (`App` frame mark); `Events`, `Render`, `Present` and `Assets end frame` in the App; every scene phase (`PreUpdate`, `Update`, ...) and every system by its name (`move_player`, `teserra.transforms`, ...) with the `Commands` sync point; `Renderer::render` and every pass (`Sprites`, `Debug`, `Composite`); the GL device's `beginFrame` (the frame-slot fence wait), `submit` and `endFrame`, and the swapchain's `present`. **GPU zones:** each debug group the GL backend replays (each pass) is timed with timer queries on an `OpenGL` GPU timeline (`gl_gpu_profiler.cpp`, the only file that includes Tracy's GL header; it routes Tracy's GL calls to the device's glad context).
+- **Reading a capture:** with vsync the CPU waits for the display somewhere in the frame. On NVIDIA drivers it is the first GL call after the buffer swap, so the wait shows up in `GlDevice::submit`, not in `present`. Subtract it before reading CPU cost.
+- **Without the viewer:** `tracy-capture -o run.tracy -s 8` records a running profile build, and `tracy-csvexport` (`-e` for self times, `-g` for GPU zones) turns it into CSV. Both come with vcpkg's `tracy[cli-tools]`.
 - Use sampling profilers (Visual Studio profiler, Superluminal, VTune) for hotspot hunting; Tracy for frame timelines and spikes.
 - RenderDoc for GPU frame captures; RHI debug names make captures readable.
 

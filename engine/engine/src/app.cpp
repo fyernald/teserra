@@ -146,11 +146,15 @@ int App::run(const AppCallbacks& callbacks) {
     }
     TESERRA_LOG_INFO(LogCategory::App, "Running '{}'", m_config.title);
 
+    TESERRA_PROFILE_THREAD_NAME("Main");
     m_frameTimer.tick(m_platform->clock().now()); // the first frame's delta starts here
     while (!m_quitting) {
         runFrame(callbacks);
         // After the frame's work was submitted: the device keeps GPU objects past the frames in flight.
-        m_assets->endFrame();
+        {
+            TESERRA_PROFILE_SCOPE("Assets end frame");
+            m_assets->endFrame();
+        }
         ++m_frameCount;
         if (m_config.maxFrames != 0 && m_frameCount >= m_config.maxFrames && !m_quitting) {
             quit();
@@ -183,24 +187,27 @@ void App::runFrame(const AppCallbacks& callbacks) {
     };
     runPhase(ecs::Phase::Startup); // only the first frame this scene runs
 
-    m_input.beginFrame();
-    m_events.clear();
-    if (m_paused) {
-        m_platform->waitEvents(m_events, m_config.minimizedEventWait); // nothing to draw: do not spin
-    } else {
-        m_platform->pollEvents(m_events);
-    }
-    for (const platform::Event& event : m_events) {
-        m_input.processEvent(event);
-        if (callbacks.onEvent) {
-            callbacks.onEvent(*this, event);
+    {
+        TESERRA_PROFILE_SCOPE("Events");
+        m_input.beginFrame();
+        m_events.clear();
+        if (m_paused) {
+            m_platform->waitEvents(m_events, m_config.minimizedEventWait); // nothing to draw: do not spin
+        } else {
+            m_platform->pollEvents(m_events);
         }
-        if (std::holds_alternative<platform::WindowCloseRequested>(event) && !m_quitting) {
-            quit();
-        }
-        if (const auto* resized = std::get_if<platform::WindowResized>(&event)) {
-            if (rhi::Swapchain* swapchain = m_device ? m_device->swapchain() : nullptr) {
-                swapchain->resize(resized->framebufferSize);
+        for (const platform::Event& event : m_events) {
+            m_input.processEvent(event);
+            if (callbacks.onEvent) {
+                callbacks.onEvent(*this, event);
+            }
+            if (std::holds_alternative<platform::WindowCloseRequested>(event) && !m_quitting) {
+                quit();
+            }
+            if (const auto* resized = std::get_if<platform::WindowResized>(&event)) {
+                if (rhi::Swapchain* swapchain = m_device ? m_device->swapchain() : nullptr) {
+                    swapchain->resize(resized->framebufferSize);
+                }
             }
         }
     }
@@ -264,6 +271,7 @@ void App::render(const AppCallbacks& callbacks, scene::Scene* active) {
     if (!m_device) {
         return;
     }
+    TESERRA_PROFILE_SCOPE("Render");
     rhi::Device& device = *m_device;
     rhi::Swapchain* swapchain = device.swapchain();
     device.beginFrame();
@@ -288,6 +296,7 @@ void App::render(const AppCallbacks& callbacks, scene::Scene* active) {
         }
         device.submit(commands);
         // With vsync, presenting is what paces the loop.
+        TESERRA_PROFILE_SCOPE("Present");
         swapchain->present();
     }
     m_backbuffer = {};

@@ -19,6 +19,10 @@ teserra_add_module(rhi_opengl LAYER 3
         src/opengl_backend.cpp
 )
 teserra_link_third_party(rhi_opengl PRIVATE teserra_glad)
+# Tracy's GPU zones on timer queries (ADR-0023): the one file that includes Tracy's GL header.
+if(TESERRA_ENABLE_PROFILING)
+    target_sources(teserra_rhi_opengl PRIVATE src/gl_gpu_profiler.cpp)
+endif()
 
 if(TESERRA_BUILD_TESTS)
     add_subdirectory(tests)

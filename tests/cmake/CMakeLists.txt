@@ -90,3 +90,13 @@ if(CMAKE_HOST_WIN32)
         LABELS "cmake;shaderc"
     )
 endif()
+
+# Profiling off builds contain no Tracy; profile builds do (#107). teserra_core_tests uses every
+# TESERRA_PROFILE_* macro.
+add_test(NAME cmake.profiling.tracy_only_when_enabled
+    COMMAND "${CMAKE_COMMAND}"
+        "-DFILE=$<TARGET_FILE:teserra_core_tests>"
+        "-DEXPECT_TRACY=$<BOOL:${TESERRA_ENABLE_PROFILING}>"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/check_tracy.cmake"
+)
+set_tests_properties(cmake.profiling.tracy_only_when_enabled PROPERTIES LABELS "cmake")

@@ -61,9 +61,9 @@ jobs:
         if: success() || failure()
         run: shellcheck --format=gcc tools/setup/setup.sh
 
-  # Debug with warnings as errors (ci-windows), and Release with warnings as errors (ci-windows-release) for
-  # warnings only Release shows, such as parameters used only in assertion messages (#204). In parallel, so a
-  # PR waits no longer than for one of them.
+  # Debug with warnings as errors (ci-windows), Release with warnings as errors (ci-windows-release) for
+  # warnings only Release shows, such as parameters used only in assertion messages (#204), and the Tracy
+  # profile build (ci-windows-profile, #107). In parallel, so a PR waits no longer than for one of them.
   windows-msvc:
     name: ${{ matrix.name }}
     runs-on: windows-latest
@@ -75,6 +75,8 @@ jobs:
             preset: ci-windows
           - name: windows-msvc-release
             preset: ci-windows-release
+          - name: windows-msvc-profile
+            preset: ci-windows-profile
     timeout-minutes: 60
     permissions:
       contents: read

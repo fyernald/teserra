@@ -2,6 +2,7 @@
 
 #include <teserra/core/assert.hpp>
 #include <teserra/core/log.hpp>
+#include <teserra/core/profile.hpp>
 #include <teserra/platform/opengl_context.hpp>
 
 #include "gl_device.hpp"
@@ -26,6 +27,7 @@ GlSwapchain::~GlSwapchain() {
 }
 
 void GlSwapchain::present() {
+    TESERRA_PROFILE_FUNCTION();
     TESERRA_ASSERT(!m_image.isNull(), "present() without an image; skip presenting while acquireNextImage() "
                                       "returns a null handle");
     if (m_image.isNull()) {

@@ -32,6 +32,14 @@ target_compile_definitions(teserra_core PUBLIC GLM_FORCE_DEPTH_ZERO_TO_ONE GLM_F
 find_package(tl-expected CONFIG REQUIRED)
 teserra_link_third_party(core PUBLIC tl::expected)
 
+# Tracy is PUBLIC when profiling is on: the TESERRA_PROFILE_* macros expand to Tracy's in every module and
+# game (ADR-0023). Without TESERRA_ENABLE_PROFILING nothing of Tracy is found, linked or included.
+if(TESERRA_ENABLE_PROFILING)
+    find_package(Tracy CONFIG REQUIRED)
+    teserra_link_third_party(core PUBLIC Tracy::TracyClient)
+    target_compile_definitions(teserra_core PUBLIC TESERRA_ENABLE_PROFILING=1)
+endif()
+
 # TESERRA_ENABLE_ASSERTS is PUBLIC: TESERRA_ASSERT expands in the code of every module and game that uses
 # it, so they all check (or skip) assertions the same way (ADR-0016).
 if(TESERRA_ENABLE_ASSERTS STREQUAL "DEFAULT")

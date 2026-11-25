@@ -108,6 +108,8 @@ All notable user-visible changes to Teserra are documented here. The format foll
 
 - Dogfooding fixes from the demo game (#106): `ecs::SystemContext::has<T>(entity)` tests an entity for any component, tags included (#247); `scene::CollisionStarted::other(self)` and `CollisionEnded::other(self)` name the other entity of a pair (#251); `renderer::Texture::create(device, size, texels)` makes a texture asset from texels in one call (#250).
 
+- Profiling with Tracy 0.13.1 (#107, ADR-0023): `TESERRA_ENABLE_PROFILING` (vcpkg feature `profiling`, on-demand) turns the `TESERRA_PROFILE_*` macros into Tracy zones; the new `TESERRA_PROFILE_SCOPE_DYNAMIC(name)` names a zone at run time. The timeline shows frames, the App's frame steps, every scene phase and system, every render pass, and the GL device's frame calls; the OpenGL backend adds GPU zones per pass with timer queries. Presets `windows-msvc-profile` and `ci-windows-profile` (a new CI job); builds without profiling link no Tracy, which a CTest case checks.
+
 ### Changed
 
 - Passes draw into the scene target instead of the frame's output: `PassResource::SceneColor` is the scene target (`FrameTarget` gains `depthTexture`, `depthFormat` and `layout()`), `PassResource::Output` is the frame's output, and `PassContext::viewTarget()` gives each view's target. The sprite and debug passes start one render pass per run of views with the same target, and key their pipelines by the target's layout. `RenderExtraction::targetSize` is the scene target's size; `RenderExtraction::renderer` sizes the views of cameras with targets.
