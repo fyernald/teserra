@@ -46,6 +46,7 @@ CMakeLists.txt                 # project(), options, add_subdirectory(engine/...
 cmake/TeserraModule.cmake      # teserra_add_module(), teserra_link_third_party(), layer check
 cmake/TeserraWarnings.cmake    # teserra_set_warnings(<target>) per compiler
 cmake/TeserraShaders.cmake     # teserra_add_shaders(<target> SOURCES ...)
+cmake/TeserraAssets.cmake      # teserra_copy_assets(<target>): assets/ next to the executable
 cmake/TeserraTesting.cmake     # teserra_add_test(), _header_check(), _compile_fail_test(), _abort_test()
 cmake/TeserraChecks.cmake      # format, format-check and check targets (tools/scripts/*.py)
 cmake/TeserraToolchain.cmake   # toolchain used by the presets: checks VCPKG_ROOT, includes vcpkg
@@ -72,7 +73,7 @@ tools/shaderc/                 # teserra_shaderc, the build-time shader compiler
 | `TESERRA_WITH_DEBUG_DRAW` | `ON` | Debug draw API compiled in |
 | `TESERRA_ENABLE_SANITIZERS` | `OFF`, `ON` in the asan presets | AddressSanitizer for every target (`cmake/TeserraSanitizers.cmake`): MSVC's `/fsanitize=address`, or ASan + UBSan on Clang/GCC ([sanitizers](#sanitizers)) |
 
-When Teserra is consumed as a subproject or installed package, tests/examples default to `OFF`.
+When Teserra is consumed as a subproject ([using Teserra in your game](#using-teserra-in-your-game)), tests and examples default to `OFF`.
 
 Each option is added together with the feature it controls; until then, CMake reports a manually specified option as unused.
 
@@ -163,6 +164,43 @@ Pinned baseline: [`9e593bb`](https://github.com/microsoft/vcpkg/commit/9e593bb18
 | `spirv-tools` | 1.4.350.1 | `teserra_shaderc` tests (SPIR-V validation) | `shader-validation` |
 | `spirv-headers` | 1.4.350.1 | transitively through spirv-tools | `shader-validation` |
 
+## Using Teserra in your game
+
+A game adds Teserra to its own CMake project with `add_subdirectory()` or FetchContent and links `Teserra::Engine`. [`templates/minimal_game`](../../templates/minimal_game/README.md) is a complete starting point: copy the directory, then
+
+```sh
+cmake --workflow --preset debug     # configure and build in one command
+build/debug/minimal_game
+```
+
+Its `CMakeLists.txt` is the whole recipe:
+
+```cmake
+include(FetchContent)
+FetchContent_Declare(teserra
+    GIT_REPOSITORY https://github.com/fyernald/teserra.git
+    GIT_TAG v0.1.0
+    GIT_SHALLOW TRUE
+    SYSTEM)                          # Teserra's headers do not get the game's warning flags
+FetchContent_MakeAvailable(teserra)
+
+add_executable(minimal_game src/main.cpp)
+target_compile_features(minimal_game PRIVATE cxx_std_20)
+target_link_libraries(minimal_game PRIVATE Teserra::Engine)
+teserra_copy_assets(minimal_game)    # assets/ next to the executable, where assets:// points
+```
+
+- **Dependencies.** vcpkg reads only the top-level project's manifest, so the game's `vcpkg.json` lists the libraries Teserra builds with: those of Teserra's `vcpkg.json` and its default feature `engine`. The game's `vcpkg-configuration.json` uses Teserra's baseline. The test `cmake.template.manifest_matches` keeps the template's two files in step with Teserra's.
+- **Nothing leaks.** As a subproject, Teserra builds no tests, examples or benchmarks and leaves the parent's flags alone: its warnings are `PRIVATE` to its targets, and `TESERRA_WARNINGS_AS_ERRORS` and `TESERRA_ENABLE_SANITIZERS` change only Teserra's directory. `cmake.subproject.options_do_not_leak` configures a parent project with both on and fails if a parent variable or directory property changed, or if an engine target passes compile or link options on.
+- **Helpers.** The root `CMakeLists.txt` includes Teserra's CMake helpers, so the game can call `teserra_copy_assets()`, [`teserra_add_shaders()`](#shaders-in-cmake) and `teserra_set_warnings()`.
+- **A local clone.** `-DFETCHCONTENT_SOURCE_DIR_TESERRA=<clone>` builds against a clone instead of the tag; CI builds the template this way against the commit under test.
+
+```cmake
+teserra_copy_assets(<target> [SOURCE_DIR <dir>] [DESTINATION <dir>])
+```
+
+Copies the files under `SOURCE_DIR` (default `assets`) into `DESTINATION` (default `assets`) in the target's output directory, before every build of the target and only where they changed, so an edited asset needs no reconfigure. Files deleted from `SOURCE_DIR` stay in the output until it is cleaned. The examples with assets use it too.
+
 ## Shader compiler
 
 `teserra_shaderc` (`tools/shaderc/`) compiles shaders at build time ([ADR-0017](../adr/0017-shader-pipeline.md)). It is a host tool built with the engine; games do not link it. It compiles GLSL 450 (Vulkan dialect) to SPIR-V with glslang, reflects it and emits GLSL for OpenGL with SPIRV-Cross, and writes one [`.tshader` blob](../architecture/rhi.md#tshader-blobs) per shader. [`teserra_add_shaders()`](#shaders-in-cmake) runs it from CMake. The tool links `teserra_rhi` for the blob format, so `teserra_rhi` itself cannot compile shaders with it.
@@ -246,7 +284,7 @@ Workflows live in `.github/workflows/`.
 
 | Workflow / job | Trigger | Blocking | Content |
 |---|---|---|---|
-| `ci.yml` → `windows-msvc`, `windows-msvc-release`, `windows-msvc-profile` | push to `main`, PRs | **Yes** | Configure (`ci-windows` / `ci-windows-release` / `ci-windows-profile`), build all targets, run unit + integration tests, upload JUnit; in parallel. `windows-msvc` then runs the suite again on Mesa llvmpipe with GPU tests and example smoke runs required ([testing strategy](testing-strategy.md#gpu-integration-tests)) |
+| `ci.yml` → `windows-msvc`, `windows-msvc-release`, `windows-msvc-profile` | push to `main`, PRs | **Yes** | Configure (`ci-windows` / `ci-windows-release` / `ci-windows-profile`), build all targets, run unit + integration tests, upload JUnit; in parallel. `windows-msvc` then runs the suite again on Mesa llvmpipe with GPU tests and example smoke runs required ([testing strategy](testing-strategy.md#gpu-integration-tests)), and builds `templates/minimal_game` with Teserra from FetchContent (pointed at the checkout) and runs it on llvmpipe ([using Teserra in your game](#using-teserra-in-your-game)) |
 | `ci.yml` → `checks` | push, PRs | **Yes** | format check, layer/leak checks |
 | `ci.yml` → `linux-portable` | push to `main`, PRs | No (until the Linux port) | `linux-gcc-portable` and `linux-clang-portable`: build and test `core`, `ecs`, `scene`, `rhi` + null backend and the portable part of `platform` on `ubuntu-latest`, with warnings as errors; a failure shows on the PR, but the run passes (`continue-on-error`) |
 | `sanitizers.yml` → `windows-msvc-asan` | push to `main`, nightly, by hand, PRs labeled `needs-asan` | No | `ci-windows-asan`: build, all tests ([sanitizers](#sanitizers)) |

@@ -204,6 +204,28 @@ jobs:
             exit 1
           }
 
+      # The game template (#120) built the way a game builds it: Teserra through FetchContent, pointed at this
+      # checkout instead of the release tag, and the template's own vcpkg manifest, whose packages the binary
+      # cache already has. Then 120 frames on llvmpipe, which must exit with 0 and log nothing at Error or above.
+      - name: Game template
+        if: matrix.preset == 'ci-windows'
+        shell: pwsh
+        working-directory: templates/minimal_game
+        env:
+          GALLIUM_DRIVER: llvmpipe
+        run: |
+          $build = Join-Path $env:RUNNER_TEMP "template"
+          cmake --preset debug -B $build "-DFETCHCONTENT_SOURCE_DIR_TESERRA=$env:GITHUB_WORKSPACE"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cmake --build $build
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Copy-Item (Join-Path $env:RUNNER_TEMP "mesa\x64\*.dll") $build
+          $log = & (Join-Path $build "minimal_game.exe") --frames 120 --hidden-window 2>&1 | Out-String
+          $code = $LASTEXITCODE
+          Write-Host $log
+          if ($code -ne 0) { Write-Host "::error::minimal_game exited with $code"; exit 1 }
+          if ($log -match "\[(error|critical)\]") { Write-Host "::error::minimal_game logged an error"; exit 1 }
+
       # A failed snapshot test writes the actual image and a diff (#111); the PR's artifacts show both.
       - name: Upload snapshot images
         if: failure() && hashFiles('tests/golden/_actual/**') != ''

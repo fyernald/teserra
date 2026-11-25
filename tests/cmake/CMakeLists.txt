@@ -55,6 +55,26 @@ add_test(NAME cmake.subproject.tests_and_examples_default_off
 )
 set_tests_properties(cmake.subproject.tests_and_examples_default_off PROPERTIES LABELS "cmake")
 
+# The options that add flags (warnings as errors, sanitizers) change only Teserra's own targets, not the
+# game's (#120). The fixture compares the parent's flags and directory properties before and after.
+add_test(NAME cmake.subproject.options_do_not_leak
+    COMMAND "${CMAKE_COMMAND}"
+        -S "${CMAKE_CURRENT_SOURCE_DIR}/subproject"
+        -B "${CMAKE_CURRENT_BINARY_DIR}/subproject_options"
+        --fresh
+        ${_teserra_fixture_args}
+        -DTESERRA_WARNINGS_AS_ERRORS=ON
+        -DTESERRA_ENABLE_SANITIZERS=ON
+)
+set_tests_properties(cmake.subproject.options_do_not_leak PROPERTIES LABELS "cmake")
+
+# templates/minimal_game lists the libraries Teserra builds with and uses its vcpkg baseline (#120).
+add_test(NAME cmake.template.manifest_matches
+    COMMAND "${CMAKE_COMMAND}" "-DTESERRA_SOURCE_DIR=${PROJECT_SOURCE_DIR}"
+        -P "${PROJECT_SOURCE_DIR}/cmake/scripts/CheckTemplateManifest.cmake"
+)
+set_tests_properties(cmake.template.manifest_matches PROPERTIES LABELS "cmake")
+
 # glm settings come only from teserra_core's PUBLIC compile definitions (ADR-0008).
 add_test(NAME cmake.glm_configured_only_by_core
     COMMAND "${CMAKE_COMMAND}" "-DTESERRA_SOURCE_DIR=${PROJECT_SOURCE_DIR}"
