@@ -85,6 +85,15 @@
       }
     },
     {
+      "name": "windows-msvc-asan",
+      "displayName": "Windows MSVC AddressSanitizer",
+      "description": "Debug with /fsanitize=address (TESERRA_ENABLE_SANITIZERS): memory errors stop the program with a report",
+      "inherits": "windows-msvc-debug",
+      "cacheVariables": {
+        "TESERRA_ENABLE_SANITIZERS": "ON"
+      }
+    },
+    {
       "name": "windows-clang-debug",
       "displayName": "Windows clang-cl Debug",
       "description": "Second compiler: clang-cl, Ninja, Debug",
@@ -123,6 +132,15 @@
       "displayName": "CI Windows Profile (MSVC)",
       "description": "GitHub Actions: the profile build with warnings as errors, so the Tracy configuration keeps building",
       "inherits": "windows-msvc-profile",
+      "cacheVariables": {
+        "TESERRA_WARNINGS_AS_ERRORS": "ON"
+      }
+    },
+    {
+      "name": "ci-windows-asan",
+      "displayName": "CI Windows AddressSanitizer (MSVC)",
+      "description": "GitHub Actions: the asan build with warnings as errors, for the sanitizer workflow",
+      "inherits": "windows-msvc-asan",
       "cacheVariables": {
         "TESERRA_WARNINGS_AS_ERRORS": "ON"
       }
@@ -172,10 +190,12 @@
     { "name": "windows-msvc-debug", "configurePreset": "windows-msvc-debug" },
     { "name": "windows-msvc-release", "configurePreset": "windows-msvc-release" },
     { "name": "windows-msvc-profile", "configurePreset": "windows-msvc-profile" },
+    { "name": "windows-msvc-asan", "configurePreset": "windows-msvc-asan" },
     { "name": "windows-clang-debug", "configurePreset": "windows-clang-debug" },
     { "name": "ci-windows", "configurePreset": "ci-windows" },
     { "name": "ci-windows-release", "configurePreset": "ci-windows-release" },
     { "name": "ci-windows-profile", "configurePreset": "ci-windows-profile" },
+    { "name": "ci-windows-asan", "configurePreset": "ci-windows-asan" },
     { "name": "linux-gcc-debug", "configurePreset": "linux-gcc-debug" },
     { "name": "linux-clang-debug", "configurePreset": "linux-clang-debug" },
     { "name": "linux-gcc-portable", "configurePreset": "linux-gcc-portable" },
@@ -195,6 +215,7 @@
     { "name": "windows-msvc-debug", "inherits": "test-base", "configurePreset": "windows-msvc-debug" },
     { "name": "windows-msvc-release", "inherits": "test-base", "configurePreset": "windows-msvc-release" },
     { "name": "windows-msvc-profile", "inherits": "test-base", "configurePreset": "windows-msvc-profile" },
+    { "name": "windows-msvc-asan", "inherits": "test-base", "configurePreset": "windows-msvc-asan" },
     { "name": "windows-clang-debug", "inherits": "test-base", "configurePreset": "windows-clang-debug" },
     {
       "name": "ci-windows",
@@ -218,6 +239,15 @@
       "name": "ci-windows-profile",
       "inherits": "test-base",
       "configurePreset": "ci-windows-profile",
+      "output": {
+        "outputOnFailure": true,
+        "outputJUnitFile": "junit.xml"
+      }
+    },
+    {
+      "name": "ci-windows-asan",
+      "inherits": "test-base",
+      "configurePreset": "ci-windows-asan",
       "output": {
         "outputOnFailure": true,
         "outputJUnitFile": "junit.xml"

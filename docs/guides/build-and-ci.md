@@ -70,7 +70,7 @@ tools/shaderc/                 # teserra_shaderc, the build-time shader compiler
 | `TESERRA_RHI_VULKAN` | `OFF` | Future Vulkan backend |
 | `TESERRA_SHADER_VALIDATION` | `OFF` locally, `ON` in `ci-windows` | SPIR-V validation of `teserra_shaderc`'s output in its tests (vcpkg feature `shader-validation`, SPIRV-Tools; about 15 minutes to build once) |
 | `TESERRA_WITH_DEBUG_DRAW` | `ON` | Debug draw API compiled in |
-| `TESERRA_ENABLE_SANITIZERS` | `OFF` | ASan (MSVC/Clang), UBSan (Clang/GCC) |
+| `TESERRA_ENABLE_SANITIZERS` | `OFF`, `ON` in the asan presets | AddressSanitizer for every target (`cmake/TeserraSanitizers.cmake`): MSVC's `/fsanitize=address`, or ASan + UBSan on Clang/GCC ([sanitizers](#sanitizers)) |
 
 When Teserra is consumed as a subproject or installed package, tests/examples default to `OFF`.
 
@@ -115,7 +115,8 @@ The include check reads `OPTIONAL_DEPENDS` like `DEPENDS`.
 | `windows-msvc-debug` / `windows-msvc-release` | MSVC + Ninja | Default local development |
 | `windows-clang-debug` | clang-cl + Ninja | Second compiler, clang-tidy |
 | `windows-msvc-profile` | MSVC, `RelWithDebInfo`, `TESERRA_ENABLE_PROFILING` | Tracy sessions: start the program, then connect Tracy 0.13.1 |
-| `asan` | MSVC or clang-cl, sanitizers on | Memory error hunting (added with sanitizers) |
+| `windows-msvc-asan` | MSVC Debug, `TESERRA_ENABLE_SANITIZERS` | Memory error hunting; run the tests from a developer prompt, which has the ASan runtime on `PATH` |
+| `ci-windows-asan` | The asan build with warnings as errors and JUnit output | The `Sanitizers` workflow |
 | `ci-windows` | MSVC Debug, warnings as errors, SPIR-V validation, JUnit output | GitHub Actions |
 | `ci-windows-release` | MSVC Release, warnings as errors, JUnit output: warnings only Release shows, such as a parameter used only in an assertion message | GitHub Actions |
 | `ci-windows-profile` | The profile build with warnings as errors and JUnit output, so the Tracy configuration keeps building and passing | GitHub Actions |
@@ -230,6 +231,15 @@ Run locally with `cmake --build --preset <preset> --target check` (or one of `la
 
 Names are matched in code only: comments and string literals do not count, so `"glClear"` in a test or "GLFW" in a doc comment is fine; includes are matched in `#include` and `__has_include`. Third-party and generated code (`third_party/`, `generated/`, e.g. glad) and git-ignored files are skipped. Reviewed exceptions are listed with their reason in `EXCEPTIONS` of `check_gl_leaks.py` (today: `<windows.h>` in `engine/core/src/assert.cpp`, see ADR-0015). Each script has unit tests in `tools/scripts/tests/` (CTest `tools.scripts`); both scripts check the whole repository in well under a second.
 
+## Sanitizers
+
+`TESERRA_ENABLE_SANITIZERS` (#113) builds every Teserra target with AddressSanitizer: heap and stack buffer overflows, use after free and double frees stop the program with a report.
+
+- **MSVC:** `/fsanitize=address`. `/RTC` checks are removed and incremental linking is off, because ASan works with neither. The vcpkg libraries are not instrumented, so the STL's container annotations (`_DISABLE_VECTOR_ANNOTATION`, `_DISABLE_STRING_ANNOTATION`, `_DISABLE_OPTIONAL_ANNOTATION`) are turned off: instrumented and plain code must agree on those layouts to link. That leaves out container-overflow reports; heap, stack and use-after-free checks stay. Tests need the ASan runtime (`clang_rt.asan_dynamic-x86_64.dll`) on `PATH`, which a Visual Studio developer environment provides.
+- **Clang/GCC** (the Linux port): `-fsanitize=address,undefined` with frame pointers, UBSan errors fatal.
+- **Proof it is on:** `sanitizers.use_after_free` (`tests/sanitizers/`) reads freed memory and passes only when ASan stops it with a `heap-use-after-free` report.
+- **Known false positives:** none so far. The whole suite (669 tests, the GPU tests on an NVIDIA driver included) ran clean when the job was added. Add any found here with the suppression used and why.
+
 ## GitHub Actions
 
 Workflows live in `.github/workflows/`.
@@ -239,7 +249,7 @@ Workflows live in `.github/workflows/`.
 | `ci.yml` → `windows-msvc`, `windows-msvc-release`, `windows-msvc-profile` | push to `main`, PRs | **Yes** | Configure (`ci-windows` / `ci-windows-release` / `ci-windows-profile`), build all targets, run unit + integration tests, upload JUnit; in parallel. `windows-msvc` then runs the suite again on Mesa llvmpipe with GPU tests and example smoke runs required ([testing strategy](testing-strategy.md#gpu-integration-tests)) |
 | `ci.yml` → `checks` | push, PRs | **Yes** | format check, layer/leak checks |
 | `ci.yml` → `linux-portable` | push to `main`, PRs | No (until the Linux port) | `linux-gcc-portable` and `linux-clang-portable`: build and test `core`, `ecs`, `scene`, `rhi` + null backend and the portable part of `platform` on `ubuntu-latest`, with warnings as errors; a failure shows on the PR, but the run passes (`continue-on-error`) |
-| `ci.yml` → `sanitizers` | push to `main`, nightly, PRs labeled `needs-asan` | No → Yes once stable | `asan` preset, unit tests |
+| `sanitizers.yml` → `windows-msvc-asan` | push to `main`, nightly, by hand, PRs labeled `needs-asan` | No | `ci-windows-asan`: build, all tests ([sanitizers](#sanitizers)) |
 | `ci.yml` → `clang-tidy` | PRs | Yes for changed files | clang-tidy on changed translation units |
 | `gpu.yml` → `gpu-software` | push to `main`, PRs touching `engine/rhi`, `engine/renderer`, `tests/gpu` | Yes once introduced | GPU tests on a software rasterizer (approach decided by the headless GPU testing spike) |
 | `bench.yml` | manual, weekly | No | Benchmarks in Release, results as artifact |

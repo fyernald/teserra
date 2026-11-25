@@ -1,0 +1,101 @@
+# AddressSanitizer run of the unit and integration tests (#113, docs/guides/build-and-ci.md#github-actions).
+# On pushes to main, nightly, by hand, and on pull requests labeled `needs-asan` (add the label to a PR that
+# touches memory-sensitive code: the ECS, handle pools, the RHI, command streams).
+name: Sanitizers
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "17 3 * * *"
+  pull_request:
+    types: [opened, synchronize, reopened, labeled]
+  workflow_dispatch:
+
+concurrency:
+  group: sanitizers-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  asan:
+    name: windows-msvc-asan
+    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'needs-asan')
+    runs-on: windows-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      checks: write # test result annotations
+    env:
+      VCPKG_TRIPLET: x64-windows
+      PRESET: ci-windows-asan
+    steps:
+      - uses: actions/checkout@v7
+
+      # The same environment as the CI job: vcvars64.bat of the newest Visual Studio, which also puts MSVC's
+      # ASan runtime (clang_rt.asan_dynamic-x86_64.dll) on PATH for the tests.
+      - name: Set up MSVC developer environment
+        shell: pwsh
+        run: |
+          $vswhere = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer\vswhere.exe"
+          $vs = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          $vcvars = Join-Path $vs "VC\Auxiliary\Build\vcvars64.bat"
+          $before = @{}
+          Get-ChildItem env: | ForEach-Object { $before[$_.Name] = $_.Value }
+          cmd /c "`"$vcvars`" >nul && set" | ForEach-Object {
+            if ($_ -match '^([^=]+)=(.*)$' -and $before[$Matches[1]] -ne $Matches[2]) {
+              "$($Matches[1])=$($Matches[2])" >> $env:GITHUB_ENV
+            }
+          }
+          Write-Host "MSVC environment from $vcvars"
+
+      - name: Configure vcpkg
+        shell: pwsh
+        run: |
+          $cache = Join-Path $env:RUNNER_TEMP "vcpkg-binary-cache"
+          New-Item -ItemType Directory -Force -Path $cache | Out-Null
+          "VCPKG_ROOT=$env:VCPKG_INSTALLATION_ROOT" >> $env:GITHUB_ENV
+          "VCPKG_BINARY_CACHE=$cache" >> $env:GITHUB_ENV
+          "VCPKG_BINARY_SOURCES=clear;files,$cache,readwrite" >> $env:GITHUB_ENV
+          "RUNNER_IMAGE=${env:ImageOS}-${env:ImageVersion}" >> $env:GITHUB_ENV
+
+      # The vcpkg libraries are not instrumented, so this job shares the CI job's binary cache.
+      - name: Restore vcpkg binary cache
+        uses: actions/cache/restore@v6
+        with:
+          path: ${{ env.VCPKG_BINARY_CACHE }}
+          key: vcpkg-${{ env.VCPKG_TRIPLET }}-${{ env.RUNNER_IMAGE }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
+          restore-keys: |
+            vcpkg-${{ env.VCPKG_TRIPLET }}-
+
+      - name: Configure
+        run: cmake --preset ${{ env.PRESET }}
+
+      - name: Build
+        run: cmake --build --preset ${{ env.PRESET }}
+
+      # A memory error stops the test program with an AddressSanitizer report in the test's output.
+      # sanitizers.use_after_free checks that the instrumentation is on.
+      - name: Test
+        run: |
+          echo "::add-matcher::.github/problem-matchers/catch2.json"
+          ctest --preset ${{ env.PRESET }}
+
+      - name: Annotate test results
+        if: always() && hashFiles('build/ci-windows-asan/junit.xml') != ''
+        uses: mikepenz/action-junit-report@6ef3fdcfcd5f0b5d14df3e659ef19b8c6820f93d # v6.6.1
+        with:
+          report_paths: build/ci-windows-asan/junit.xml
+          check_name: windows-msvc-asan tests
+          annotate_only: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
+          include_passed: false
+          detailed_summary: true
+
+      - name: Upload test results
+        if: always() && hashFiles('build/ci-windows-asan/junit.xml') != ''
+        uses: actions/upload-artifact@v7
+        with:
+          name: windows-msvc-asan-junit
+          path: build/ci-windows-asan/junit.xml
