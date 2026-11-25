@@ -18,6 +18,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <optional>
 #include <string_view>
 #include <utility>
 
@@ -141,16 +142,16 @@ void react(ecs::SystemContext& ctx) {
     GameState& state = ctx.resource<GameState>();
     bool collected = false;
     ctx.readEvents<scene::CollisionStarted>([&](const scene::CollisionStarted& touch) {
-        if (state.won || (touch.a != state.player && touch.b != state.player)) {
+        const std::optional<ecs::Entity> other = touch.other(state.player);
+        if (state.won || !other) {
             return;
         }
-        const ecs::Entity other = touch.a == state.player ? touch.b : touch.a;
-        const Touch* touched = ctx.tryGet<const Touch>(other);
+        const Touch* touched = ctx.tryGet<const Touch>(*other);
         if (touched == nullptr) {
             return;
         }
         if (touched->kind == TouchKind::Coin) {
-            ctx.commands().destroy(other);
+            ctx.commands().destroy(*other);
             ++state.coins;
             collected = true;
         } else if (touched->kind == TouchKind::Hazard) {

@@ -106,6 +106,8 @@ All notable user-visible changes to Teserra are documented here. The format foll
 
 - `examples/demo_game`: a small top-down game built only on the public API: collect the coins in a tilemap cave, avoid spikes and patrolling slimes, and reach the door, at 320x180 with a following camera and a coin HUD. Its art is drawn in code. It has a menu, the level and a win screen with the time and restarts, as scenes it switches between; leaving a screen clears it, releasing the assets only it used. The CMake function `teserra_check_public_includes(<target>)` fails configuration when a game's sources include engine headers that are not public.
 
+- Dogfooding fixes from the demo game (#106): `ecs::SystemContext::has<T>(entity)` tests an entity for any component, tags included (#247); `scene::CollisionStarted::other(self)` and `CollisionEnded::other(self)` name the other entity of a pair (#251); `renderer::Texture::create(device, size, texels)` makes a texture asset from texels in one call (#250).
+
 ### Changed
 
 - Passes draw into the scene target instead of the frame's output: `PassResource::SceneColor` is the scene target (`FrameTarget` gains `depthTexture`, `depthFormat` and `layout()`), `PassResource::Output` is the frame's output, and `PassContext::viewTarget()` gives each view's target. The sprite and debug passes start one render pass per run of views with the same target, and key their pipelines by the target's layout. `RenderExtraction::targetSize` is the scene target's size; `RenderExtraction::renderer` sizes the views of cameras with targets.

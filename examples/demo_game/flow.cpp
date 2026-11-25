@@ -167,15 +167,10 @@ void Flow::enter(Screen screen) {
 
 Result<renderer::SpriteSheet> Flow::font() {
     const assets::Asset<renderer::Texture> texture =
-        m_app.assets().load<renderer::Texture>("game://font", [&]() -> Result<renderer::Texture> {
-            const std::vector<std::byte> texels = drawFont();
-            teserra::rhi::Device& device = m_app.device();
-            TESERRA_TRY_ASSIGN(
-                const teserra::rhi::TextureHandle handle,
-                device.createTexture({.width = fontWidth(), .height = kGlyphHeight, .debugName = "Font"}));
-            device.writeTexture(handle, {.width = fontWidth(), .height = kGlyphHeight}, texels);
+        m_app.assets().load<renderer::Texture>("game://font", [&] {
             TESERRA_LOG_INFO(LogCategory::App, "Loaded the font");
-            return renderer::Texture(device, handle, {fontWidth(), kGlyphHeight});
+            return renderer::Texture::create(m_app.device(), {fontWidth(), kGlyphHeight}, drawFont(),
+                                             teserra::rhi::Format::Rgba8Srgb, "Font");
         });
     return renderer::SpriteSheet::grid(texture, {.cellSize = {kGlyphWidth, kGlyphHeight},
                                                  .count = static_cast<u32>(kFontCharacters.size())});

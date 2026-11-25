@@ -48,13 +48,9 @@ int main(int argc, char** argv) { // NOLINT(bugprone-exception-escape)
     const std::vector<std::byte> atlas = demo::drawAtlas();
     rhi::Device& device = app.device();
     const assets::Asset<renderer::Texture> texture =
-        app.assets().load<renderer::Texture>("game://atlas", [&]() -> Result<renderer::Texture> {
-            TESERRA_TRY_ASSIGN(
-                const rhi::TextureHandle handle,
-                device.createTexture(
-                    {.width = demo::kAtlasWidth, .height = demo::kCellSize, .debugName = "Atlas"}));
-            device.writeTexture(handle, {.width = demo::kAtlasWidth, .height = demo::kCellSize}, atlas);
-            return renderer::Texture(device, handle, {demo::kAtlasWidth, demo::kCellSize});
+        app.assets().load<renderer::Texture>("game://atlas", [&] {
+            return renderer::Texture::create(device, {demo::kAtlasWidth, demo::kCellSize}, atlas,
+                                             rhi::Format::Rgba8Srgb, "Atlas");
         });
     std::vector<scene::TileProperties> properties(demo::kCellCount);
     properties[demo::kWall].solid = true;
