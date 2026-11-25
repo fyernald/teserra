@@ -2,6 +2,7 @@
 
 #include <teserra/core/assert.hpp>
 #include <teserra/core/log.hpp>
+#include <teserra/core/profile.hpp>
 
 #include <algorithm>
 #include <utility>
@@ -205,9 +206,11 @@ void Schedule::run(Phase phase, World& world) {
     } scope(m_running);
     for (const usize index : m_order[static_cast<usize>(phase)]) {
         System& system = m_systems[index];
+        TESERRA_PROFILE_SCOPE_DYNAMIC(std::string_view(system.name));
         SystemContext context(world, commands, system.name, system.access, &system.cursors);
         system.function(context);
     }
+    TESERRA_PROFILE_SCOPE("Commands");
     commands.apply(); // the sync point
 }
 

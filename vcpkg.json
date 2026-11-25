@@ -35,6 +35,18 @@
       "dependencies": [
         "spirv-tools"
       ]
+    },
+    "profiling": {
+      "description": "Tracy profiler client for TESERRA_ENABLE_PROFILING (ADR-0023); records only while a viewer is connected",
+      "dependencies": [
+        {
+          "name": "tracy",
+          "default-features": false,
+          "features": [
+            "on-demand"
+          ]
+        }
+      ]
     }
   }
 }

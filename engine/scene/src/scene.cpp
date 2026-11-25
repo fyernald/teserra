@@ -1,6 +1,7 @@
 #include <teserra/scene/scene.hpp>
 
 #include <teserra/core/assert.hpp>
+#include <teserra/core/profile.hpp>
 #include <teserra/ecs/events.hpp>
 #include <teserra/scene/collision.hpp>
 #include <teserra/scene/scene_manager.hpp>
@@ -59,6 +60,7 @@ Scene::Scene(std::string name)
 }
 
 void Scene::run(ecs::Phase phase) {
+    TESERRA_PROFILE_SCOPE_DYNAMIC(ecs::phaseName(phase));
     if (phase == ecs::Phase::PreUpdate) {
         ecs::updateEvents(m_world); // the frame starts: last frame's events become the previous ones
     }

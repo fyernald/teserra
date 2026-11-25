@@ -2,6 +2,7 @@
 
 #include <teserra/core/assert.hpp>
 #include <teserra/core/log.hpp>
+#include <teserra/core/profile.hpp>
 #include <teserra/platform/opengl_context.hpp>
 #include <teserra/platform/window.hpp>
 #include <teserra/rhi/shader_blob.hpp>
@@ -225,6 +226,7 @@ Result<void> GlDevice::initialize(const DeviceDesc& desc, platform::Window& wind
     m_stateCache.reset();
 
     m_swapchain = std::make_unique<GlSwapchain>(*this, m_context, desc.swapchain, window.framebufferSize());
+    m_gpuProfiler = std::make_unique<GpuProfiler>(m_gl);
 
     TESERRA_LOG_INFO(LogCategory::Rhi, "OpenGL device: {} ({}), OpenGL {}", glString(m_gl, GL_RENDERER),
                      glString(m_gl, GL_VENDOR), glString(m_gl, GL_VERSION));
@@ -831,6 +833,7 @@ void GlDevice::destroy(SamplerHandle handle) {
 // Frames and submission
 
 void GlDevice::beginFrame() {
+    TESERRA_PROFILE_FUNCTION();
     requireContextThread();
     TESERRA_ASSERT(!m_inFrame, "beginFrame() twice without endFrame()");
     // The slot's per-frame data (command lists here, ring buffer regions in the renderer) is free once the
@@ -844,8 +847,12 @@ void GlDevice::beginFrame() {
 }
 
 void GlDevice::endFrame() {
+    TESERRA_PROFILE_FUNCTION();
     requireContextThread();
     TESERRA_ASSERT(m_inFrame, "endFrame() without beginFrame()");
+    if (m_gpuProfiler) {
+        m_gpuProfiler->collect();
+    }
     // beginFrame() waited for the slot's previous fence, so there is none to replace.
     m_fences[frameSlot()] = m_gl.FenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
     m_inFrame = false;
@@ -886,6 +893,7 @@ CommandList& GlDevice::acquireCommandList() {
 }
 
 void GlDevice::submit(CommandList& commands) {
+    TESERRA_PROFILE_FUNCTION();
     requireContextThread();
     commands.finish();
     if (m_validate) {
@@ -928,9 +936,15 @@ void GlDevice::replay(const CommandList& commands) {
                 const std::string_view label = command.debugLabel();
                 m_gl.PushDebugGroup(GL_DEBUG_SOURCE_APPLICATION, 0, static_cast<GLsizei>(label.size()),
                                     label.data());
+                if (m_gpuProfiler) {
+                    m_gpuProfiler->begin(label);
+                }
                 break;
             }
             case CommandType::PopDebugGroup:
+                if (m_gpuProfiler) {
+                    m_gpuProfiler->end();
+                }
                 m_gl.PopDebugGroup();
                 break;
             case CommandType::BindPipeline:

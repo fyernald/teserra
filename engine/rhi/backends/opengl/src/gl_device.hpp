@@ -14,6 +14,7 @@
 #include <teserra/rhi/shader_blob.hpp>
 #include <teserra/rhi/validation.hpp>
 
+#include "gl_gpu_profiler.hpp"
 #include "gl_pipeline_state.hpp"
 #include <glad/gl.h>
 
@@ -316,6 +317,9 @@ private:
 
     platform::OpenGlContext& m_context;
     GladGLContext m_gl{};
+    // Tracy GPU zones per debug group; empty calls without TESERRA_ENABLE_PROFILING. After m_gl, so it is
+    // destroyed first.
+    std::unique_ptr<GpuProfiler> m_gpuProfiler;
     DeviceLimits m_limits{};
     bool m_validate = false;
     std::thread::id m_thread;

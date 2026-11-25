@@ -63,7 +63,7 @@ tools/shaderc/                 # teserra_shaderc, the build-time shader compiler
 | `TESERRA_WARNINGS_AS_ERRORS` | `OFF` locally, `ON` in CI presets | `/WX` / `-Werror` |
 | `TESERRA_WINDOW_BACKEND` | `GLFW` | Window backend of `teserra_platform` (GLFW is the only one in v1) |
 | `TESERRA_ENABLE_ASSERTS` | `DEFAULT` (on for Debug/RelWithDebInfo) | `TESERRA_ASSERT` active; `ON` / `OFF` force it for every configuration |
-| `TESERRA_ENABLE_PROFILING` | `OFF` | Tracy instrumentation |
+| `TESERRA_ENABLE_PROFILING` | `OFF`, `ON` in the profile presets | Tracy behind the `TESERRA_PROFILE_*` macros, with GPU zones in the OpenGL backend (vcpkg feature `profiling`: Tracy 0.13.1, on-demand; [memory and performance](../architecture/memory-and-performance.md#profiling)) |
 | `TESERRA_RHI_OPENGL` | `ON` | OpenGL backend |
 | `TESERRA_WITH_DEBUG_DRAW` | `ON` | Debug draw (`renderer::DebugDrawList`); `OFF` compiles its calls to nothing ([renderer.md](../architecture/renderer.md#debug-draw)) |
 | `TESERRA_PORTABLE_ONLY` | `OFF`, `ON` in the `linux-*-portable` presets | Only the modules without OS or GPU code: `core`, `ecs`, `scene`, `rhi` + null backend and the portable part of `platform` (no OS services, no window backend, no tests that need a `Platform`). Skips `teserra_shaderc`, `assets`, `renderer`, `engine`, the examples and the build-system tests, and turns off the default vcpkg feature `engine` (glfw3, glslang, spirv-cross, stb). For the Linux job before the Linux port |
@@ -114,10 +114,11 @@ The include check reads `OPTIONAL_DEPENDS` like `DEPENDS`.
 |---|---|---|
 | `windows-msvc-debug` / `windows-msvc-release` | MSVC + Ninja | Default local development |
 | `windows-clang-debug` | clang-cl + Ninja | Second compiler, clang-tidy |
-| `profile` | MSVC, `RelWithDebInfo`, profiling on | Tracy sessions (added with profiling) |
+| `windows-msvc-profile` | MSVC, `RelWithDebInfo`, `TESERRA_ENABLE_PROFILING` | Tracy sessions: start the program, then connect Tracy 0.13.1 |
 | `asan` | MSVC or clang-cl, sanitizers on | Memory error hunting (added with sanitizers) |
 | `ci-windows` | MSVC Debug, warnings as errors, SPIR-V validation, JUnit output | GitHub Actions |
 | `ci-windows-release` | MSVC Release, warnings as errors, JUnit output: warnings only Release shows, such as a parameter used only in an assertion message | GitHub Actions |
+| `ci-windows-profile` | The profile build with warnings as errors and JUnit output, so the Tracy configuration keeps building and passing | GitHub Actions |
 | `linux-gcc-debug`, `linux-clang-debug` | GCC 13 / Clang 17 + Ninja | Prepared for the Linux port |
 | `linux-gcc-portable`, `linux-clang-portable` | GCC / Clang Debug, warnings as errors, `TESERRA_PORTABLE_ONLY` | The non-blocking `linux-portable` job |
 
@@ -140,7 +141,7 @@ Personal tweaks go in `CMakeUserPresets.json` next to `CMakePresets.json`. It is
 
 ### vcpkg
 
-- `vcpkg.json` lists dependencies; optional ones are features mapped to CMake options before `project()` (`tests` → catch2 when `TESERRA_BUILD_TESTS` is on, `shader-validation` → spirv-tools when `TESERRA_SHADER_VALIDATION` is on; later `profiling` → tracy). The shader compiler's glslang and SPIRV-Cross are always needed.
+- `vcpkg.json` lists dependencies; optional ones are features mapped to CMake options before `project()` (`tests` → catch2 when `TESERRA_BUILD_TESTS` is on, `shader-validation` → spirv-tools when `TESERRA_SHADER_VALIDATION` is on; `profiling` → tracy when `TESERRA_ENABLE_PROFILING` is on). The shader compiler's glslang and SPIRV-Cross are always needed.
 - `vcpkg-configuration.json` pins the baseline: the default registry is the `microsoft/vcpkg` git repository at a fixed commit, so every machine resolves the same port versions whether it uses the Visual Studio copy of vcpkg or a standalone clone of any age. Updating it is a separate PR titled `build: bump vcpkg baseline` with a full CI run.
 - Presets reach vcpkg through `cmake/TeserraToolchain.cmake`, which checks `VCPKG_ROOT` and then includes `$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake`.
 - Never add a dependency without an ADR ([ADR index](../adr/README.md#when-an-adr-is-required)).
@@ -235,7 +236,7 @@ Workflows live in `.github/workflows/`.
 
 | Workflow / job | Trigger | Blocking | Content |
 |---|---|---|---|
-| `ci.yml` → `windows-msvc`, `windows-msvc-release` | push to `main`, PRs | **Yes** | Configure (`ci-windows` / `ci-windows-release`), build all targets, run unit + integration tests, upload JUnit; in parallel |
+| `ci.yml` → `windows-msvc`, `windows-msvc-release`, `windows-msvc-profile` | push to `main`, PRs | **Yes** | Configure (`ci-windows` / `ci-windows-release` / `ci-windows-profile`), build all targets, run unit + integration tests, upload JUnit; in parallel |
 | `ci.yml` → `checks` | push, PRs | **Yes** | format check, layer/leak checks |
 | `ci.yml` → `linux-portable` | push to `main`, PRs | No (until the Linux port) | `linux-gcc-portable` and `linux-clang-portable`: build and test `core`, `ecs`, `scene`, `rhi` + null backend and the portable part of `platform` on `ubuntu-latest`, with warnings as errors; a failure shows on the PR, but the run passes (`continue-on-error`) |
 | `ci.yml` → `sanitizers` | push to `main`, nightly, PRs labeled `needs-asan` | No → Yes once stable | `asan` preset, unit tests |

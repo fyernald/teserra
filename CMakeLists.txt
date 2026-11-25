@@ -9,6 +9,9 @@ endif()
 if(TESERRA_SHADER_VALIDATION)
     list(APPEND VCPKG_MANIFEST_FEATURES "shader-validation")
 endif()
+if(TESERRA_ENABLE_PROFILING)
+    list(APPEND VCPKG_MANIFEST_FEATURES "profiling")
+endif()
 # The portable build needs none of the libraries of the default "engine" feature.
 if(TESERRA_PORTABLE_ONLY)
     set(VCPKG_MANIFEST_NO_DEFAULT_FEATURES ON)
@@ -51,6 +54,9 @@ set(TESERRA_ENABLE_ASSERTS "DEFAULT" CACHE STRING
 set_property(CACHE TESERRA_ENABLE_ASSERTS PROPERTY STRINGS DEFAULT ON OFF)
 option(TESERRA_RHI_OPENGL "Build the OpenGL 4.5 RHI backend (teserra_rhi_opengl)" ON)
 option(TESERRA_WITH_DEBUG_DRAW "Compile debug draw (renderer::DebugDrawList); OFF makes its calls empty" ON)
+# Tracy behind the TESERRA_PROFILE_* macros (ADR-0023); the profile presets turn it on. OFF builds do not
+# link Tracy at all.
+option(TESERRA_ENABLE_PROFILING "Profile with Tracy through the TESERRA_PROFILE_* macros (ADR-0023)" OFF)
 option(TESERRA_SHADER_VALIDATION
     "Validate the SPIR-V of teserra_shaderc in its tests with SPIRV-Tools (slow to build; on in CI)" OFF)
 
