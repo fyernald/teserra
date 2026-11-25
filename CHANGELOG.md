@@ -112,6 +112,8 @@ All notable user-visible changes to Teserra are documented here. The format foll
 
 - GPU tests and example smoke runs in CI (#110): the `windows-msvc` job runs the suite a second time on Mesa's llvmpipe (26.3.0, pinned and checksum-verified), with `TESERRA_REQUIRE_GPU_TESTS=1`, and fails if any test or example did not run. GPU tests skip through `TESERRA_SKIP_WITHOUT_GPU()` (`<teserra/test/gpu.hpp>`), which fails instead when GPU tests are required; App-level GPU tests take their backend from `TESERRA_GPU_BACKEND`.
 
+- Snapshot tests (#111): `teserra_snapshot_tests` renders five scenes (clear, triangle, textured quad, sprites, tilemap) with the real backend at 160x90 and compares them with `tests/golden/*.png`, with a per-channel tolerance and a maximum ratio of differing pixels per test. A failure writes the actual and diff images to `tests/golden/_actual/` and `_diff/`, which CI uploads; `--update-goldens` rewrites the goldens. `teserra_add_test(... NO_MAIN)` lets a test program bring its own `main()`.
+
 ### Changed
 
 - Passes draw into the scene target instead of the frame's output: `PassResource::SceneColor` is the scene target (`FrameTarget` gains `depthTexture`, `depthFormat` and `layout()`), `PassResource::Output` is the frame's output, and `PassContext::viewTarget()` gives each view's target. The sprite and debug passes start one render pass per run of views with the same target, and key their pipelines by the target's layout. `RenderExtraction::targetSize` is the scene target's size; `RenderExtraction::renderer` sizes the views of cameras with targets.

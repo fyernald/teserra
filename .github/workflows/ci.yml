@@ -204,6 +204,16 @@ jobs:
             exit 1
           }
 
+      # A failed snapshot test writes the actual image and a diff (#111); the PR's artifacts show both.
+      - name: Upload snapshot images
+        if: failure() && hashFiles('tests/golden/_actual/**') != ''
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.name }}-snapshots
+          path: |
+            tests/golden/_actual/
+            tests/golden/_diff/
+
       - name: Annotate test results
         if: always() && hashFiles('build/${{ matrix.preset }}/junit.xml') != ''
         uses: mikepenz/action-junit-report@6ef3fdcfcd5f0b5d14df3e659ef19b8c6820f93d # v6.6.1

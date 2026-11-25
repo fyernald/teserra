@@ -101,10 +101,10 @@ The `ci-windows` test preset also writes a JUnit report to `build/ci-windows/jun
 
 ## Snapshot tests
 
-- Render a scene to an offscreen target at a fixed resolution, read back RGBA8, compare with `tests/golden/<test>.png`.
+- Render a scene to an offscreen target at a fixed resolution, read back RGBA8, compare with `tests/golden/<test>.png`. The harness is `tests/snapshot/` (`teserra_snapshot_tests`, #111): `SnapshotRenderer` owns a hidden-window App on the tests' GPU backend and an `Rgba8Unorm` 160×90 output, and `render(record)` runs one frame and reads it back. `checkSnapshot(name, image, tolerance)` compares the result. Snapshots today: `clear`, `triangle`, `textured_quad`, `sprites`, `tilemap`. Like every GPU test, they skip without a driver and run on llvmpipe in CI.
 - Comparison: per-channel tolerance (default 2/255) and maximum differing pixel ratio (default 0.1%), configurable per test because software and hardware rasterizers differ slightly. Prefer scenes that avoid driver-dependent filtering (nearest sampling, axis-aligned quads).
 - On failure, the actual image and a diff image are written to `tests/golden/_actual/` and `_diff/` (git-ignored) and uploaded as CI artifacts.
-- Updating goldens: run the test binary with `--update-goldens`, review the image change in the PR (GitHub renders PNG diffs). A golden update without an explanation in the PR description is rejected.
+- Updating goldens: run the test binary with `--update-goldens` (`teserra_snapshot_tests --update-goldens "[snapshot]"`), review the image change in the PR (GitHub renders PNG diffs). A golden update without an explanation in the PR description is rejected. CI uploads `_actual/` and `_diff/` as the `<job>-snapshots` artifact when a test fails.
 
 ## Example smoke runs
 

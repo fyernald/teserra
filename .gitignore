@@ -33,3 +33,7 @@ tests/golden/**/_diff/
 
 # Packages made by tools/scripts/package_example.py
 dist/
+
+# Snapshot test failures (docs/guides/testing-strategy.md#snapshot-tests)
+/tests/golden/_actual/
+/tests/golden/_diff/

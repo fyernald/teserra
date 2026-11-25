@@ -1,6 +1,6 @@
 # Test helpers (docs/guides/testing-strategy.md, ADR-0012).
 #
-#   teserra_add_test(<name> SOURCES <file>... [DEPENDS <module>...] [LIBRARIES <target>...])
+#   teserra_add_test(<name> [NO_MAIN] SOURCES <file>... [DEPENDS <module>...] [LIBRARIES <target>...])
 #
 # Creates the Catch2 test executable teserra_<name>_tests. Module unit tests use the module name
 # (teserra_add_test(core ...) -> teserra_core_tests). DEPENDS links Teserra modules, LIBRARIES any
@@ -42,7 +42,7 @@ find_package(Catch2 3 CONFIG REQUIRED)
 include(Catch)
 
 function(teserra_add_test name)
-    cmake_parse_arguments(PARSE_ARGV 1 arg "" "" "SOURCES;DEPENDS;LIBRARIES")
+    cmake_parse_arguments(PARSE_ARGV 1 arg "NO_MAIN" "" "SOURCES;DEPENDS;LIBRARIES")
     if(arg_UNPARSED_ARGUMENTS)
         message(FATAL_ERROR "teserra_add_test(${name}): unknown arguments: ${arg_UNPARSED_ARGUMENTS}")
     endif()
@@ -60,7 +60,13 @@ function(teserra_add_test name)
         endif()
         target_link_libraries(${target} PRIVATE teserra_${module})
     endforeach()
-    target_link_libraries(${target} PRIVATE teserra_test_support Catch2::Catch2WithMain ${arg_LIBRARIES})
+    # NO_MAIN: the sources have their own main(), for options of their own (the snapshot tests'
+    # --update-goldens).
+    if(arg_NO_MAIN)
+        target_link_libraries(${target} PRIVATE teserra_test_support Catch2::Catch2 ${arg_LIBRARIES})
+    else()
+        target_link_libraries(${target} PRIVATE teserra_test_support Catch2::Catch2WithMain ${arg_LIBRARIES})
+    endif()
 
     # PRE_TEST discovers test cases when CTest runs instead of after the build, so the build does not
     # execute test binaries and runtime DLLs deployed after linking are in place.
