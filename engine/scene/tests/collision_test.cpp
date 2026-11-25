@@ -175,3 +175,17 @@ TEST_CASE("Collision: a steady-state update allocates nothing", "[scene][collisi
     CHECK(allocations == 0);
     CHECK(level.world().resource<CollisionState>().overlapping.size() == 99);
 }
+
+TEST_CASE("Collision: events name the other entity of a pair", "[scene][collision]") {
+    ecs::World world;
+    const ecs::Entity hero = world.create();
+    const ecs::Entity coin = world.create();
+    const ecs::Entity bystander = world.create();
+    const CollisionStarted started{.a = hero, .b = coin};
+    CHECK(started.other(hero) == coin);
+    CHECK(started.other(coin) == hero);
+    CHECK_FALSE(started.other(bystander).has_value());
+    const CollisionEnded ended{.a = hero, .b = coin};
+    CHECK(ended.other(coin) == hero);
+    CHECK_FALSE(ended.other(bystander).has_value());
+}

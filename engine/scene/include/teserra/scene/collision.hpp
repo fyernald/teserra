@@ -18,6 +18,7 @@
 
 #include <algorithm>
 #include <limits>
+#include <optional>
 #include <string_view>
 #include <utility>
 #include <vector>
@@ -90,12 +91,22 @@ template <typename IsSolid>
 struct CollisionStarted {
     ecs::Entity a{};
     ecs::Entity b{};
+
+    /// The entity `self` collided with; nothing if `self` is neither of the two.
+    [[nodiscard]] std::optional<ecs::Entity> other(ecs::Entity self) const noexcept {
+        return self == a ? std::optional(b) : self == b ? std::optional(a) : std::nullopt;
+    }
 };
 
 /// Sent when the colliders of two entities stop overlapping, or one of them lost its collider or died.
 struct CollisionEnded {
     ecs::Entity a{};
     ecs::Entity b{};
+
+    /// The entity `self` stopped colliding with; nothing if `self` is neither of the two.
+    [[nodiscard]] std::optional<ecs::Entity> other(ecs::Entity self) const noexcept {
+        return self == a ? std::optional(b) : self == b ? std::optional(a) : std::nullopt;
+    }
 };
 
 /// The overlapping pairs of the last collision update, and reused memory: a resource of every scene.
