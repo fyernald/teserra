@@ -118,6 +118,8 @@ All notable user-visible changes to Teserra are documented here. The format foll
 
 - AddressSanitizer builds (#113): `TESERRA_ENABLE_SANITIZERS`, presets `windows-msvc-asan` and `ci-windows-asan`, and a `Sanitizers` workflow (pushes to main, nightly, by hand, and PRs labeled `needs-asan`) that runs every test under ASan. The `sanitizers.use_after_free` test proves that the instrumentation catches a use after free.
 
+- ECS micro-benchmarks (#114): `teserra_ecs_bench` (Catch2 `BENCHMARK`) measures create and destroy of 100k entities, one- and three-component views over 100k, adding and removing a tag on 10k, and a view with 50% overlap. It builds only with `TESERRA_BUILD_BENCHMARKS=ON` (preset `windows-msvc-bench`, vcpkg feature `benchmarks`). The baseline and the reference machine are in `benchmarks/README.md` and `ecs.md`, and the non-blocking `Benchmarks` workflow uploads CI runs as artifacts.
+
 ### Changed
 
 - Passes draw into the scene target instead of the frame's output: `PassResource::SceneColor` is the scene target (`FrameTarget` gains `depthTexture`, `depthFormat` and `layout()`), `PassResource::Output` is the frame's output, and `PassContext::viewTarget()` gives each view's target. The sprite and debug passes start one render pass per run of views with the same target, and key their pipelines by the target's layout. `RenderExtraction::targetSize` is the scene target's size; `RenderExtraction::renderer` sizes the views of cameras with targets.

@@ -85,6 +85,17 @@
       }
     },
     {
+      "name": "windows-msvc-bench",
+      "displayName": "Windows MSVC Benchmarks",
+      "description": "Release with the micro-benchmarks (TESERRA_BUILD_BENCHMARKS), without tests or examples",
+      "inherits": "windows-msvc-release",
+      "cacheVariables": {
+        "TESERRA_BUILD_BENCHMARKS": "ON",
+        "TESERRA_BUILD_TESTS": "OFF",
+        "TESERRA_BUILD_EXAMPLES": "OFF"
+      }
+    },
+    {
       "name": "windows-msvc-asan",
       "displayName": "Windows MSVC AddressSanitizer",
       "description": "Debug with /fsanitize=address (TESERRA_ENABLE_SANITIZERS): memory errors stop the program with a report",
@@ -191,6 +202,7 @@
     { "name": "windows-msvc-release", "configurePreset": "windows-msvc-release" },
     { "name": "windows-msvc-profile", "configurePreset": "windows-msvc-profile" },
     { "name": "windows-msvc-asan", "configurePreset": "windows-msvc-asan" },
+    { "name": "windows-msvc-bench", "configurePreset": "windows-msvc-bench" },
     { "name": "windows-clang-debug", "configurePreset": "windows-clang-debug" },
     { "name": "ci-windows", "configurePreset": "ci-windows" },
     { "name": "ci-windows-release", "configurePreset": "ci-windows-release" },
