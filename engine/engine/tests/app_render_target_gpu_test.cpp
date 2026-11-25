@@ -10,7 +10,9 @@
 #include <teserra/rhi/shader_blob.hpp>
 #include <teserra/rhi/texture.hpp>
 #include <teserra/scene/transform.hpp>
+#include <teserra/test/gpu.hpp>
 
+#include "gpu_backend.hpp"
 #include <catch2/catch_test_macros.hpp>
 #include <engine_tests/shaders.hpp>
 
@@ -53,13 +55,14 @@ TEST_CASE("Renderer: a fixed-resolution scene is scaled crisply into the output 
         .title = "Render target GPU test",
         .windowSize = {64, 64},
         .windowVisible = false,
-        .backend = rhi::Backend::OpenGL,
+        .backend = test::gpuTestBackend(),
         .sceneTarget = {.resolution = {4, 2}, .letterboxColor = {.r = 0.0F, .g = 0.0F, .b = 1.0F, .a = 1.0F}},
         .maxFrames = 1,
     }};
     if (!app.isInitialized()) {
         REQUIRE(app.initError()->code == ErrorCode::DeviceFailure);
-        SKIP("No window system or OpenGL 4.5 driver: " << std::format("{}", *app.initError()));
+        TESERRA_SKIP_WITHOUT_GPU(
+            "No window system or OpenGL 4.5 driver: " << std::format("{}", *app.initError()));
     }
     rhi::Device& device = app.device();
     constexpr UVec2 kOutputSize{10, 6};
@@ -127,12 +130,13 @@ TEST_CASE("Renderer: a sprite with a custom material draws with its parameters o
         .title = "Material GPU test",
         .windowSize = {64, 64},
         .windowVisible = false,
-        .backend = rhi::Backend::OpenGL,
+        .backend = test::gpuTestBackend(),
         .maxFrames = 1,
     }};
     if (!app.isInitialized()) {
         REQUIRE(app.initError()->code == ErrorCode::DeviceFailure);
-        SKIP("No window system or OpenGL 4.5 driver: " << std::format("{}", *app.initError()));
+        TESERRA_SKIP_WITHOUT_GPU(
+            "No window system or OpenGL 4.5 driver: " << std::format("{}", *app.initError()));
     }
     rhi::Device& device = app.device();
     constexpr UVec2 kOutputSize{4, 2};

@@ -207,6 +207,7 @@ endfunction()
 set(_teserra_testing_dir "${CMAKE_CURRENT_LIST_DIR}")
 add_library(teserra_test_support OBJECT
     "${CMAKE_CURRENT_LIST_DIR}/../tests/support/src/allocation_counter.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../tests/support/src/gpu.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../tests/support/src/test_support.cpp"
 )
 _teserra_configure_test_target(teserra_test_support)

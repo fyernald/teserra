@@ -236,7 +236,7 @@ Workflows live in `.github/workflows/`.
 
 | Workflow / job | Trigger | Blocking | Content |
 |---|---|---|---|
-| `ci.yml` → `windows-msvc`, `windows-msvc-release`, `windows-msvc-profile` | push to `main`, PRs | **Yes** | Configure (`ci-windows` / `ci-windows-release` / `ci-windows-profile`), build all targets, run unit + integration tests, upload JUnit; in parallel |
+| `ci.yml` → `windows-msvc`, `windows-msvc-release`, `windows-msvc-profile` | push to `main`, PRs | **Yes** | Configure (`ci-windows` / `ci-windows-release` / `ci-windows-profile`), build all targets, run unit + integration tests, upload JUnit; in parallel. `windows-msvc` then runs the suite again on Mesa llvmpipe with GPU tests and example smoke runs required ([testing strategy](testing-strategy.md#gpu-integration-tests)) |
 | `ci.yml` → `checks` | push, PRs | **Yes** | format check, layer/leak checks |
 | `ci.yml` → `linux-portable` | push to `main`, PRs | No (until the Linux port) | `linux-gcc-portable` and `linux-clang-portable`: build and test `core`, `ecs`, `scene`, `rhi` + null backend and the portable part of `platform` on `ubuntu-latest`, with warnings as errors; a failure shows on the PR, but the run passes (`continue-on-error`) |
 | `ci.yml` → `sanitizers` | push to `main`, nightly, PRs labeled `needs-asan` | No → Yes once stable | `asan` preset, unit tests |

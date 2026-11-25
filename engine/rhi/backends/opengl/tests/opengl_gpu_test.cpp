@@ -7,6 +7,7 @@
 #include <teserra/rhi/shader.hpp>
 #include <teserra/rhi/shader_blob.hpp>
 #include <teserra/rhi_opengl/opengl_backend.hpp>
+#include <teserra/test/gpu.hpp>
 #include <teserra/test/log_capture.hpp>
 
 #include "gl_device.hpp"
@@ -41,7 +42,7 @@ struct GpuWindow {
 GpuWindow createGpuWindowOrSkip() {
     Result<std::unique_ptr<platform::Platform>> platform = platform::Platform::create();
     if (!platform) {
-        SKIP("No window system: " << std::format("{}", platform.error()));
+        TESERRA_SKIP_WITHOUT_GPU("No window system: " << std::format("{}", platform.error()));
     }
     Result<std::unique_ptr<platform::Window>> window = (*platform)->createWindow({
         .title = "Teserra OpenGL test",
@@ -51,7 +52,7 @@ GpuWindow createGpuWindowOrSkip() {
         .debugContext = true,
     });
     if (!window) {
-        SKIP("No OpenGL 4.5 driver: " << std::format("{}", window.error()));
+        TESERRA_SKIP_WITHOUT_GPU("No OpenGL 4.5 driver: " << std::format("{}", window.error()));
     }
     return {std::move(platform).value(), std::move(window).value()};
 }
