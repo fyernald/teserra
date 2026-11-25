@@ -33,6 +33,8 @@ Rules:
 
 Every test executable replaces the global `operator new` / `delete` with versions that count allocations per thread (`tests/support/`). `teserra::test::AllocationCounter` from `<teserra/test/allocation_counter.hpp>` counts the current thread's allocations while it is alive. Tests for the renderer, ECS views and command recording assert **zero allocations** in a steady-state frame after a warm-up frame. This turns principle 1 into a regression test.
 
+**The whole frame** (#112, `engine/engine/tests/app_allocation_test.cpp`): an App on the null backend runs a busy scene for 12 warm-up frames, then counts 30 more and expects zero allocations. The scene has a two-layer tilemap over four chunks, 150 sprites with colliders that a moving player sweeps through (collision events every frame), a camera that is the player's child, debug lines and the collider debug view, and a system that destroys and respawns an entity every frame. A second test adds a system that allocates once per frame and expects the counter to see every one, so the first test cannot pass by counting nothing.
+
 ```cpp
 recordFrame(list); // warm-up
 list.reset();

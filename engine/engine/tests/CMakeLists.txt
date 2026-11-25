@@ -1,5 +1,6 @@
 teserra_add_test(engine
     SOURCES
+        app_allocation_test.cpp
         app_assets_test.cpp
         app_render_target_gpu_test.cpp
         app_render_test.cpp
