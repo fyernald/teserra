@@ -5,6 +5,8 @@
 
 #include <teserra/core/result.hpp>
 #include <teserra/core/types.hpp>
+#include <teserra/renderer/material.hpp>
+#include <teserra/renderer/pipeline_cache.hpp>
 #include <teserra/renderer/render_pass.hpp>
 #include <teserra/renderer/sprite_batcher.hpp>
 #include <teserra/renderer/upload_ring.hpp>
@@ -46,6 +48,11 @@ struct SpritePassStats {
 /// (a minimap seen by its own camera) are left out of that target. Pipelines (one per target layout and blend
 /// mode) and the bind group of each texture are created when first needed and kept, so a steady-state frame
 /// creates no GPU objects and allocates nothing.
+///
+/// Sprites with a material (SpriteDrawItem::material) draw with its shaders and state, from a pipeline cache:
+/// the frame's camera at set 0, the instance's group at set 2, and the sprite's texture at set 3 binding 0
+/// (`layout(set = 3, binding = 0) uniform sampler2D spriteTexture;`), sampled with the sprite filter. Sprites
+/// whose instance has a texture slot without a texture are left out.
 class SpritePass final : public RenderPass {
 public:
     /// `frameLayout` is Renderer::frameGroupLayout(), set 0 of the pass's pipelines.
@@ -62,8 +69,13 @@ public:
     void declare(PassBuilder& builder) override;
     void execute(PassContext& context, rhi::CommandList& commands) override;
 
-    /// Destroys the bind group kept for `texture`. Call it before destroying a texture that sprites used.
+    /// Destroys the bind groups kept for `texture`. Call it before destroying a texture that sprites used.
     void forgetTexture(rhi::TextureHandle texture);
+    /// Destroys the pipelines and the pipeline layout kept for `material`. Call it before the material
+    /// unloads.
+    void forgetMaterial(const Material& material);
+    /// The layout of set 3 that sprite materials read the sprite's texture through.
+    [[nodiscard]] rhi::BindGroupLayoutHandle drawGroupLayout() const noexcept { return m_drawLayout; }
     [[nodiscard]] const SpritePassStats& stats() const noexcept { return m_stats; }
 
 private:
@@ -73,15 +85,26 @@ private:
         SpriteBlend blend = SpriteBlend::Alpha;
         rhi::GraphicsPipelineHandle pipeline;
     };
+    // Which layout and sampler a texture's group has.
+    enum class GroupKind : u8 {
+        Sprite,  // set 2 of sprite_unlit, the sprite sampler
+        Tilemap, // set 2 of sprite_unlit, the tilemap sampler
+        Draw,    // set 3 of sprite materials, the sprite sampler
+    };
     struct TextureGroup {
         rhi::TextureHandle texture;
-        bool tilemap = false; // sampled with the tilemap sampler
+        GroupKind kind = GroupKind::Sprite;
         rhi::BindGroupHandle group;
+    };
+    struct MaterialPipelineLayout {
+        rhi::BindGroupLayoutHandle materialLayout; // may be null
+        rhi::PipelineLayoutHandle layout;
     };
     // What is bound in the current view, so draws rebind only what changes.
     struct Bound {
         rhi::GraphicsPipelineHandle pipeline;
         rhi::BindGroupHandle group;
+        rhi::BindGroupHandle drawGroup;
         rhi::BufferHandle vertices;
     };
 
@@ -89,9 +112,14 @@ private:
 
     // The pipeline for `blend` into targets like `target`, created on first use; null if creation failed.
     [[nodiscard]] rhi::GraphicsPipelineHandle pipeline(const FrameTarget& target, SpriteBlend blend);
-    // The material group (set 2) of `texture` with the sprite or the tilemap sampler, created on first use;
-    // null if creation failed.
-    [[nodiscard]] rhi::BindGroupHandle textureGroup(rhi::TextureHandle texture, bool tilemap);
+    // The group of `texture` of `kind`, created on first use; null if creation failed.
+    [[nodiscard]] rhi::BindGroupHandle textureGroup(rhi::TextureHandle texture, GroupKind kind);
+    // The pipeline layout of sprite materials with `materialLayout` at set 2, created on first use.
+    [[nodiscard]] rhi::PipelineLayoutHandle materialPipelineLayout(rhi::BindGroupLayoutHandle materialLayout);
+    // Binds what a draw with `material` needs; false if it cannot draw.
+    [[nodiscard]] bool bindMaterialDraw(rhi::CommandList& commands, Bound& bound, const FrameTarget& target,
+                                        const MaterialInstance& material, rhi::TextureHandle texture,
+                                        rhi::BufferHandle vertices, u64 vertexOffset);
     // Binds what a draw needs; false if its pipeline or group could not be created.
     [[nodiscard]] bool bindDraw(rhi::CommandList& commands, Bound& bound, const FrameTarget& target,
                                 SpriteBlend blend, rhi::TextureHandle texture, bool tilemap,
@@ -104,6 +132,10 @@ private:
 
     rhi::Device& m_device;
     SpriteBatcher m_batcher;
+    rhi::BindGroupLayoutHandle m_frameLayout;
+    rhi::BindGroupLayoutHandle m_drawLayout;
+    std::vector<MaterialPipelineLayout> m_materialPipelineLayouts;
+    PipelineCache m_materialPipelines;
     rhi::ShaderModuleHandle m_vertexShader;
     rhi::ShaderModuleHandle m_fragmentShader;
     rhi::BindGroupLayoutHandle m_materialLayout;

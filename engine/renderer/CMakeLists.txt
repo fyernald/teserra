@@ -9,6 +9,8 @@ teserra_add_module(renderer LAYER 3
         include/teserra/renderer/debug_draw.hpp
         include/teserra/renderer/debug_pass.hpp
         include/teserra/renderer/frame_packet.hpp
+        include/teserra/renderer/material.hpp
+        include/teserra/renderer/pipeline_cache.hpp
         include/teserra/renderer/render_pass.hpp
         include/teserra/renderer/render_target.hpp
         include/teserra/renderer/renderer.hpp
@@ -23,6 +25,8 @@ teserra_add_module(renderer LAYER 3
         src/composite_pass.cpp
         src/composite_pass.hpp
         src/debug_pass.cpp
+        src/material.cpp
+        src/pipeline_cache.cpp
         src/render_target.cpp
         src/renderer.cpp
         src/sprite_batcher.cpp

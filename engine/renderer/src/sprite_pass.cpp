@@ -96,6 +96,10 @@ Result<std::unique_ptr<SpritePass>> SpritePass::create(rhi::Device& device,
     TESERRA_TRY_ASSIGN(
         pass->m_materialLayout,
         device.createBindGroupLayout({.entries = kMaterialEntries, .debugName = "Sprite material"}));
+    // Sprite materials read the sprite's texture at set 3; the layout is the same entry.
+    TESERRA_TRY_ASSIGN(pass->m_drawLayout, device.createBindGroupLayout(
+                                               {.entries = kMaterialEntries, .debugName = "Sprite texture"}));
+    pass->m_frameLayout = frameLayout;
     const std::array groups{frameLayout, rhi::BindGroupLayoutHandle{}, pass->m_materialLayout};
     TESERRA_TRY_ASSIGN(pass->m_pipelineLayout,
                        device.createPipelineLayout({.groups = groups, .debugName = "Sprites"}));
@@ -126,7 +130,7 @@ Result<std::unique_ptr<SpritePass>> SpritePass::create(rhi::Device& device,
 }
 
 SpritePass::SpritePass(rhi::Device& device)
-    : m_device(device) {
+    : m_device(device), m_materialPipelines(device) {
 }
 
 SpritePass::~SpritePass() {
@@ -139,7 +143,11 @@ SpritePass::~SpritePass() {
     m_device.destroy(m_indices);
     m_device.destroy(m_sampler);
     m_device.destroy(m_tilemapSampler);
+    for (const MaterialPipelineLayout& layout : m_materialPipelineLayouts) {
+        m_device.destroy(layout.layout);
+    }
     m_device.destroy(m_pipelineLayout);
+    m_device.destroy(m_drawLayout);
     m_device.destroy(m_materialLayout);
     m_device.destroy(m_fragmentShader);
     m_device.destroy(m_vertexShader);
@@ -157,6 +165,74 @@ void SpritePass::forgetTexture(rhi::TextureHandle texture) {
         m_device.destroy(group.group);
         return true;
     });
+}
+
+void SpritePass::forgetMaterial(const Material& material) {
+    m_materialPipelines.forget(material.vertexShader());
+    m_materialPipelines.forget(material.fragmentShader());
+}
+
+rhi::PipelineLayoutHandle SpritePass::materialPipelineLayout(rhi::BindGroupLayoutHandle materialLayout) {
+    const auto found =
+        std::ranges::find(m_materialPipelineLayouts, materialLayout, &MaterialPipelineLayout::materialLayout);
+    if (found != m_materialPipelineLayouts.end()) {
+        return found->layout;
+    }
+    const std::array groups{m_frameLayout, rhi::BindGroupLayoutHandle{}, materialLayout, m_drawLayout};
+    Result<rhi::PipelineLayoutHandle> created =
+        m_device.createPipelineLayout({.groups = groups, .debugName = "Sprite material"});
+    if (!created) {
+        TESERRA_LOG_ERROR(LogCategory::Renderer, "Could not create a sprite material pipeline layout: {}",
+                          created.error());
+    }
+    const rhi::PipelineLayoutHandle handle = created.value_or(rhi::PipelineLayoutHandle{});
+    m_materialPipelineLayouts.push_back({.materialLayout = materialLayout, .layout = handle});
+    return handle;
+}
+
+bool SpritePass::bindMaterialDraw(rhi::CommandList& commands, Bound& bound, const FrameTarget& target,
+                                  const MaterialInstance& instance, rhi::TextureHandle texture,
+                                  rhi::BufferHandle vertices, u64 vertexOffset) {
+    const Material& material = instance.material();
+    if (!material.layout().empty() && instance.group().isNull()) {
+        return false; // a texture slot without a texture
+    }
+    const rhi::PipelineLayoutHandle layout = materialPipelineLayout(material.groupLayout());
+    if (layout.isNull()) {
+        return false;
+    }
+    const rhi::GraphicsPipelineHandle drawPipeline =
+        m_materialPipelines.get({.vertexShader = material.vertexShader(),
+                                 .fragmentShader = material.fragmentShader(),
+                                 .layout = layout,
+                                 .state = material.state(),
+                                 .vertexLayout = {.buffers = std::span(&kSpriteVertexBuffer, 1),
+                                                  .attributes = kSpriteVertexAttributes},
+                                 .colorFormat = target.format,
+                                 .depthFormat = target.depthFormat},
+                                material.name());
+    const rhi::BindGroupHandle drawGroup = textureGroup(texture, GroupKind::Draw);
+    if (drawPipeline.isNull() || drawGroup.isNull()) {
+        return false; // logged when creation failed
+    }
+    instance.flush();
+    if (drawPipeline != bound.pipeline) {
+        commands.bindPipeline(drawPipeline);
+        bound.pipeline = drawPipeline;
+    }
+    if (!instance.group().isNull() && instance.group() != bound.group) {
+        commands.bindGroup(rhi::kMaterialGroup, instance.group());
+        bound.group = instance.group();
+    }
+    if (drawGroup != bound.drawGroup) {
+        commands.bindGroup(rhi::kDrawGroup, drawGroup);
+        bound.drawGroup = drawGroup;
+    }
+    if (vertices != bound.vertices) {
+        commands.bindVertexBuffer(0, vertices, vertexOffset);
+        bound.vertices = vertices;
+    }
+    return true;
 }
 
 rhi::GraphicsPipelineHandle SpritePass::pipeline(const FrameTarget& target, SpriteBlend blend) {
@@ -191,23 +267,27 @@ rhi::GraphicsPipelineHandle SpritePass::pipeline(const FrameTarget& target, Spri
     return handle;
 }
 
-rhi::BindGroupHandle SpritePass::textureGroup(rhi::TextureHandle texture, bool tilemap) {
+rhi::BindGroupHandle SpritePass::textureGroup(rhi::TextureHandle texture, GroupKind kind) {
     const auto found = std::ranges::find_if(m_textureGroups, [&](const TextureGroup& group) {
-        return group.texture == texture && group.tilemap == tilemap;
+        return group.texture == texture && group.kind == kind;
     });
     if (found != m_textureGroups.end()) {
         return found->group;
     }
-    const std::array entries{rhi::BindGroupEntry{
-        .binding = 0, .texture = texture, .sampler = tilemap ? m_tilemapSampler : m_sampler}};
-    Result<rhi::BindGroupHandle> created = m_device.createBindGroup(
-        {.layout = m_materialLayout, .entries = entries, .debugName = "Sprite texture"});
+    const std::array entries{
+        rhi::BindGroupEntry{.binding = 0,
+                            .texture = texture,
+                            .sampler = kind == GroupKind::Tilemap ? m_tilemapSampler : m_sampler}};
+    Result<rhi::BindGroupHandle> created =
+        m_device.createBindGroup({.layout = kind == GroupKind::Draw ? m_drawLayout : m_materialLayout,
+                                  .entries = entries,
+                                  .debugName = "Sprite texture"});
     if (!created) {
         TESERRA_LOG_ERROR(LogCategory::Renderer, "Could not create the bind group of sprite texture {}: {}",
                           texture, created.error());
         return {};
     }
-    m_textureGroups.push_back({.texture = texture, .tilemap = tilemap, .group = *created});
+    m_textureGroups.push_back({.texture = texture, .kind = kind, .group = *created});
     return *created;
 }
 
@@ -215,7 +295,8 @@ bool SpritePass::bindDraw(rhi::CommandList& commands, Bound& bound, const FrameT
                           SpriteBlend blend, rhi::TextureHandle texture, bool tilemap,
                           rhi::BufferHandle vertices, u64 vertexOffset) {
     const rhi::GraphicsPipelineHandle drawPipeline = pipeline(target, blend);
-    const rhi::BindGroupHandle group = textureGroup(texture, tilemap);
+    const rhi::BindGroupHandle group =
+        textureGroup(texture, tilemap ? GroupKind::Tilemap : GroupKind::Sprite);
     if (drawPipeline.isNull() || group.isNull()) {
         return false; // logged when creation failed
     }
@@ -323,7 +404,7 @@ void SpritePass::drawView(PassContext& context, rhi::CommandList& commands, usiz
                          .height = static_cast<u32>(area.height)});
     context.bindView(commands, view);
     commands.bindIndexBuffer(m_indices, rhi::IndexType::Uint16);
-    Bound bound;
+    Bound boundState;
 
     usize nextChunk = 0;
     // Draws the chunks not drawn yet whose layer is at most `layer`.
@@ -331,8 +412,8 @@ void SpritePass::drawView(PassContext& context, rhi::CommandList& commands, usiz
         for (; nextChunk < m_chunkOrder.size() && chunks[m_chunkOrder[nextChunk]].layer <= layer;
              ++nextChunk) {
             const TilemapChunkDrawItem& chunk = chunks[m_chunkOrder[nextChunk]];
-            if (chunk.texture != target.texture &&
-                bindDraw(commands, bound, target, chunk.blend, chunk.texture, true, chunk.vertexBuffer, 0)) {
+            if (chunk.texture != target.texture && bindDraw(commands, boundState, target, chunk.blend,
+                                                            chunk.texture, true, chunk.vertexBuffer, 0)) {
                 commands.drawIndexed({.indexCount = chunk.quadCount * 6});
                 ++m_stats.drawCalls;
             }
@@ -354,9 +435,14 @@ void SpritePass::drawView(PassContext& context, rhi::CommandList& commands, usiz
             }
             // A sprite showing the target being drawn (a minimap seen by its own camera) is left out of it:
             // a texture cannot be sampled while it is rendered into.
-            if (batch.texture != target.texture &&
-                bindDraw(commands, bound, target, batch.blend, batch.texture, false, spriteVertices->buffer,
-                         spriteVertices->offset)) {
+            const bool bound =
+                batch.texture != target.texture &&
+                (batch.material != nullptr
+                     ? bindMaterialDraw(commands, boundState, target, *batch.material, batch.texture,
+                                        spriteVertices->buffer, spriteVertices->offset)
+                     : bindDraw(commands, boundState, target, batch.blend, batch.texture, false,
+                                spriteVertices->buffer, spriteVertices->offset));
+            if (bound) {
                 commands.drawIndexed(
                     {.indexCount = (last - first) * 6, .vertexOffset = static_cast<i32>(first * 4)});
                 ++m_stats.drawCalls;

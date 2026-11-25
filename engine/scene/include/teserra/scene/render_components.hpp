@@ -48,6 +48,9 @@ struct SpriteRenderer {
     /// Multiplies the texture, in linear values.
     Color tint{.r = 1.0F, .g = 1.0F, .b = 1.0F, .a = 1.0F};
     SpriteBlend blend = SpriteBlend::Alpha;
+    /// Draws with this material instead of the built-in one (renderer::SpriteDrawItem::material). The game
+    /// keeps the instance alive while sprites use it.
+    const renderer::MaterialInstance* material = nullptr;
     /// Higher layers draw over lower ones.
     i16 layer = 0;
     /// Orders sprites within a layer: higher values draw later, on top. Top-down games use -y.

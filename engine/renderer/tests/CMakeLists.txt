@@ -4,6 +4,7 @@ teserra_add_test(renderer
         camera_test.cpp
         chunk_mesh_cache_test.cpp
         debug_draw_test.cpp
+        material_test.cpp
         renderer_test.cpp
         sprite_sheet_file_test.cpp
         sprite_sheet_test.cpp
@@ -15,13 +16,16 @@ teserra_add_test(renderer
 )
 
 # Shaders of the tests, compiled and embedded: <renderer_tests/shaders.hpp> declares
-# teserra::test::shaders::kCameraBlockVert. ../shaders holds the engine's shader includes (teserra/camera.glsl).
+# teserra::test::shaders::kCameraBlockVert, kGlowVert and kGlowFrag (a sprite material). ../shaders holds the
+# engine's shader includes (teserra/camera.glsl).
 teserra_add_shaders(teserra_renderer_tests EMBED
     NAMESPACE teserra::test::shaders
     HEADER renderer_tests/shaders.hpp
     INCLUDE_DIRECTORIES ../shaders
     SOURCES
         shaders/camera_block.vert
+        shaders/glow.vert
+        shaders/glow.frag
 )
 
 # Every public header compiles on its own.

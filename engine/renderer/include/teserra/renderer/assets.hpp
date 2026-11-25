@@ -15,6 +15,7 @@
 #include <teserra/rhi/device.hpp>
 #include <teserra/rhi/handles.hpp>
 #include <teserra/rhi/shader.hpp>
+#include <teserra/rhi/shader_blob.hpp>
 
 #include <cstddef>
 #include <span>
@@ -30,6 +31,9 @@ namespace detail {
 template <typename Handle>
 class OwnedGpuObject {
 public:
+    /// Owns nothing.
+    OwnedGpuObject() noexcept
+        : m_device(nullptr), m_handle{} {}
     OwnedGpuObject(rhi::Device& device, Handle handle) noexcept
         : m_device(&device), m_handle(handle) {}
     ~OwnedGpuObject() {
@@ -75,19 +79,24 @@ private:
     UVec2 m_size;
 };
 
-/// A shader asset: one compiled stage as a shader module, destroyed when the asset unloads.
+/// A shader asset: one compiled stage as a shader module, destroyed when the asset unloads, and the
+/// reflection of its blob, which materials build their parameters from.
 class Shader {
 public:
     /// Takes ownership of `handle`, a shader module of `device` for `stage`.
-    Shader(rhi::Device& device, rhi::ShaderModuleHandle handle, rhi::ShaderStage stage) noexcept
-        : m_module(device, handle), m_stage(stage) {}
+    Shader(rhi::Device& device, rhi::ShaderModuleHandle handle, rhi::ShaderStage stage,
+           rhi::ShaderReflection reflection = {}) noexcept
+        : m_module(device, handle), m_stage(stage), m_reflection(std::move(reflection)) {}
 
     [[nodiscard]] rhi::ShaderModuleHandle handle() const noexcept { return m_module.handle(); }
     [[nodiscard]] rhi::ShaderStage stage() const noexcept { return m_stage; }
+    /// What the shader uses: bindings with their block members, and vertex inputs.
+    [[nodiscard]] const rhi::ShaderReflection& reflection() const noexcept { return m_reflection; }
 
 private:
     detail::OwnedGpuObject<rhi::ShaderModuleHandle> m_module;
     rhi::ShaderStage m_stage;
+    rhi::ShaderReflection m_reflection;
 };
 
 /// Loads Texture assets from PNG files, named after the path: Rgba8Srgb with one mip level by default. The
@@ -130,7 +139,8 @@ private:
 inline constexpr u32 kFallbackTextureSize = 8;
 inline constexpr u32 kFallbackCheckSize = 4;
 
-/// Registers the renderer's loaders (TextureLoader, ShaderLoader, SpriteSheetLoader) for `device` with
+/// Registers the renderer's loaders (TextureLoader, ShaderLoader, SpriteSheetLoader, MaterialLoader,
+/// MaterialInstanceLoader) for `device` with
 /// `registry`, and creates the fallbacks of their failed loads once:
 /// - Texture: kFallbackTextureSize² magenta and black checks (Rgba8Srgb), magenta at the top left.
 /// - Shader, for paths ending with ".vert.tshader": a vertex shader without inputs whose triangles are

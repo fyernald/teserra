@@ -14,6 +14,8 @@
 
 namespace teserra::renderer {
 
+class MaterialInstance;
+
 /// A camera that renders this frame.
 struct RenderView {
     CameraData camera{};
@@ -28,8 +30,8 @@ struct RenderView {
     RenderTargetHandle target{};
 };
 
-/// How a sprite's color combines with what is behind it. It stands in for the material until materials
-/// exist (#97); it is part of the batch id like a material instance will be.
+/// How a sprite of the built-in sprite_unlit material combines with what is behind it; part of the batch id.
+/// A sprite with a material uses the material's blend mode instead.
 enum class SpriteBlend : u8 {
     /// Straight alpha: color * alpha + destination * (1 - alpha).
     Alpha,
@@ -61,6 +63,9 @@ struct SpriteDrawItem {
     Color tint{.r = 1.0F, .g = 1.0F, .b = 1.0F, .a = 1.0F};
     rhi::TextureHandle texture{};
     SpriteBlend blend = SpriteBlend::Alpha;
+    /// Draws with this material instead of sprite_unlit (docs/architecture/renderer.md#sprite-materials):
+    /// its parameters at set 2, `texture` at set 3. The game keeps the instance alive while sprites use it.
+    const MaterialInstance* material = nullptr;
     /// Higher layers draw over lower ones.
     i16 layer = 0;
     /// Orders sprites within a layer: higher values draw later, on top. Top-down games use -y.

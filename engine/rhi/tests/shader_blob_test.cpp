@@ -24,7 +24,18 @@ constexpr std::string_view kGlsl =
 ShaderReflection sampleReflection() {
     return {
         .bindings =
-            {{.group = 0, .binding = 0, .type = BindingType::UniformBuffer, .size = 80, .name = "Frame"},
+            {{.group = 0,
+              .binding = 0,
+              .type = BindingType::UniformBuffer,
+              .size = 80,
+              .name = "Frame",
+              .members = {{.name = "viewProjection", .offset = 0, .size = 64, .rows = 4, .columns = 4},
+                          {.name = "time", .offset = 64, .size = 4},
+                          {.name = "ids",
+                           .offset = 68,
+                           .size = 8,
+                           .scalarType = ShaderScalarType::Int,
+                           .arraySize = 2}}},
              {.group = 2, .binding = 1, .type = BindingType::SampledTexture, .size = 0, .name = "albedo"}},
         .vertexInputs =
             {{.location = 0, .scalarType = ShaderScalarType::Float, .components = 3, .name = "position"},
@@ -120,6 +131,30 @@ TEST_CASE("Shader blobs: sections of unknown types are skipped", "[rhi][shader_b
     // 257 is unknown too, not SPIR-V (1) seen through a narrowing conversion.
     setWord(blob, sectionEntry(1), 257);
     CHECK(readShaderBlob(blob).has_value());
+}
+
+TEST_CASE("Shader blobs: block members are a section of their own", "[rhi][shader_blob]") {
+    std::vector<std::byte> blob = sampleBlob();
+    REQUIRE(wordAt(blob, 12) == 4); // SPIR-V, GLSL, reflection, block members
+    CHECK(wordAt(blob, sectionEntry(3)) == 4);
+
+    SECTION("blobs without it read without members") {
+        setWord(blob, sectionEntry(3), 99);
+        const Result<ShaderBlobContents> contents = readShaderBlob(blob);
+        REQUIRE(contents.has_value());
+        CHECK(contents->reflection.bindings[0].members.empty());
+        CHECK(contents->reflection.bindings[0].name == "Frame");
+    }
+    SECTION("a member of a binding that does not exist is rejected") {
+        const std::size_t members = wordAt(blob, sectionEntry(3) + 4);
+        setWord(blob, members + 4, 7); // the first member's binding index
+        CHECK(failure(blob) == "Block member 0 of the shader blob is invalid");
+    }
+    SECTION("a member with 5 rows is rejected") {
+        const std::size_t members = wordAt(blob, sectionEntry(3) + 4);
+        setWord(blob, members + 4 + 16, 5);
+        CHECK(failure(blob) == "Block member 0 of the shader blob is invalid");
+    }
 }
 
 TEST_CASE("Shader blobs: every truncation is rejected", "[rhi][shader_blob]") {

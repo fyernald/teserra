@@ -244,6 +244,7 @@ void renderExtractionSystem(ecs::SystemContext& context) {
             .tint = sprite.tint,
             .texture = sprite.texture,
             .blend = sprite.blend,
+            .material = sprite.material,
             .layer = sprite.layer,
             .sortDepth = sprite.sortDepth,
         });

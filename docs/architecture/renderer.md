@@ -35,7 +35,8 @@ struct SpriteDrawItem {
     Vec2 pivot;                 // normalized like UVs: {0, 0} = the image's top-left corner
     Color tint;                 // linear
     TextureHandle texture;
-    SpriteBlend blend;          // Alpha, Premultiplied, Additive; a MaterialInstanceHandle replaces it (#97)
+    SpriteBlend blend;          // Alpha, Premultiplied, Additive, for sprite_unlit
+    const MaterialInstance* material;  // null: sprite_unlit; else the material's shaders, state and parameters
     i16 layer;                  // explicit sort layer
     f32 sortDepth;              // tie-breaker inside a layer (e.g. -y for top-down games)
 };
@@ -139,7 +140,7 @@ Rendering (#89):
 - Meshes unused for 300 frames are evicted (the tilemap went away or has been out of view); extraction rebuilds whatever it does not find.
 - **Drawing:** `TilemapChunkDrawItem {vertexBuffer, quadCount, texture, blend, layer}`. The sprite pass draws chunks with the `sprite_unlit` material and the sprite quad index buffer. Each chunk draws before the first sprite of its layer or a higher one, splitting a sprite batch where needed. Chunks sample their texture with `SpritePassConfig::tilemapFilter` (nearest by default).
 - **No seams:** corners come from integer tile coordinates, so neighboring quads share their edges exactly. UVs are pulled in by 1/64 of a texel, so nearest sampling never reaches the next tile of the sheet.
-- Vertices are in world space because `sprite_unlit` has no model matrix. A map that moves rebuilds its visible chunks (counted, and fine for static maps); per-draw model matrices come with materials (#97).
+- Vertices are in world space because `sprite_unlit` has no model matrix. A map that moves rebuilds its visible chunks (counted, and fine for static maps); per-draw model matrices (set 3) are future work.
 
 ## Materials, shaders and uniforms
 
@@ -149,6 +150,19 @@ Rendering (#89):
 - **Pipelines are created lazily** and cached by `(material pipeline state, vertex layout, render target layout)`. Pipeline creation is never on the per-sprite path; a frame that creates a pipeline logs it at `Debug` level so warm-up issues are visible.
 - **Uniform data** is uploaded through buffers only: per-frame (set 0), per-material (set 2), per-draw via dynamic offsets into the ring buffer (set 3). C++ mirror structs use explicit `alignas` and `static_assert` against reflection sizes.
 - Built-in materials in v1: `sprite_unlit` (texture × tint, blend modes alpha / premultiplied / additive), `debug_lines`, `composite`.
+
+**Today** (#97, `<teserra/renderer/material.hpp>`, `<teserra/renderer/pipeline_cache.hpp>`):
+
+- **Reflection:** `.tshader` blobs carry the members of every uniform block (name, std140 offset, size, scalar type, rows, columns, array size; [rhi.md](rhi.md#tshader-blobs)), and `renderer::Shader` assets keep their blob's reflection.
+- **`MaterialLayout::fromReflection()`** merges set 2 of the vertex and fragment shaders: at most one uniform block (the parameter block; its members are the `MaterialParameter`s) and any sampled textures (`MaterialTextureSlot`s, sorted by binding). Two blocks, storage buffers, or stages that disagree about a binding are errors. Other sets are not the material's.
+- **`Material`** = the two `Shader` assets (kept loaded) + `MaterialState {blend (BlendMode: opaque, alpha, premultiplied, additive), depthTest, depthWrite, cullMode}` + the layout + default parameter bytes and textures, the bind group layout of set 2 and a sampler (`filter`) for its textures. It knows nothing about sprites (3D readiness #7). `id()` is unique among live materials.
+- **`MaterialInstance`** (`MaterialInstance::create(device, materialAsset)`) copies the defaults, owns a GPU-only uniform buffer for the block and the bind group of set 2. `set(name, value)` takes `f32`, `i32`, `u32`, `Vec2`/`3`/`4`, `Color` or `Mat4` and checks the type against the reflection; it marks the block dirty, and `flush()` (called by passes before drawing) writes it with `writeBuffer()`, which the device orders before the frame's draws. `setTexture(name, asset)` recreates the group (the old one is destroyed after the frames in flight). An instance with a slot without a texture has no group and is not drawn.
+- **Files:** `MaterialLoader` reads `*.material.json` (`vertex`, `fragment`, `blend`, `depthTest`, `depthWrite`, `cull`, `filter`, `parameters`, `textures`; paths relative to the file, loaded as dependencies) and `MaterialInstanceLoader` reads `*.material-instance.json` (`material`, `parameters`, `textures` over the material's defaults). `registerAssetLoaders()` registers both. Loaded instances are read-only (`Asset::get()` is const); games create instances in code to change them. There is no fallback material: a failed load gives an asset that is not ready.
+- **`PipelineCache`** keeps pipelines keyed by `(shaders, pipeline layout, MaterialState, vertex layout, target formats)`, creates them on first use with a `Debug` log line, and `forget(shader)` destroys those of a shader.
+
+### Sprite materials
+
+A sprite with `SpriteDrawItem::material` (`scene::SpriteRenderer::material`) draws with that instance instead of `sprite_unlit`. The sprite pass sets the frame's camera at set 0, the instance's group at set 2, and the sprite's texture at **set 3, binding 0** (`layout(set = 3, binding = 0) uniform sampler2D spriteTexture;`, the pass's `drawGroupLayout()`, sampled with the sprite filter). The material's vertex shader reads `SpriteVertex` (position, uv, color). Pipeline layouts (one per material group layout) and pipelines come from the pass's cache, so a steady-state frame creates nothing. Batches break where the instance changes; the sort key's batch id has 6 bits from the instance to keep sprites of one instance together. `SpritePass::forgetMaterial()` drops a material's pipelines before it unloads. Tilemap chunks keep `sprite_unlit` for now.
 
 ## Render targets
 

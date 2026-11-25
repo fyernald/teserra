@@ -36,6 +36,25 @@ enum class ShaderScalarType : u8 {
     Uint,
 };
 
+/// A member of a uniform or storage block: what materials set parameters through
+/// (docs/architecture/renderer.md#materials-shaders-and-uniforms).
+struct ShaderBlockMember {
+    std::string name{};
+    /// Bytes from the start of the block (std140 for uniform blocks).
+    u32 offset = 0;
+    /// Bytes the member spans, its array included.
+    u32 size = 0;
+    ShaderScalarType scalarType = ShaderScalarType::Float;
+    /// Components of a vector or of a matrix column: 1 (scalar) to 4.
+    u32 rows = 1;
+    /// 1 for scalars and vectors, 2 to 4 for matrices.
+    u32 columns = 1;
+    /// Elements of an array member; 0 for a member that is not an array.
+    u32 arraySize = 0;
+
+    friend bool operator==(const ShaderBlockMember&, const ShaderBlockMember&) = default;
+};
+
 /// A resource the shader uses.
 struct ShaderBinding {
     u32 group = 0;
@@ -46,6 +65,10 @@ struct ShaderBinding {
     u32 size = 0;
     /// The block name of a buffer, the variable name of a texture.
     std::string name{};
+    /// The top-level members of a buffer's block, in offset order: scalars, vectors, matrices and arrays of
+    /// them (members that are structs are left out). Empty for textures, and for blobs written before
+    /// members were reflected.
+    std::vector<ShaderBlockMember> members{};
 
     friend bool operator==(const ShaderBinding&, const ShaderBinding&) = default;
 };

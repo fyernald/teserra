@@ -19,8 +19,8 @@
 namespace teserra::renderer {
 
 /// The 64-bit key that orders sprites: the layer (16 bits), sortDepth quantized to 24 bits, then a batch
-/// id of the texture and blend (24 bits), so sprites that may share a batch end up next to each other. An
-/// ascending key is the draw order.
+/// id of the texture, material instance and blend (24 bits), so sprites that may share a batch end up next
+/// to each other. An ascending key is the draw order.
 [[nodiscard]] u64 spriteSortKey(const SpriteDrawItem& sprite) noexcept;
 
 /// A vertex of a sprite quad, as the sprite shaders read it.
@@ -48,6 +48,8 @@ inline constexpr u32 kMaxSpritesPerBatch = 16383;
 struct SpriteBatch {
     rhi::TextureHandle texture{};
     SpriteBlend blend = SpriteBlend::Alpha;
+    /// The material instance of the batch's sprites; null for sprite_unlit.
+    const MaterialInstance* material = nullptr;
     /// Index of the batch's first sprite in draw order; its first vertex is firstSprite * 4.
     u32 firstSprite = 0;
     u32 spriteCount = 0;
@@ -61,7 +63,7 @@ public:
     explicit SpriteBatcher(u32 maxSpritesPerBatch = kMaxSpritesPerBatch);
 
     /// Sorts `sprites` by spriteSortKey() (equal keys keep their order) and builds the batches. A batch
-    /// breaks where the texture or blend changes, or when it is full.
+    /// breaks where the texture, blend or material instance changes, or when it is full.
     void prepare(std::span<const SpriteDrawItem> sprites);
 
     /// The batches of the last prepare(), in draw order.
