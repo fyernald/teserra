@@ -89,6 +89,7 @@ public:
         return found;
     }
 
+    /// The map the query reads.
     [[nodiscard]] const Tilemap& map() const noexcept { return *m_map; }
 
 private:

@@ -33,6 +33,7 @@ class HandlePool {
     static_assert(MaxGeneration >= 1, "generation 0 is the null handle");
 
 public:
+    /// The handle type of this pool.
     using HandleType = Handle<Tag>;
 
     /// Constructs an object from `args` and returns its handle.

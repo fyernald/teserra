@@ -86,6 +86,7 @@ private:
 /// The event types of a world that updateEvents() swaps: a resource that addEvents() maintains.
 class EventRegistry {
 public:
+    /// Swaps the buffers of one event type.
     using Update = void (*)(World& world);
 
     /// Registers `update` for `type` once.
@@ -95,6 +96,7 @@ public:
         }
     }
 
+    /// Swaps the buffers of every registered event type of `world`.
     void updateAll(World& world) const {
         for (const auto& [type, update] : m_updates) {
             update(world);

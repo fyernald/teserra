@@ -42,6 +42,7 @@ public:
                                               std::vector<TileProperties> properties = {},
                                               f32 pixelsPerUnit = renderer::kDefaultPixelsPerUnit);
 
+    /// The tiles' art: region n - 1 is tile n.
     [[nodiscard]] const renderer::SpriteSheet& sheet() const noexcept { return m_sheet; }
 
     /// Number of tiles: valid ids are 1 to tileCount().

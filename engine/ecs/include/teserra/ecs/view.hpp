@@ -32,6 +32,7 @@ struct TypeList {};
 template <Component... T>
 struct Exclude {};
 // Lower case like std::in_place_type: it reads as part of the call, world.view<A>(exclude<B>).
+/// Passed to World::view() and SystemContext::view() to leave out entities that have any of T.
 template <Component... T>
 inline constexpr Exclude<T...> exclude{}; // NOLINT(readability-identifier-naming)
 
@@ -54,6 +55,7 @@ class View<TypeList<Included...>, TypeList<Excluded...>> {
     using PoolOf = ComponentPool<std::remove_const_t<T>>;
 
 public:
+    /// What an iteration yields: the entity and a reference to each included component.
     using Element = std::tuple<Entity, Included&...>;
 
     View(std::tuple<PoolOf<Included>*...> included, std::tuple<ComponentPool<Excluded>*...> excluded) noexcept
@@ -69,6 +71,7 @@ public:
     View& operator=(View&&) = delete;
     ~View() = default;
 
+    /// A forward iterator over the matching entities, in the order of the smallest included pool.
     class Iterator {
     public:
         // The names std::input_iterator requires.
@@ -110,8 +113,10 @@ public:
         usize m_index = 0;
     };
 
+    /// The first matching entity.
     [[nodiscard]] Iterator begin() const noexcept { return Iterator(this, 0); }
     [[nodiscard]] Iterator end() const noexcept { return Iterator(this, m_leader->size()); }
+    /// Whether no entity matches.
     [[nodiscard]] bool empty() const noexcept { return begin() == end(); }
     /// The size of the pool the view walks: an upper bound of the entities it yields.
     [[nodiscard]] usize leaderSize() const noexcept { return m_leader->size(); }

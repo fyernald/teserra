@@ -51,6 +51,7 @@ public:
     NullSwapchain(NullSwapchain&&) = delete;
     NullSwapchain& operator=(NullSwapchain&&) = delete;
 
+    /// Swapchain interface: one image of the window's size; present() only counts.
     [[nodiscard]] TextureHandle acquireNextImage() override { return m_image; }
     void present() override;
     /// A new size gets a new image handle; 0x0 (minimized) gets none until the next resize.
@@ -72,6 +73,7 @@ private:
     u64 m_presentCount = 0;
 };
 
+/// A Device without a GPU (see createHeadlessDevice()); the members below Device's let tests inspect it.
 class NullDevice final : public Device {
 public:
     /// `window` may be null for a headless device.
@@ -83,6 +85,7 @@ public:
     NullDevice(NullDevice&&) = delete;
     NullDevice& operator=(NullDevice&&) = delete;
 
+    /// Device interface; see <teserra/rhi/device.hpp>.
     [[nodiscard]] Backend backend() const noexcept override { return Backend::Null; }
     /// The guaranteed minimums of DeviceLimits.
     [[nodiscard]] const DeviceLimits& limits() const noexcept override { return m_limits; }

@@ -80,8 +80,10 @@ public:
     [[nodiscard]] static Result<SpriteSheet> grid(assets::Asset<Texture> texture, const SpriteGrid& grid,
                                                   f32 pixelsPerUnit = kDefaultPixelsPerUnit);
 
+    /// The texture the regions cut, kept loaded by the sheet.
     [[nodiscard]] const assets::Asset<Texture>& texture() const noexcept { return m_texture; }
     [[nodiscard]] f32 pixelsPerUnit() const noexcept { return m_pixelsPerUnit; }
+    /// The regions, in the order they were defined.
     [[nodiscard]] std::span<const SpriteRegion> regions() const noexcept { return m_regions; }
 
     /// The index of the first region named `name`, or std::nullopt.

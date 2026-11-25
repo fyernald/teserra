@@ -45,10 +45,12 @@ struct TilemapChunk {
 /// One layer of a tilemap: a sparse grid of tile ids on integer coordinates, which may be negative.
 // clang-tidy flags the implicit move constructor because MSVC's unordered_map allocates when it is moved;
 // like the rest of the engine, the layer does not handle allocation failure.
+/// One layer of a Tilemap: tiles in 32x32 chunks, allocated only where there are tiles.
 class TilemapLayer { // NOLINT(bugprone-exception-escape)
 public:
     explicit TilemapLayer(std::string name);
 
+    /// The layer's name, as given to Tilemap::addLayer().
     [[nodiscard]] std::string_view name() const noexcept { return m_name; }
 
     /// The tile at `coord`; kNoTile outside allocated chunks.
@@ -70,6 +72,7 @@ public:
         }
     }
 
+    /// The number of allocated chunks.
     [[nodiscard]] usize chunkCount() const noexcept { return m_chunks.size(); }
     [[nodiscard]] usize dirtyChunkCount() const noexcept;
 

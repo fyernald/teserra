@@ -82,6 +82,7 @@ struct StoredBindGroupLayout {
     std::vector<BindGroupLayoutEntry> entries;
     std::string debugName;
 
+    /// A copy of `desc` that owns its entries; desc() views it again.
     [[nodiscard]] static StoredBindGroupLayout from(const BindGroupLayoutDesc& desc);
     [[nodiscard]] BindGroupLayoutDesc desc() const noexcept {
         return {.entries = entries, .debugName = debugName};
@@ -120,6 +121,7 @@ struct StoredBindGroup {
 /// device creates or destroys objects, which validation never does.
 class ResourceLookup {
 public:
+    /// What validation needs to know about each live object; nothing for a handle that is not alive.
     [[nodiscard]] virtual std::optional<BufferDesc> buffer(BufferHandle handle) const = 0;
     [[nodiscard]] virtual std::optional<TextureDesc> texture(TextureHandle handle) const = 0;
     [[nodiscard]] virtual std::optional<SamplerDesc> sampler(SamplerHandle handle) const = 0;

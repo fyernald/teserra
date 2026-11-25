@@ -77,6 +77,7 @@ struct DepthBias {
     f32 clamp = 0.0F;
 };
 
+/// How triangles become fragments: culling, winding, fill and depth bias.
 struct RasterState {
     CullMode cullMode = CullMode::None;
     FrontFace frontFace = FrontFace::CounterClockwise;

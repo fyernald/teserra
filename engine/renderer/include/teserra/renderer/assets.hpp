@@ -83,6 +83,7 @@ public:
                                                 rhi::Format format = rhi::Format::Rgba8Srgb,
                                                 std::string_view debugName = {});
 
+    /// The GPU texture.
     [[nodiscard]] rhi::TextureHandle handle() const noexcept { return m_texture.handle(); }
     /// Width and height in texels.
     [[nodiscard]] UVec2 size() const noexcept { return m_size; }
@@ -101,6 +102,7 @@ public:
            rhi::ShaderReflection reflection = {}) noexcept
         : m_module(device, handle), m_stage(stage), m_reflection(std::move(reflection)) {}
 
+    /// The shader module.
     [[nodiscard]] rhi::ShaderModuleHandle handle() const noexcept { return m_module.handle(); }
     [[nodiscard]] rhi::ShaderStage stage() const noexcept { return m_stage; }
     /// What the shader uses: bindings with their block members, and vertex inputs.

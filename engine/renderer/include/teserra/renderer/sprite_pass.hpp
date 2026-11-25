@@ -65,6 +65,7 @@ public:
     SpritePass(SpritePass&&) = delete;
     SpritePass& operator=(SpritePass&&) = delete;
 
+    /// RenderPass interface: "Sprites", writing SceneColor.
     [[nodiscard]] std::string_view name() const override { return "Sprites"; }
     void declare(PassBuilder& builder) override;
     void execute(PassContext& context, rhi::CommandList& commands) override;

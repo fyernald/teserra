@@ -102,6 +102,7 @@ public:
         requireAbsent(entity, target);
         target.add(entity);
     }
+    /// Removes the entity's T, which it must have (asserted).
     template <Component T>
     void remove(Entity entity) {
         ComponentPool<T>* target = tryPool<T>();
@@ -111,11 +112,13 @@ public:
             target->remove(entity);
         }
     }
+    /// Whether the entity has a T, tags included.
     template <Component T>
     [[nodiscard]] bool has(Entity entity) const {
         const ComponentPool<T>* found = tryPool<T>();
         return found != nullptr && found->has(entity);
     }
+    /// The entity's T, which it must have (asserted). Not for tags.
     template <Component T>
         requires(!std::is_empty_v<T>)
     [[nodiscard]] T& get(Entity entity) {
@@ -211,6 +214,7 @@ public:
         return found != nullptr ? &static_cast<const ResourceHolder<T>*>(found)->value : nullptr;
     }
 
+    /// Whether the world has a T resource.
     template <Resource T>
     [[nodiscard]] bool hasResource() const {
         return findResource(typeKey<T>(), componentName<T>()) != nullptr;

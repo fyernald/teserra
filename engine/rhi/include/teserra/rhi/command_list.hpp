@@ -57,6 +57,7 @@ public:
 
     // Bindings, inside a render pass
 
+    /// Makes `pipeline` the one later draws use; inside a render pass.
     void bindPipeline(GraphicsPipelineHandle pipeline);
     /// Binds `group` at set `index` (< kMaxBindGroups), with one dynamic offset per dynamic uniform buffer
     /// in its layout (at most kMaxDynamicOffsets), in binding order. Each is a multiple of
@@ -72,11 +73,13 @@ public:
 
     // Draws, inside a render pass
 
+    /// Draws with the bound pipeline and buffers; inside a render pass.
     void draw(const DrawArgs& args);
     void drawIndexed(const DrawIndexedArgs& args);
 
     // Copies, outside render passes
 
+    /// Copies between buffers; outside render passes.
     void copyBuffer(const BufferCopy& copy);
     /// The texture needs TextureUsage::CopyDst and a color format: depth textures cannot be copied in v1.
     void copyBufferToTexture(const BufferTextureCopy& copy);

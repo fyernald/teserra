@@ -8,6 +8,7 @@
 
 namespace teserra::rhi {
 
+/// Handles of buffers, textures, samplers and shader modules.
 using BufferHandle = Handle<struct BufferTag>;
 using TextureHandle = Handle<struct TextureTag>;
 using SamplerHandle = Handle<struct SamplerTag>;

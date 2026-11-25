@@ -54,6 +54,7 @@ public:
         SystemAccess::insert(access().componentWrites, typeKey<T>());
         return *this;
     }
+    /// Declares that the system reads resource T (SystemContext::resource<const T>()).
     template <Resource T>
     SystemConfig& readsResource() {
         SystemAccess::insert(access().resourceReads, typeKey<T>());
@@ -104,6 +105,7 @@ private:
 ///     schedule.run(Phase::Update, world);
 class Schedule {
 public:
+    /// A system: any callable taking the SystemContext of its run.
     using SystemFunction = std::function<void(SystemContext& context)>;
 
     Schedule();

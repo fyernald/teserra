@@ -38,10 +38,12 @@ public:
     DebugPass(DebugPass&&) = delete;
     DebugPass& operator=(DebugPass&&) = delete;
 
+    /// RenderPass interface: "Debug", reading and writing SceneColor.
     [[nodiscard]] std::string_view name() const override { return "Debug"; }
     void declare(PassBuilder& builder) override;
     void execute(PassContext& context, rhi::CommandList& commands) override;
 
+    /// What the last frame drew.
     [[nodiscard]] const DebugPassStats& stats() const noexcept { return m_stats; }
 
 private:

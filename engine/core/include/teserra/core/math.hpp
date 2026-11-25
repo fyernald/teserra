@@ -35,6 +35,7 @@
 
 namespace teserra {
 
+/// Engine names for glm types (ADR-0008): code uses these, never glm:: directly.
 using Vec2 = glm::vec2;
 using Vec3 = glm::vec3;
 using Vec4 = glm::vec4;
@@ -78,6 +79,7 @@ namespace math {
 
 // Vectors
 
+/// The dot product of `a` and `b`.
 [[nodiscard]] inline f32 dot(const Vec2& a, const Vec2& b) noexcept {
     return glm::dot(a, b);
 }
@@ -93,6 +95,7 @@ namespace math {
     return glm::cross(a, b);
 }
 
+/// The Euclidean length of `v`.
 [[nodiscard]] inline f32 length(const Vec2& v) noexcept {
     return glm::length(v);
 }
@@ -124,6 +127,7 @@ template <typename T>
     return {lerp(a.r, b.r, t), lerp(a.g, b.g, t), lerp(a.b, b.b, t), lerp(a.a, b.a, t)};
 }
 
+/// `degrees` in radians.
 [[nodiscard]] constexpr f32 radians(f32 degrees) noexcept {
     return degrees * (std::numbers::pi_v<f32> / 180.0F);
 }
@@ -164,16 +168,19 @@ template <typename T>
     return glm::angleAxis(angle, axis);
 }
 
+/// The rotation matrix of the unit quaternion `q`.
 [[nodiscard]] inline Mat4 toMat4(const Quat& q) noexcept {
     return glm::mat4_cast(q);
 }
 
 // Boxes
 
+/// The center of `box`.
 [[nodiscard]] inline Vec3 center(const Aabb& box) noexcept {
     return (box.min + box.max) * 0.5F;
 }
 
+/// The extent of `box` on each axis.
 [[nodiscard]] inline Vec3 size(const Aabb& box) noexcept {
     return box.max - box.min;
 }
