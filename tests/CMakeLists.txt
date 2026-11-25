@@ -5,6 +5,14 @@ if(NOT TESERRA_PORTABLE_ONLY)
     add_subdirectory(cmake)
 endif()
 
+# With sanitizers, a deliberate use-after-free must be caught: the proof that the instrumentation is on (#113).
+if(TESERRA_ENABLE_SANITIZERS)
+    teserra_add_abort_test(sanitizers.use_after_free
+        SOURCE sanitizers/use_after_free.cpp
+        EXPECT "heap-use-after-free"
+    )
+endif()
+
 # Snapshot tests render with the real backend and compare with golden images (#111).
 if(TARGET teserra_engine AND TARGET teserra_rhi_opengl)
     add_subdirectory(snapshot)

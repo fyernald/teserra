@@ -116,6 +116,8 @@ All notable user-visible changes to Teserra are documented here. The format foll
 
 - A whole-frame allocation test (#112): an App frame of a busy scene (tilemap chunks, sprites with collisions and events, a parented camera, debug draw, entities respawned through commands) allocates nothing after warm-up, and a second test proves the counter sees an allocation a system adds.
 
+- AddressSanitizer builds (#113): `TESERRA_ENABLE_SANITIZERS`, presets `windows-msvc-asan` and `ci-windows-asan`, and a `Sanitizers` workflow (pushes to main, nightly, by hand, and PRs labeled `needs-asan`) that runs every test under ASan. The `sanitizers.use_after_free` test proves that the instrumentation catches a use after free.
+
 ### Changed
 
 - Passes draw into the scene target instead of the frame's output: `PassResource::SceneColor` is the scene target (`FrameTarget` gains `depthTexture`, `depthFormat` and `layout()`), `PassResource::Output` is the frame's output, and `PassContext::viewTarget()` gives each view's target. The sprite and debug passes start one render pass per run of views with the same target, and key their pipelines by the target's layout. `RenderExtraction::targetSize` is the scene target's size; `RenderExtraction::renderer` sizes the views of cameras with targets.

@@ -57,8 +57,12 @@ option(TESERRA_WITH_DEBUG_DRAW "Compile debug draw (renderer::DebugDrawList); OF
 # Tracy behind the TESERRA_PROFILE_* macros (ADR-0023); the profile presets turn it on. OFF builds do not
 # link Tracy at all.
 option(TESERRA_ENABLE_PROFILING "Profile with Tracy through the TESERRA_PROFILE_* macros (ADR-0023)" OFF)
+# AddressSanitizer (and UBSan on Clang/GCC) for every target, for the asan presets and the sanitizer job (#113).
+option(TESERRA_ENABLE_SANITIZERS "Build with AddressSanitizer (MSVC) or ASan + UBSan (Clang, GCC)" OFF)
 option(TESERRA_SHADER_VALIDATION
     "Validate the SPIR-V of teserra_shaderc in its tests with SPIRV-Tools (slow to build; on in CI)" OFF)
+
+include(TeserraSanitizers)
 
 if(TESERRA_BUILD_TESTS)
     enable_testing()
