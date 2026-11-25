@@ -49,7 +49,8 @@ RenderView renderView(const Camera& camera, const Mat4& world, UVec2 targetSize,
     return {.camera = cameraData(camera, world, targetSize, time),
             .clearColor = camera.clearColor,
             .order = camera.order,
-            .viewport = camera.viewport};
+            .viewport = camera.viewport,
+            .target = camera.target};
 }
 
 Vec3 worldToScreen(const CameraData& camera, const Vec3& point) noexcept {

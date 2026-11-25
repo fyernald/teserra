@@ -7,6 +7,7 @@
 #include <teserra/core/types.hpp>
 #include <teserra/renderer/camera_data.hpp>
 #include <teserra/renderer/debug_draw.hpp>
+#include <teserra/renderer/render_target.hpp>
 #include <teserra/rhi/handles.hpp>
 
 #include <vector>
@@ -22,6 +23,9 @@ struct RenderView {
     i32 order = 0;
     /// The part of the target the view covers, normalized: {0, 0} is the top-left corner, {1, 1} the size.
     Rect viewport{.position = Vec2{0.0F}, .size = Vec2{1.0F}};
+    /// What the view renders into: a target of the renderer (Renderer::createRenderTarget()), or the null
+    /// handle for the main scene target.
+    RenderTargetHandle target{};
 };
 
 /// How a sprite's color combines with what is behind it. It stands in for the material until materials

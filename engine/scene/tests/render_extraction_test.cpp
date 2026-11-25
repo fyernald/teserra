@@ -1,9 +1,12 @@
 // Render extraction: cameras become views, visible sprites become draw items, sprites outside every view's
-// 3D bounds are culled, and a steady-state Extract of 10 000 sprites allocates nothing.
+// 3D bounds are culled, cameras with a render target get its size, and a steady-state Extract of 10 000
+// sprites allocates nothing.
 
 #include <teserra/scene/render_extraction.hpp>
 
 #include <teserra/renderer/debug_draw.hpp>
+#include <teserra/renderer/renderer.hpp>
+#include <teserra/rhi_null/null_device.hpp>
 #include <teserra/scene/collision.hpp>
 #include <teserra/scene/collision_debug.hpp>
 #include <teserra/scene/scene.hpp>
@@ -12,6 +15,8 @@
 
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
+
+#include <algorithm>
 
 using namespace teserra;
 using namespace teserra::scene;
@@ -254,4 +259,37 @@ TEST_CASE("Render extraction: collider outlines are drawn while collision debug 
     level.run(ecs::Phase::PostUpdate);
     CHECK(level.world().resource<renderer::DebugDrawList>().lineCount() ==
           (renderer::kDebugDrawCompiled ? 12U : 0U));
+}
+
+TEST_CASE("Render extraction: cameras with a render target get its size", "[scene][render][targets]") {
+    auto device = rhi::null::createHeadlessDevice({});
+    auto renderer = *renderer::Renderer::create(*device);
+    const renderer::RenderTargetHandle minimap = *renderer->createRenderTarget({.size = {64, 64}});
+    Scene level("level");
+    addCamera(level);
+    const ecs::Entity mapCamera = addCamera(level, Vec3{0.0F}, -1);
+    level.world().get<Camera>(mapCamera).target = minimap;
+
+    SECTION("without the renderer, they are left out") {
+        const RenderExtraction& extraction = extract(level);
+        REQUIRE(extraction.packet.views.size() == 1);
+        CHECK(extraction.packet.views[0].target.isNull());
+    }
+    SECTION("with it, their views have the target and its aspect ratio") {
+        level.world().resource<RenderExtraction>().renderer = renderer.get();
+        const RenderExtraction& extraction = extract(level);
+        REQUIRE(extraction.packet.views.size() == 2);
+        const auto map = std::ranges::find(extraction.packet.views, minimap, &renderer::RenderView::target);
+        REQUIRE(map != extraction.packet.views.end());
+        CHECK(map->camera.viewportSize == Vec2{64.0F, 64.0F});
+        const auto main = std::ranges::find(extraction.packet.views, renderer::RenderTargetHandle{},
+                                            &renderer::RenderView::target);
+        REQUIRE(main != extraction.packet.views.end());
+        CHECK(main->camera.viewportSize == Vec2{200.0F, 100.0F});
+
+        // A destroyed target leaves its camera out.
+        renderer->destroyRenderTarget(minimap);
+        CHECK(extract(level).packet.views.size() == 1);
+    }
+    level.world().resource<RenderExtraction>().renderer = nullptr;
 }

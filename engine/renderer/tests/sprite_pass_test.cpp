@@ -1,6 +1,7 @@
 // The sprite pass on the null backend: 10 000 sprites over 16 textures take one draw per texture, with the
 // pipeline bound once and the material group bound per texture; blend changes switch pipelines; every view
-// sets its area and camera; and a steady-state frame creates nothing and allocates nothing.
+// sets its area and camera; views render into their camera's target with depth; and a steady-state frame
+// creates nothing and allocates nothing.
 
 #include <teserra/renderer/sprite_pass.hpp>
 
@@ -13,6 +14,7 @@
 
 #include <algorithm>
 #include <array>
+#include <format>
 #include <iterator>
 #include <memory>
 #include <sstream>
@@ -55,7 +57,8 @@ struct Scene {
     Scene(Scene&&) = delete;
     Scene& operator=(Scene&&) = delete;
 
-    // Renders one frame; returns its commands, one per line without the nesting indentation.
+    // Renders one frame; returns the sprite pass's commands (not the renderer's composite pass after it), one
+    // per line without the nesting indentation.
     std::vector<std::string> render() {
         device->beginFrame();
         rhi::CommandList& commands = device->acquireCommandList();
@@ -65,7 +68,11 @@ struct Scene {
         device->endFrame();
         std::vector<std::string> lines;
         for (std::string line; std::getline(stream, line);) {
-            lines.push_back(line.substr(line.find_first_not_of(' ')));
+            line = line.substr(line.find_first_not_of(' '));
+            if (line == R"(PushDebugGroup "Composite")") {
+                break;
+            }
+            lines.push_back(line);
         }
         return lines;
     }
@@ -250,4 +257,71 @@ TEST_CASE("Sprite pass: tilemap chunks draw without sprites, with their own samp
     scene.sprites->forgetTexture(scene.textures[0]); // both groups
     CHECK(scene.device->liveObjectCount() == objects - 1);
     scene.device->destroy(buffer);
+}
+
+TEST_CASE("Sprite pass: the scene target has a depth attachment, cleared with the color",
+          "[renderer][sprites][targets]") {
+    Scene scene(1);
+    scene.packet.sprites = {{.texture = scene.textures[0]}};
+    const std::vector<std::string> passes = linesStartingWith(scene.render(), "BeginRenderPass");
+    REQUIRE(passes.size() == 1);
+    CHECK(passes[0].find("load=Clear store=Store clear=(0, 0, 0, 1) depth=") != std::string::npos);
+    CHECK(passes[0].ends_with("load=Clear store=Store clear=1"));
+}
+
+TEST_CASE("Sprite pass: views render into their camera's target, each target cleared once",
+          "[renderer][sprites][targets]") {
+    Scene scene(1);
+    const RenderTargetHandle minimap =
+        *scene.renderer->createRenderTarget({.size = {64, 48}, .debugName = "Map"});
+    const rhi::TextureHandle minimapColor = scene.renderer->renderTarget(minimap)->texture;
+    scene.packet.sprites = {{.texture = scene.textures[0]}};
+    scene.packet.views = {
+        RenderView{.order = 1},
+        RenderView{.clearColor = {.r = 1.0F, .g = 0.0F, .b = 0.0F, .a = 1.0F}, .order = 0, .target = minimap},
+        RenderView{.order = 2, .viewport = {.position = {0.5F, 0.0F}, .size = {0.5F, 0.5F}}},
+    };
+
+    const std::vector<std::string> lines = scene.render();
+    const std::vector<std::string> passes = linesStartingWith(lines, "BeginRenderPass");
+    // The minimap first (order 0), then both scene views in one pass.
+    REQUIRE(passes.size() == 2);
+    CHECK(passes[0].starts_with(
+        std::format("BeginRenderPass color0={} load=Clear store=Store clear=(1, 0, 0, 1)", minimapColor)));
+    CHECK(passes[1].find("load=Clear") != std::string::npos);
+    CHECK(linesStartingWith(lines, "SetScissor") ==
+          std::vector<std::string>{"SetScissor x=0 y=0 width=64 height=48",
+                                   "SetScissor x=0 y=0 width=320 height=200",
+                                   "SetScissor x=160 y=0 width=160 height=100"});
+    CHECK(countStartingWith(lines, "DrawIndexed") == 3);
+    scene.renderer->destroyRenderTarget(minimap);
+}
+
+TEST_CASE("Sprite pass: the scene target is cleared when every view has its own target",
+          "[renderer][sprites][targets]") {
+    Scene scene(0);
+    const RenderTargetHandle minimap = *scene.renderer->createRenderTarget({.size = {32, 32}});
+    scene.packet.views = {RenderView{.target = minimap}};
+    const std::vector<std::string> passes = linesStartingWith(scene.render(), "BeginRenderPass");
+    REQUIRE(passes.size() == 2);
+    CHECK(passes[0].starts_with(
+        std::format("BeginRenderPass color0={}", scene.renderer->renderTarget(minimap)->texture)));
+    CHECK(passes[1].find("load=Clear") != std::string::npos);
+    scene.renderer->destroyRenderTarget(minimap);
+}
+
+TEST_CASE("Sprite pass: a sprite showing a target is not drawn into that target",
+          "[renderer][sprites][targets]") {
+    Scene scene(1);
+    const RenderTargetHandle minimap = *scene.renderer->createRenderTarget({.size = {32, 32}});
+    const rhi::TextureHandle minimapColor = scene.renderer->renderTarget(minimap)->texture;
+    scene.packet.sprites = {{.texture = scene.textures[0]}, {.texture = minimapColor, .layer = 1}};
+    scene.packet.views = {RenderView{.target = minimap}, RenderView{.order = 1}};
+
+    const std::vector<std::string> lines = scene.render();
+    // The minimap's view draws only the other sprite; the scene's view draws both.
+    CHECK(countStartingWith(lines, "DrawIndexed") == 3);
+    CHECK(scene.sprites->stats().drawCalls == 3);
+    scene.sprites->forgetTexture(minimapColor);
+    scene.renderer->destroyRenderTarget(minimap);
 }

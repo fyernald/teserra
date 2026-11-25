@@ -54,7 +54,8 @@ struct Scene {
         device->submit(commands);
         std::string described = rhi::describeCommands(*device->submitted()[0]);
         device->endFrame();
-        return described;
+        // The debug pass's commands, without the renderer's composite pass after it.
+        return described.substr(0, described.find("PushDebugGroup \"Composite\""));
     }
 
     std::unique_ptr<rhi::null::NullDevice> device =
@@ -129,7 +130,7 @@ TEST_CASE("Debug draw: the debug pass draws the lines of every view over the sce
 
     const std::string commands = scene.render();
     CHECK(countOf(commands, "BeginRenderPass") == 1);
-    CHECK(countOf(commands, "load=Load") == 1); // keeps what earlier passes drew
+    CHECK(countOf(commands, "load=Load") == 2); // keeps the color and depth that earlier passes drew
     CHECK(countOf(commands, "Draw vertexCount=8") == 2);
     CHECK(scene.debug->stats().lines == 4);
     CHECK(scene.debug->stats().drawCalls == 2);

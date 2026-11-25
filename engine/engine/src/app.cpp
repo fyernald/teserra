@@ -243,7 +243,11 @@ void App::runFrame(const AppCallbacks& callbacks) {
     if (active != nullptr) {
         if (auto* extraction = active->world().tryResource<scene::RenderExtraction>()) {
             const rhi::Swapchain* swapchain = m_device ? m_device->swapchain() : nullptr;
-            extraction->targetSize = swapchain != nullptr ? swapchain->size() : UVec2{0U};
+            const UVec2 outputSize = swapchain != nullptr ? swapchain->size() : UVec2{0U};
+            // The App's renderer draws the scene unless the game renders itself.
+            const renderer::Renderer* drawer = m_device && !callbacks.render ? renderer() : nullptr;
+            extraction->targetSize = drawer != nullptr ? drawer->sceneSize(outputSize) : outputSize;
+            extraction->renderer = drawer;
             if (m_device && !m_chunkMeshes) {
                 m_chunkMeshes = std::make_unique<renderer::ChunkMeshCache>(*m_device);
             }
@@ -269,8 +273,7 @@ void App::render(const AppCallbacks& callbacks, scene::Scene* active) {
         rhi::CommandList& commands = device.acquireCommandList();
         const scene::RenderExtraction* extraction =
             active != nullptr ? active->world().tryResource<scene::RenderExtraction>() : nullptr;
-        renderer::Renderer* sceneDrawer =
-            !callbacks.render && extraction != nullptr ? sceneRenderer() : nullptr;
+        renderer::Renderer* sceneDrawer = !callbacks.render && extraction != nullptr ? renderer() : nullptr;
         if (callbacks.render) {
             callbacks.render(*this, commands);
         } else if (sceneDrawer != nullptr) {
@@ -296,15 +299,17 @@ bool App::hasNoImage() const noexcept {
     return swapchain != nullptr && (swapchain->size().x == 0 || swapchain->size().y == 0);
 }
 
-renderer::Renderer* App::sceneRenderer() {
-    if (m_renderer != nullptr || m_rendererFailed) {
+renderer::Renderer* App::renderer() {
+    TESERRA_ASSERT(m_device != nullptr, "App::renderer() needs a device (AppConfig::backend)");
+    if (m_renderer != nullptr || m_rendererFailed || m_device == nullptr) {
         return m_renderer.get();
     }
     const auto create = [&]() -> Result<std::unique_ptr<renderer::Renderer>> {
         TESERRA_TRY_ASSIGN(std::unique_ptr<renderer::Renderer> created,
-                           renderer::Renderer::create(*m_device));
-        TESERRA_TRY_ASSIGN(std::unique_ptr<renderer::SpritePass> sprites,
-                           renderer::SpritePass::create(*m_device, created->frameGroupLayout()));
+                           renderer::Renderer::create(*m_device, {.scene = m_config.sceneTarget}));
+        TESERRA_TRY_ASSIGN(
+            std::unique_ptr<renderer::SpritePass> sprites,
+            renderer::SpritePass::create(*m_device, created->frameGroupLayout(), m_config.spritePass));
         created->addPass(std::move(sprites));
         TESERRA_TRY_ASSIGN(std::unique_ptr<renderer::DebugPass> debug,
                            renderer::DebugPass::create(*m_device, created->frameGroupLayout()));

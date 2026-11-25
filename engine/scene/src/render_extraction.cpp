@@ -212,7 +212,16 @@ void renderExtractionSystem(ecs::SystemContext& context) {
 
     const auto time = static_cast<f32>(context.resource<const Time>().elapsedSeconds());
     for (const auto& [entity, camera, global] : context.view<const Camera, const GlobalTransform>()) {
-        extraction.packet.views.push_back(renderer::renderView(camera, global.matrix, targetSize, time));
+        UVec2 size = targetSize;
+        if (!camera.target.isNull()) {
+            const renderer::FrameTarget* target =
+                extraction.renderer != nullptr ? extraction.renderer->renderTarget(camera.target) : nullptr;
+            if (target == nullptr) {
+                continue;
+            }
+            size = target->size;
+        }
+        extraction.packet.views.push_back(renderer::renderView(camera, global.matrix, size, time));
         extraction.viewBounds.push_back(viewBounds(extraction.packet.views.back().camera));
     }
     if (extraction.viewBounds.empty()) {
