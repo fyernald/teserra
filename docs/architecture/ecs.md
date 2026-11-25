@@ -198,7 +198,7 @@ Simple, robust collision without a physics engine (`<teserra/scene/collision.hpp
 
 - **`Collider { Vec2 size; Vec2 offset; }`**: an axis-aligned box in world units, centered on the entity's world position plus `offset`. Rotation and scale do not change it. `colliderBounds(collider, position)` gives its `Aabb`.
 - **Against tiles:** `moveAgainstTiles(query, layer, isSolid, box, delta)` moves a box along x, then y. Each axis sweeps the whole path through `TilemapQuery::tilesOverlapping`, so no speed tunnels (tested at 50 tiles per frame). The box stops flush against the first solid tile ahead, and `MoveResult` says how far it moved and on which axes it hit. A box resting on a floor slides freely, and one that starts inside a wall can leave it. The map must not be rotated.
-- **Between entities:** the collision system (`kCollisionSystemName` = `"teserra.collisions"`, PostUpdate after the transforms) finds overlapping pairs by sort and sweep along x. It sends `CollisionStarted {a, b}` for new pairs and `CollisionEnded {a, b}` for pairs that stopped overlapping, including when an entity died or lost its collider (`a` has the lower id). Boxes that only touch do not overlap. Every scene registers both event types; the pairs of the last update are in the `CollisionState` resource, and a steady-state update allocates nothing.
+- **Between entities:** the collision system (`kCollisionSystemName` = `"teserra.collisions"`, PostUpdate after the transforms) finds overlapping pairs by sort and sweep along x. It sends `CollisionStarted {a, b}` for new pairs and `CollisionEnded {a, b}` for pairs that stopped overlapping, including when an entity died or lost its collider (`a` has the lower id; `other(self)` gives the entity `self` collided with, #251). Boxes that only touch do not overlap. Every scene registers both event types; the pairs of the last update are in the `CollisionState` resource, and a steady-state update allocates nothing.
 - **Debug drawing:** with the renderer, the `CollisionDebug` resource (off by default) makes `"teserra.collision_debug"` outline every collider in the scene's `DebugDrawList`, in another color while it overlaps something.
 
 ### Transform hierarchies
@@ -213,7 +213,7 @@ A weapon in a hand, a turret on a ship: `<teserra/scene/hierarchy.hpp>` (#98).
   - a parent whose `GlobalTransform` is still a pending command is computed from its chain of local transforms;
   - an entity without a `Transform` in the middle of a chain counts as identity.
 - **Destruction:** an entity whose parent, or any ancestor, is no longer alive is destroyed through commands. Destroying a parent (directly or through commands) destroys its whole subtree at the next PostUpdate's sync point.
-- **Memory:** the system's scratch (`TransformHierarchyScratch`) is a resource of every scene, so a steady-state PostUpdate allocates nothing. `SystemContext::tryGet<T>(entity)` and `isAlive(entity)` give systems checked random access, such as a child reading its parent.
+- **Memory:** the system's scratch (`TransformHierarchyScratch`) is a resource of every scene, so a steady-state PostUpdate allocates nothing. `SystemContext::tryGet<T>(entity)`, `has<T>(entity)` (tags included, #247) and `isAlive(entity)` give systems checked random access, such as a child reading its parent or a collision reader testing the other entity for a tag.
 
 ## Roadmap: from simple and correct to benchmarked and optimized
 
