@@ -242,7 +242,7 @@ Workflows live in `.github/workflows/`.
 | `ci.yml` → `clang-tidy` | PRs | Yes for changed files | clang-tidy on changed translation units |
 | `gpu.yml` → `gpu-software` | push to `main`, PRs touching `engine/rhi`, `engine/renderer`, `tests/gpu` | Yes once introduced | GPU tests on a software rasterizer (approach decided by the headless GPU testing spike) |
 | `bench.yml` | manual, weekly | No | Benchmarks in Release, results as artifact |
-| `release.yml` | tag `v*` | - | Build release artifacts, attach to GitHub Release ([release process](../process/release-process.md)) |
+| `release.yml` | tag `v*` | - | Checks the tag (SemVer, annotated, on `main`, green CI, matches `CMakeLists.txt`) and drafts the GitHub Release with generated notes; building and attaching artifacts comes with #122 ([release process](../process/release-process.md#tags)) |
 
 The `windows-msvc` job runs on `windows-latest`: it runs `vcvars64.bat` of the newest Visual Studio on the runner (found with `vswhere`) and exports the resulting environment, uses the runner's preinstalled vcpkg as `VCPKG_ROOT`, then configures, builds and tests with the `ci-windows` preset. A matrix runs the same steps with `ci-windows-release` as `windows-msvc-release` in parallel: local work builds only `windows-msvc-debug`, so CI is where Release builds and runs its tests. A failed Catch2 check is annotated on its source line through a problem matcher (`.github/problem-matchers/catch2.json`); CTest's JUnit report (`build/ci-windows/junit.xml`) becomes the `windows-msvc tests` check run with a summary and is uploaded as an artifact. A newer push to the same branch or PR cancels the run in progress. Third-party actions are pinned to a commit SHA.
 

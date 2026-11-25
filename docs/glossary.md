@@ -94,6 +94,6 @@ Terms as they are used in Teserra's code and documentation.
 | **Design note** | Short design sketch required before coding changes to public interfaces, the RHI or the ECS. |
 | **Velocity** | Sum of estimates completed in an iteration. |
 | **Feedback request** | Issue asking testers specific questions about a published build. |
-| **Pre-release** | Tagged iteration build (`v0.1.0-alpha.N`). |
+| **Pre-release** | Build published for testers, tagged with a SemVer pre-release version (`v0.1.0-alpha.N`, N counting up from 1 per version). |
 | **vcpkg baseline** | Pinned commit of the vcpkg registry that fixes dependency versions. |
 | **Preset** | Named CMake configure/build/test configuration in `CMakePresets.json`. |

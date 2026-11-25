@@ -93,7 +93,7 @@ flowchart LR
 
 1. Demo on `main`: the epic's exit criterion runs from a clean build.
 2. For feedback iterations: open a **feedback request** issue (template) with the build link and questions, **before** packaging, since the build links back to it.
-3. Tag and publish a pre-release when meaningful, in the order of the [pre-release checklist](release-process.md#pre-release-checklist-end-of-iteration).
+3. Only if testers will get a build: tag and publish a pre-release, in the order of the [pre-release checklist](release-process.md#pre-release-checklist-only-when-a-build-is-published).
 4. Fill in the iteration's **retro issue** (template "Iteration review & retrospective").
 5. Close the epic if its acceptance criteria are met; otherwise record what remains as new issues.
 

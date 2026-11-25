@@ -10,23 +10,27 @@ How Teserra versions, tags, packages and announces builds. Related: [development
 
 ## Tags
 
+**Tag only when a build is actually published.** A tag exists to back a GitHub Release that someone will download. Finishing an iteration, merging a feature or archiving a branch is not a reason to tag. Every tag is a SemVer version, so the Releases page reads as a clean version history.
+
 | Tag | When | Example |
 |---|---|---|
-| `v<next>-alpha.<iteration>` | End of an iteration whose demo is worth trying | `v0.1.0-alpha.5` (iteration 5) |
+| `v<next>-alpha.<n>` | A pre-release build handed to testers with a feedback request | `v0.1.0-alpha.1`, then `v0.1.0-alpha.2` |
 | `v<next>-rc.<n>` | Release candidate during release prep | `v0.1.0-rc.1` |
 | `v<version>` | Release | `v0.1.0` |
 
-- Tags are annotated (`git tag -a`) and created on `main` only, from a commit with green CI.
-- Pre-release tags are marked as *pre-release* on GitHub Releases.
+- Pre-release numbers count up from 1 for each version (`alpha.1`, `alpha.2`, …). They are not iteration numbers; the release notes name the iteration.
+- No other tags. Spike branches are not kept with `archive/*` tags: their findings go in the spike issue or an ADR before the branch is deleted.
+- Tags are annotated (`git tag -a`) and created on `main` only, from a commit with green CI. The version in the root `CMakeLists.txt` equals the tag's version without its pre-release part (`v0.1.0-alpha.1` needs `VERSION 0.1.0`).
+- Pushing a tag runs `.github/workflows/release.yml`. It rejects a tag that breaks any rule above and otherwise drafts the GitHub Release with generated notes, marked *pre-release* when the tag has an `-alpha`/`-rc` part. Nothing is published until the draft is edited and published by hand.
 - There are no long-lived release branches before 1.0. A patch release is cut from `main`; if `main` has moved on with unreleasable changes, a short-lived `release/0.1` branch is created from the tag and the fix is cherry-picked.
 
-## Pre-release checklist (end of iteration)
+## Pre-release checklist (only when a build is published)
 
-1. CI green on `main`; the iteration's demo runs from a clean build (`cmake --workflow --preset windows-msvc-release`).
+1. CI green on `main`; `CMakeLists.txt` has the version being pre-released; the iteration's demo runs from a clean build (`cmake --workflow --preset windows-msvc-release`).
 2. `CHANGELOG.md`: the `Unreleased` section lists the iteration's user-visible changes.
-3. **For feedback iterations, open the *Feedback request* issue first** (template). Its build link is the release's URL, `https://github.com/fyernald/teserra/releases/tag/v0.1.0-alpha.N`, which the tag name fixes before the release exists; it works from step 6 on. The zip's `README.txt` links to this issue, so it has to exist before packaging. Iterations without a feedback round skip this step, and their zip links to the issue chooser.
+3. **For feedback iterations, open the *Feedback request* issue first** (template). Its build link is the release's URL, `https://github.com/fyernald/teserra/releases/tag/v0.1.0-alpha.N` (N = the next pre-release number for that version), which the tag name fixes before the release exists; it works from step 6 on. The zip's `README.txt` links to this issue, so it has to exist before packaging. Iterations without a feedback round skip this step, and their zip links to the issue chooser.
 4. Tag `v0.1.0-alpha.N` on the commit of step 1 and push the tag.
-5. Package. The `release.yml` workflow builds the Windows x64 Release artifacts and drafts a GitHub pre-release; it takes the feedback request's URL as an input (#122). Until it exists, build the Release preset, make the zip with `python tools/scripts/package_example.py --build-dir build/windows-msvc-release --example <name> --version 0.1.0-alpha.N --feedback-url <feedback request of step 3>` (from a Visual Studio developer prompt, which locates the Visual C++ runtime), and draft the pre-release by hand with it.
+5. Package. The `release.yml` workflow drafts the GitHub pre-release when the tag is pushed. Building and attaching the Windows x64 artifacts there, with the feedback request's URL as an input, is #122. Until then, build the Release preset, make the zip with `python tools/scripts/package_example.py --build-dir build/windows-msvc-release --example <name> --version 0.1.0-alpha.N --feedback-url <feedback request of step 3>` (from a Visual Studio developer prompt, which locates the Visual C++ runtime), and attach it to the draft.
 6. Edit the draft: short summary, link to the iteration epic, known issues, and how to give feedback (the feedback request). Publish. The feedback request's build link now works; share it ([feedback loop](development-process.md#feedback-loop)).
 
 ## Release checklist (`v0.x.0`)

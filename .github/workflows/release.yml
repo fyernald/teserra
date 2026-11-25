@@ -1,0 +1,75 @@
+# Drafts a GitHub Release when a version tag is pushed (docs/process/release-process.md#tags).
+# The tag must be a SemVer version (vMAJOR.MINOR.PATCH, optionally -alpha.N or -rc.N), annotated, on main,
+# with green CI, and match the version in the root CMakeLists.txt. A tag with a pre-release part becomes a
+# pre-release. The release stays a draft so its notes can be edited before publishing.
+# #122 extends this with the Release build, the examples zip and the third-party notices.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  draft:
+    name: draft release
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Check the tag
+        id: tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          fail() { echo "::error title=Tag $TAG::$1"; exit 1; }
+
+          semver='^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-(alpha|rc)\.[1-9][0-9]*)?$'
+          [[ "$TAG" =~ $semver ]] ||
+            fail "not a release version. Use vMAJOR.MINOR.PATCH, optionally -alpha.N or -rc.N (e.g. v0.1.0-alpha.1)."
+          version="${TAG#v}"
+          core="${version%%-*}"
+
+          # actions/checkout can replace an annotated tag with a lightweight one; fetch the real tag object.
+          git fetch --force origin "refs/tags/$TAG:refs/tags/$TAG"
+          [[ "$(git cat-file -t "refs/tags/$TAG")" == tag ]] || fail "not annotated. Create it with git tag -a."
+
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main || fail "the tagged commit is not on main."
+
+          cmake_version="$(sed -n '/^project(Teserra/,/)/s/^[[:space:]]*VERSION[[:space:]]\+\([0-9.]\+\).*/\1/p' CMakeLists.txt)"
+          [[ "$cmake_version" == "$core" ]] ||
+            fail "CMakeLists.txt says VERSION $cmake_version. Bump it to $core on main before tagging."
+
+          ci="$(gh run list --workflow ci.yml --commit "$GITHUB_SHA" --event push --status success --json databaseId --jq length)"
+          [[ "$ci" -gt 0 ]] ||
+            fail "CI has not passed on $GITHUB_SHA yet. Wait for it to finish green, then re-run this job."
+
+          if [[ "$version" == *-* ]]; then
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Draft the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          VERSION: ${{ steps.tag.outputs.version }}
+          PRERELEASE: ${{ steps.tag.outputs.prerelease }}
+        run: |
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            echo "A release for $TAG already exists; leaving it as it is."
+            exit 0
+          fi
+          flags=(--draft --verify-tag --generate-notes --title "Teserra $VERSION")
+          [[ "$PRERELEASE" == true ]] && flags+=(--prerelease)
+          gh release create "$TAG" "${flags[@]}"
+          echo "Drafted the release for $TAG: edit the notes, then publish it." >> "$GITHUB_STEP_SUMMARY"
