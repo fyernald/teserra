@@ -10,21 +10,21 @@
 namespace demo {
 
 /// The cells of the atlas, left to right. The first two are also the tileset's tiles: TileId = cell + 1.
-enum Cell : teserra::u32 {
-    kFloor,
-    kWall,
-    kSpikes,
-    kDoorClosed,
-    kDoorOpen,
-    kHero,
-    kCoin,
-    kSlime,
-    kCoinSlot, // an empty HUD slot
-    kCellCount,
+enum Cell : teserra::u8 {
+    Floor,
+    Wall,
+    Spikes,
+    DoorClosed,
+    DoorOpen,
+    Hero,
+    Coin,
+    Slime,
+    CoinSlot, // an empty HUD slot
+    CellCount,
 };
 
 inline constexpr teserra::u32 kCellSize = 16;
-inline constexpr teserra::u32 kAtlasWidth = kCellSize * kCellCount;
+inline constexpr teserra::u32 kAtlasWidth = kCellSize * CellCount;
 
 /// The atlas's RGBA8 texels, kAtlasWidth x kCellSize, top row first.
 [[nodiscard]] std::vector<std::byte> drawAtlas();

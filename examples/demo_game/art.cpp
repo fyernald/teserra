@@ -103,39 +103,39 @@ Texel coinSlot(u32 x, u32 y) {
 
 std::vector<std::byte> drawAtlas() {
     std::vector<std::byte> texels(usize{kAtlasWidth} * kCellSize * 4);
-    for (u32 cell = 0; cell < kCellCount; ++cell) {
+    for (u32 cell = 0; cell < CellCount; ++cell) {
         for (u32 y = 0; y < kCellSize; ++y) {
             for (u32 x = 0; x < kCellSize; ++x) {
                 Texel color{};
                 switch (static_cast<Cell>(cell)) {
-                    case kFloor:
+                    case Floor:
                         color = floor(x, y);
                         break;
-                    case kWall:
+                    case Wall:
                         color = wall(x, y);
                         break;
-                    case kSpikes:
+                    case Spikes:
                         color = spikes(x, y);
                         break;
-                    case kDoorClosed:
+                    case DoorClosed:
                         color = door(x, y, false);
                         break;
-                    case kDoorOpen:
+                    case DoorOpen:
                         color = door(x, y, true);
                         break;
-                    case kHero:
+                    case Hero:
                         color = hero(x, y);
                         break;
-                    case kCoin:
+                    case Coin:
                         color = coin(x, y);
                         break;
-                    case kSlime:
+                    case Slime:
                         color = slime(x, y);
                         break;
-                    case kCoinSlot:
+                    case CoinSlot:
                         color = coinSlot(x, y);
                         break;
-                    case kCellCount:
+                    case CellCount:
                         break;
                 }
                 const usize at = ((usize{y} * kAtlasWidth) + (usize{cell} * kCellSize) + x) * 4;

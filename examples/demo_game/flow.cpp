@@ -194,9 +194,9 @@ void Flow::build(Screen screen) {
     spawnCamera(target);
     if (screen == Screen::Menu) {
         spawnText(target, sheet, "COIN CAVE", {0.0F, 2.5F}, 3.0F, kTitleColor);
-        spawnArt(target, m_tileset, kHero, {-1.0F, 0.0F});
-        spawnArt(target, m_tileset, kCoin, {0.0F, 0.0F});
-        spawnArt(target, m_tileset, kSlime, {1.0F, 0.0F});
+        spawnArt(target, m_tileset, Hero, {-1.0F, 0.0F});
+        spawnArt(target, m_tileset, Coin, {0.0F, 0.0F});
+        spawnArt(target, m_tileset, Slime, {1.0F, 0.0F});
         spawnText(target, sheet, "PRESS ENTER", {0.0F, -2.0F}, 2.0F, kTextColor);
         spawnText(target, sheet, "ESC: QUIT", {0.0F, -4.0F}, 1.0F, kHintColor);
         return;

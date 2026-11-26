@@ -59,10 +59,10 @@ int main(int argc, char** argv) { // NOLINT(bugprone-exception-escape)
             return renderer::Texture::create(device, {demo::kAtlasWidth, demo::kCellSize}, atlas,
                                              rhi::Format::Rgba8Srgb, "Atlas");
         });
-    std::vector<scene::TileProperties> properties(demo::kCellCount);
-    properties[demo::kWall].solid = true;
+    std::vector<scene::TileProperties> properties(demo::CellCount);
+    properties[demo::Wall].solid = true;
     Result<scene::Tileset> tileset = scene::Tileset::grid(
-        texture, {.cellSize = {demo::kCellSize, demo::kCellSize}, .count = demo::kCellCount},
+        texture, {.cellSize = {demo::kCellSize, demo::kCellSize}, .count = demo::CellCount},
         std::move(properties));
     if (!tileset) {
         TESERRA_LOG_ERROR(LogCategory::App, "Cannot cut the atlas: {}", tileset.error());
