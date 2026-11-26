@@ -13,6 +13,7 @@
 #include "gl_swapchain.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cstdint>
 #include <format>
 #include <optional>
@@ -214,7 +215,7 @@ Result<void> GlDevice::initialize(const DeviceDesc& desc, platform::Window& wind
         m_gl.Enable(GL_DEBUG_OUTPUT_SYNCHRONOUS);
         m_gl.DebugMessageCallback(&logDebugMessage, nullptr);
         // Drivers echo every debug group the command lists push and pop; those are markers, not messages.
-        for (const GLenum type : {GL_DEBUG_TYPE_PUSH_GROUP, GL_DEBUG_TYPE_POP_GROUP}) {
+        for (const GLenum type : std::array<GLenum, 2>{GL_DEBUG_TYPE_PUSH_GROUP, GL_DEBUG_TYPE_POP_GROUP}) {
             m_gl.DebugMessageControl(GL_DONT_CARE, type, GL_DONT_CARE, 0, nullptr, GL_FALSE);
         }
     }
