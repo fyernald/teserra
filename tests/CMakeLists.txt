@@ -24,6 +24,11 @@ if(TARGET teserra_engine)
     add_subdirectory(template)
 endif()
 
+# The program of docs/guides/getting-started.md must compile and run (#121).
+if(TARGET teserra_engine)
+    add_subdirectory(getting_started)
+endif()
+
 # Snapshot tests render with the real backend and compare with golden images (#111).
 if(TARGET teserra_engine AND TARGET teserra_rhi_opengl)
     add_subdirectory(snapshot)

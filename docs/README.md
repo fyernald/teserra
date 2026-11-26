@@ -24,6 +24,7 @@ Start with the [architecture overview](architecture/overview.md). The backlog an
 
 | Guide | For |
 |---|---|
+| [getting-started.md](guides/getting-started.md) | Making a game: the template, a first sprite, input, scenes, assets, shipping |
 | [coding-standards.md](guides/coding-standards.md) | How code is written |
 | [patterns-and-conventions.md](guides/patterns-and-conventions.md) | Which design patterns are used where; anti-patterns |
 | [build-and-ci.md](guides/build-and-ci.md) | CMake, presets, vcpkg, CI jobs, layer/leak checks |

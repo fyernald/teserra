@@ -29,7 +29,7 @@ teserra/
 ├── tools/
 │   ├── shaderc/                # teserra_shaderc host tool (GLSL -> SPIR-V -> GL GLSL + reflection)
 │   └── scripts/                # check_format, check_layers, check_gl_leaks (used by CI)
-├── examples/                   # One directory per runnable example (hello, window_input, rhi_clear, rhi_triangle, textured_quad, ...)
+├── examples/                   # One directory per runnable example (hello, window_input, rhi_clear, rhi_triangle, textured_quad, ...); README.md lists them
 ├── templates/
 │   └── minimal_game/           # Starting point for a game: Teserra through FetchContent, one sprite
 ├── tests/                      # Cross-module integration tests, GPU tests, golden images

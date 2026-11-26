@@ -6,7 +6,7 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 ![Status: pre-alpha](https://img.shields.io/badge/status-pre--alpha-orange.svg)
 
-> **Status: pre-alpha, planning and foundations.** There is no usable engine yet. The documentation, architecture decisions and backlog are in place; code arrives iteration by iteration. Follow progress on the **[GitHub Project](https://github.com/users/fyernald/projects/3)**.
+> **Status: pre-release, preparing v0.1.** The 2D engine works on Windows: sprites, tilemaps, scenes with an ECS, assets, input and a pixel-perfect render path, shown by a [small demo game](examples/demo_game/main.cpp). The API can still change before 1.0. Follow progress on the **[GitHub Project](https://github.com/users/fyernald/projects/3)**.
 
 ## Vision
 
@@ -30,6 +30,69 @@ The detailed roadmap, iterations and backlog live **only** in the [GitHub Projec
 
 ## Quickstart
 
+### Make a game
+
+Copy the game template and build it, from a **Developer PowerShell for VS** (Visual Studio 2022 17.8+ or 2026 with "Desktop development with C++", and git):
+
+```powershell
+git clone --depth 1 https://github.com/fyernald/teserra.git
+Copy-Item -Recurse teserra/templates/minimal_game my_game
+cd my_game
+cmake --workflow --preset debug
+build/debug/minimal_game
+```
+
+The template fetches Teserra with CMake's FetchContent, so the game is its own project. The **[getting-started guide](docs/guides/getting-started.md)** walks through it and grows it into a small game; the [examples](examples/README.md) show the rest of the engine.
+
+A game in Teserra looks like this:
+
+```cpp
+#include <teserra/teserra.hpp>
+
+using namespace teserra;
+
+struct Player {
+    f32 speed = 4.0F;
+};
+
+void movePlayer(ecs::SystemContext& ctx) {
+    const auto& input = ctx.resource<const platform::Input>();
+    const Vec2 direction =
+        input.axis2D(platform::Key::A, platform::Key::D, platform::Key::S, platform::Key::W);
+    const f32 dt = ctx.resource<const scene::Time>().deltaSeconds();
+    for (auto [entity, transform, player] : ctx.view<scene::Transform, const Player>()) {
+        transform.setPosition2D(transform.position2D() + (direction * player.speed * dt));
+    }
+}
+
+int main(int argc, char** argv) {
+    engine::App app{{.title = "My game", .windowSize = {1280, 720}, .args = {argc, argv}}};
+    scene::Scene& level = app.scenes().create("level");
+    const auto heroTexture = app.assets().load<renderer::Texture>("assets://hero.png");
+
+    const ecs::Entity camera = level.spawn();
+    level.add<scene::Transform>(camera);
+    level.add<scene::Camera>(camera, scene::Camera{.projection = scene::Orthographic{.height = 10.0F}});
+
+    const ecs::Entity hero = level.spawn();
+    level.add<scene::Transform>(hero);
+    level.add<scene::SpriteRenderer>(hero, scene::SpriteRenderer{.texture = heroTexture.get().handle()});
+    level.add<Player>(hero);
+
+    level.systems()
+        .add(ecs::Phase::Update, "move_player", movePlayer)
+        .reads<Player>()
+        .writes<scene::Transform>()
+        .readsResource<platform::Input>()
+        .readsResource<scene::Time>();
+    return app.run(level);
+}
+```
+
+Design and rationale: [public API](docs/architecture/public-api.md).
+
+### Work on the engine
+
 **New machine?** Install [Git for Windows](https://git-scm.com), then in Git Bash:
 
 ```bash
@@ -46,47 +109,14 @@ It checks what the build needs (Visual Studio Build Tools with the C++ workload,
 git clone https://github.com/fyernald/teserra.git
 cd teserra
 cmake --workflow --preset windows-msvc-debug
-build/windows-msvc-debug/examples/hello/teserra_hello
+build/windows-msvc-debug/examples/demo_game/teserra_demo_game
 ```
 
-The workflow preset configures, builds and runs the tests; the first run also builds the dependencies through vcpkg, which takes a few minutes. `teserra_hello` prints the engine version; `teserra_core_sandbox` (same folder layout, `examples/core_sandbox/`) shows logging, error handling, handles and assertions; `teserra_window_input` (`examples/window_input/`) opens a window, logs keyboard and mouse input, shows FPS in the title and quits on Escape. Details, other presets and IDE setup: [build and CI](docs/guides/build-and-ci.md).
-
-## A taste of the intended API
-
-```cpp
-#include <teserra/teserra.hpp>
-using namespace teserra;
-
-struct Player { f32 speed = 6.0f; };
-
-void movePlayer(SystemContext& ctx) {
-    const Vec2 dir = ctx.input().axis2D(Key::A, Key::D, Key::S, Key::W);
-    for (auto [entity, transform, player] : ctx.view<Transform, const Player>())
-        transform.position += Vec3{dir * player.speed * ctx.time().deltaSeconds(), 0.0f};
-}
-
-int main() {
-    App app{AppConfig{.title = "Hello Teserra", .windowSize = {1280, 720}}};
-    Scene& level = app.scenes().create("level");
-
-    Entity hero = level.spawn();
-    level.add<Transform>(hero);
-    level.add<SpriteRenderer>(hero, {.texture = app.assets().load<Texture>("assets://hero.png")});
-    level.add<Player>(hero);
-
-    Entity camera = level.spawn();
-    level.add<Transform>(camera);
-    level.add<Camera>(camera, {.projection = Orthographic{.height = 18.0f}});
-
-    level.systems().add(Phase::Update, "move_player", movePlayer).reads<Player>().writes<Transform>();
-    return app.run(level);
-}
-```
-
-Full example and design rationale: [public API](docs/architecture/public-api.md).
+The workflow preset configures, builds and runs the tests; the first run also builds the dependencies through vcpkg, which takes a few minutes. Every example is in `build/windows-msvc-debug/examples/<name>/`; [examples/README.md](examples/README.md) says what each one shows. Details, other presets and IDE setup: [build and CI](docs/guides/build-and-ci.md).
 
 ## Documentation
 
+- [Getting started](docs/guides/getting-started.md) · [Examples](examples/README.md)
 - [Documentation index](docs/README.md)
 - [Architecture overview](docs/architecture/overview.md) · [RHI](docs/architecture/rhi.md) · [Renderer](docs/architecture/renderer.md) · [ECS](docs/architecture/ecs.md)
 - [Architecture Decision Records](docs/adr/README.md)
