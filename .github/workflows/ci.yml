@@ -267,7 +267,8 @@ jobs:
   # with warnings as errors and run the whole suite on Mesa's llvmpipe under Xvfb, like the Windows job:
   # TESERRA_REQUIRE_GPU_TESTS makes a GPU test without a context fail, and the step fails if any test did not
   # run. Clang on 24.04 is left out: GCC and Clang on 26.04 cover the compilers, and GCC on 24.04 the older
-  # LTS's standard library.
+  # LTS's standard library. GCC 14 is the minimum (GCC 13, 24.04's default, rejects nested designated
+  # initializers in braced arguments, the style of Teserra's API), so the 24.04 job installs g++-14.
   linux:
     name: linux (${{ matrix.compiler }}, ${{ matrix.os }})
     runs-on: ${{ matrix.os }}
@@ -276,9 +277,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { os: ubuntu-26.04, compiler: gcc }
-          - { os: ubuntu-26.04, compiler: clang }
-          - { os: ubuntu-24.04, compiler: gcc }
+          - { os: ubuntu-26.04, compiler: gcc, cxx: g++ }
+          - { os: ubuntu-26.04, compiler: clang, cxx: clang++ }
+          - { os: ubuntu-24.04, compiler: gcc, cxx: g++-14, packages: g++-14 }
     env:
       VCPKG_TRIPLET: x64-linux
       PRESET: ci-linux-${{ matrix.compiler }}
@@ -293,7 +294,7 @@ jobs:
           sudo apt-get install -y --no-install-recommends ninja-build pkg-config \
             libxinerama-dev libxcursor-dev xorg-dev libglu1-mesa-dev \
             libwayland-dev libxkbcommon-dev wayland-protocols extra-cmake-modules \
-            xvfb xauth libgl1-mesa-dri libegl-mesa0 weston
+            xvfb xauth libgl1-mesa-dri libegl-mesa0 weston ${{ matrix.packages }}
 
       - name: Configure vcpkg
         run: |
@@ -307,19 +308,19 @@ jobs:
             echo "XDG_RUNTIME_DIR=$RUNNER_TEMP/xdg"
           } >> "$GITHUB_ENV"
           mkdir -m 700 -p "$RUNNER_TEMP/xdg"
-          echo "Compilers: $(g++ --version | head -1) / $(clang++ --version | head -1)"
+          echo "Compiler: $(${{ matrix.cxx }} --version | head -1)"
 
       - name: Restore vcpkg binary cache
         id: vcpkg-cache
         uses: actions/cache/restore@v6
         with:
           path: ${{ env.VCPKG_BINARY_CACHE }}
-          key: vcpkg-${{ env.VCPKG_TRIPLET }}-${{ matrix.compiler }}-${{ env.RUNNER_IMAGE }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
+          key: vcpkg-${{ env.VCPKG_TRIPLET }}-${{ matrix.cxx }}-${{ env.RUNNER_IMAGE }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
           restore-keys: |
-            vcpkg-${{ env.VCPKG_TRIPLET }}-${{ matrix.compiler }}-${{ env.RUNNER_IMAGE }}-
+            vcpkg-${{ env.VCPKG_TRIPLET }}-${{ matrix.cxx }}-${{ env.RUNNER_IMAGE }}-
 
       - name: Configure
-        run: cmake --preset "$PRESET"
+        run: cmake --preset "$PRESET" -DCMAKE_CXX_COMPILER=${{ matrix.cxx }}
 
       - name: Save vcpkg binary cache
         if: always() && steps.vcpkg-cache.outputs.cache-hit != 'true'
@@ -368,7 +369,7 @@ jobs:
           GALLIUM_DRIVER: llvmpipe
         run: |
           build="$RUNNER_TEMP/template"
-          cmake --preset debug -B "$build" "-DFETCHCONTENT_SOURCE_DIR_TESERRA=$GITHUB_WORKSPACE"
+          cmake --preset debug -B "$build" "-DFETCHCONTENT_SOURCE_DIR_TESERRA=$GITHUB_WORKSPACE" "-DCMAKE_CXX_COMPILER=${{ matrix.cxx }}"
           cmake --build "$build"
           set +e
           log="$(xvfb-run -a "$build/minimal_game" --frames 120 --hidden-window 2>&1)"

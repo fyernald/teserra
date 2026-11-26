@@ -159,7 +159,7 @@
     {
       "name": "linux-gcc-debug",
       "displayName": "Linux GCC Debug",
-      "description": "Linux with GCC 13+, Ninja, Debug",
+      "description": "Linux with GCC 14+, Ninja, Debug",
       "inherits": "linux-base",
       "cacheVariables": {
         "CMAKE_CXX_COMPILER": "g++",
