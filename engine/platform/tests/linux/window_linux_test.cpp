@@ -25,4 +25,5 @@ TEST_CASE("Window (Linux): the native handle is an X11 or a Wayland window with 
     CHECK(x11OrWayland);
     CHECK(handle.window != nullptr);
     CHECK(handle.display != nullptr);
+    CHECK(1 == 2); // scratch PR for #283: a Linux-only failure must fail CI
 }
