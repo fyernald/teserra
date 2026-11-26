@@ -92,6 +92,57 @@ void checkReflection([[maybe_unused]] const GraphicsPipelineDesc& desc, const Sh
     }
 }
 
+// The scalar type a vertex shader reads from an attribute of `format`: float formats and normalized
+// ones feed float inputs, integer formats integer inputs of the same signedness (Vulkan's rule).
+[[maybe_unused]] ShaderScalarType inputTypeOf(VertexFormat format) noexcept {
+    switch (format) {
+        case VertexFormat::Uint8x4:
+        case VertexFormat::Uint16x2:
+        case VertexFormat::Uint32:
+            return ShaderScalarType::Uint;
+        default:
+            return ShaderScalarType::Float;
+    }
+}
+
+[[maybe_unused]] std::string_view scalarTypeName(ShaderScalarType type) noexcept {
+    switch (type) {
+        case ShaderScalarType::Int:
+            return "int";
+        case ShaderScalarType::Uint:
+            return "uint";
+        default:
+            return "float";
+    }
+}
+
+// Checks that every input of a vertex shader has an attribute at its location that it can read.
+void checkVertexInputs([[maybe_unused]] const GraphicsPipelineDesc& desc, const ShaderModuleInfo& shader) {
+    for (const ShaderVertexInput& input : shader.reflection->vertexInputs) {
+        const auto found =
+            std::ranges::find(desc.vertexAttributes, input.location, &VertexAttribute::location);
+        TESERRA_ASSERT(found != desc.vertexAttributes.end(),
+                       "Graphics pipeline '{}': vertex shader '{}' reads input '{}' at location {}, which no "
+                       "vertex attribute provides",
+                       desc.debugName, shader.debugName, input.name, input.location);
+        if (found == desc.vertexAttributes.end()) {
+            continue;
+        }
+        [[maybe_unused]] const VertexFormatInfo& format = vertexFormatInfo(found->format);
+        TESERRA_ASSERT(
+            inputTypeOf(found->format) == input.scalarType,
+            "Graphics pipeline '{}': vertex shader '{}' reads input '{}' at location {} as {}, but "
+            "its attribute has the {} format {}",
+            desc.debugName, shader.debugName, input.name, input.location, scalarTypeName(input.scalarType),
+            scalarTypeName(inputTypeOf(found->format)), format.name);
+        TESERRA_ASSERT(format.componentCount >= input.components,
+                       "Graphics pipeline '{}': vertex shader '{}' reads {} components of input '{}' at "
+                       "location {}, but its attribute's format {} has {}",
+                       desc.debugName, shader.debugName, input.components, input.name, input.location,
+                       format.name, format.componentCount);
+    }
+}
+
 } // namespace
 
 StoredBindGroupLayout StoredBindGroupLayout::from(const BindGroupLayoutDesc& desc) {
@@ -413,6 +464,9 @@ void validateGraphicsPipelineResources(const GraphicsPipelineDesc& desc, const R
             handle.isNull() ? std::nullopt : objects.shaderModule(handle);
         if (shader) {
             checkReflection(desc, *shader, layout ? &*layout : nullptr);
+            if (shader->stage == ShaderStage::Vertex) {
+                checkVertexInputs(desc, *shader);
+            }
         }
     }
 }
