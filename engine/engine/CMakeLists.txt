@@ -1,4 +1,4 @@
-teserra_add_module(engine LAYER 6
+teserra_add_module(engine LAYER 7
     # The RHI backends the build includes; App passes them to rhi::createDevice(). The null backend is
     # always built. The renderer draws the active scene; assets
     # provides the mount points.

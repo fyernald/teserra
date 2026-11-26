@@ -14,6 +14,11 @@ teserra_add_test(snapshot
     DEPENDS engine
 )
 target_compile_definitions(teserra_snapshot_tests PRIVATE "TESERRA_GOLDEN_DIR=\"${PROJECT_SOURCE_DIR}/tests/golden\"")
+# The debug UI's snapshot, with the module that draws it (#296).
+if(TESERRA_WITH_DEBUG_UI)
+    target_sources(teserra_snapshot_tests PRIVATE debug_ui_snapshot_test.cpp)
+    target_link_libraries(teserra_snapshot_tests PRIVATE teserra_debug_ui)
+endif()
 # stb_image_write writes the PNGs (stb is already a dependency of the assets module, ADR-0010).
 target_include_directories(teserra_snapshot_tests SYSTEM PRIVATE "${TESERRA_STB_INCLUDE_DIR}")
 

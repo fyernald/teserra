@@ -15,6 +15,9 @@ endif()
 if(TESERRA_BUILD_BENCHMARKS)
     list(APPEND VCPKG_MANIFEST_FEATURES "benchmarks")
 endif()
+if((NOT DEFINED TESERRA_WITH_DEBUG_UI OR TESERRA_WITH_DEBUG_UI) AND NOT TESERRA_PORTABLE_ONLY)
+    list(APPEND VCPKG_MANIFEST_FEATURES "debug-ui")
+endif()
 # The portable build needs none of the libraries of the default "engine" feature.
 if(TESERRA_PORTABLE_ONLY)
     set(VCPKG_MANIFEST_NO_DEFAULT_FEATURES ON)
@@ -62,6 +65,12 @@ set(TESERRA_ENABLE_ASSERTS "DEFAULT" CACHE STRING
 set_property(CACHE TESERRA_ENABLE_ASSERTS PROPERTY STRINGS DEFAULT ON OFF)
 option(TESERRA_RHI_OPENGL "Build the OpenGL 4.5 RHI backend (teserra_rhi_opengl)" ON)
 option(TESERRA_WITH_DEBUG_DRAW "Compile debug draw (renderer::DebugDrawList); OFF makes its calls empty" ON)
+# The in-game debug tools with Dear ImGui (teserra_debug_ui, ADR-0013). OFF builds the engine and games with no
+# ImGui code; a game that fetches Teserra with it ON lists imgui in its own vcpkg.json (the template does).
+option(TESERRA_WITH_DEBUG_UI "Build the Dear ImGui debug tools (teserra_debug_ui)" ON)
+if(TESERRA_PORTABLE_ONLY)
+    set(TESERRA_WITH_DEBUG_UI OFF)
+endif()
 # Tracy behind the TESERRA_PROFILE_* macros (ADR-0023); the profile presets turn it on. OFF builds do not
 # link Tracy at all.
 option(TESERRA_ENABLE_PROFILING "Profile with Tracy through the TESERRA_PROFILE_* macros (ADR-0023)" OFF)
@@ -94,6 +103,9 @@ if(NOT TESERRA_PORTABLE_ONLY)
 endif()
 add_subdirectory(engine/ecs)
 add_subdirectory(engine/scene)
+if(TESERRA_WITH_DEBUG_UI)
+    add_subdirectory(engine/debug_ui)
+endif()
 if(NOT TESERRA_PORTABLE_ONLY)
     add_subdirectory(engine/engine)
 endif()

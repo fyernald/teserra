@@ -132,10 +132,11 @@
     {
       "name": "ci-windows-release",
       "displayName": "CI Windows Release (MSVC)",
-      "description": "GitHub Actions: MSVC Release with warnings as errors, for warnings that only Release builds show",
+      "description": "GitHub Actions: MSVC Release with warnings as errors, for warnings that only Release builds show; without the debug UI, so CI also builds the engine, examples and tests with no ImGui code",
       "inherits": "windows-msvc-release",
       "cacheVariables": {
-        "TESERRA_WARNINGS_AS_ERRORS": "ON"
+        "TESERRA_WARNINGS_AS_ERRORS": "ON",
+        "TESERRA_WITH_DEBUG_UI": "OFF"
       }
     },
     {

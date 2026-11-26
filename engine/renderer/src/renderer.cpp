@@ -158,6 +158,21 @@ void Renderer::addPass(std::unique_ptr<RenderPass> pass) {
     added.pass->declare(added.declared);
 }
 
+void Renderer::addOverlayPass(std::unique_ptr<RenderPass> pass) {
+    TESERRA_ASSERT(pass != nullptr, "Renderer::addOverlayPass with a null pass");
+    if (pass == nullptr) {
+        return;
+    }
+    TESERRA_ASSERT(pass->name().size() <= rhi::kMaxDebugLabelLength,
+                   "Render pass name '{}' has more than {} characters", pass->name(),
+                   rhi::kMaxDebugLabelLength);
+    Pass& added = m_overlays.emplace_back(Pass{.pass = std::move(pass), .declared = {}});
+    added.pass->declare(added.declared);
+    TESERRA_ASSERT(!added.declared.usesResource(PassResource::SceneColor),
+                   "Overlay pass '{}' declares SceneColor; overlays only draw into the output",
+                   added.pass->name());
+}
+
 void Renderer::setSceneTarget(const SceneTargetConfig& config) {
     m_sceneConfig = config;
     m_sceneTargetFailed = false; // a new size may work
@@ -229,14 +244,30 @@ UVec2 Renderer::targetSize(RenderTargetHandle target, UVec2 outputSize) const no
 void Renderer::render(const FramePacket& packet, const FrameTarget& output, rhi::CommandList& commands) {
     TESERRA_PROFILE_FUNCTION();
     m_uploads.beginFrame();
+    const auto run = [&](PassContext& context, RenderPass& pass, const PassBuilder& declared) {
+        TESERRA_PROFILE_SCOPE_DYNAMIC(pass.name());
+        context.m_declared = &declared;
+        context.m_passName = pass.name();
+        commands.pushDebugGroup(context.m_passName);
+        pass.execute(context, commands);
+        commands.popDebugGroup();
+    };
     if (!updateSceneTarget(output)) {
-        // Nothing to draw into: the output shows the letterbox color.
+        // Nothing to draw into: the output shows the letterbox color, under the overlays.
         const Color clear = m_sceneConfig.letterboxColor;
         commands.beginRenderPass(
             {.colorAttachments = {{.texture = output.texture,
                                    .loadOp = rhi::LoadOp::Clear,
                                    .clearColor = {clear.r, clear.g, clear.b, clear.a}}}});
         commands.endRenderPass();
+        PassContext context;
+        context.m_device = &m_device;
+        context.m_packet = &packet;
+        context.m_uploads = &m_uploads;
+        context.m_output = &output;
+        for (const Pass& overlay : m_overlays) {
+            run(context, *overlay.pass, overlay.declared);
+        }
         return;
     }
 
@@ -277,18 +308,13 @@ void Renderer::render(const FramePacket& packet, const FrameTarget& output, rhi:
     context.m_scene = &m_scene;
     context.m_output = &output;
     context.m_viewTargets = m_viewTargets;
-    const auto run = [&](RenderPass& pass, const PassBuilder& declared) {
-        TESERRA_PROFILE_SCOPE_DYNAMIC(pass.name());
-        context.m_declared = &declared;
-        context.m_passName = pass.name();
-        commands.pushDebugGroup(context.m_passName);
-        pass.execute(context, commands);
-        commands.popDebugGroup();
-    };
     for (const Pass& pass : m_passes) {
-        run(*pass.pass, pass.declared);
+        run(context, *pass.pass, pass.declared);
     }
-    run(*m_composite, m_compositeDeclared); // last: it presents the scene target
+    run(context, *m_composite, m_compositeDeclared); // it presents the scene target
+    for (const Pass& overlay : m_overlays) {
+        run(context, *overlay.pass, overlay.declared);
+    }
 }
 
 } // namespace teserra::renderer

@@ -138,7 +138,7 @@ The include check reads `OPTIONAL_DEPENDS` like `DEPENDS`.
 | `windows-msvc-asan` | MSVC Debug, `TESERRA_ENABLE_SANITIZERS` | Memory error hunting; run the tests from a developer prompt, which has the ASan runtime on `PATH` |
 | `ci-windows-asan` | The asan build with warnings as errors and JUnit output | The `Sanitizers` workflow |
 | `ci-windows` | MSVC Debug, warnings as errors, SPIR-V validation, JUnit output | GitHub Actions |
-| `ci-windows-release` | MSVC Release, warnings as errors, JUnit output: warnings only Release shows, such as a parameter used only in an assertion message | GitHub Actions |
+| `ci-windows-release` | MSVC Release, warnings as errors, JUnit output: warnings only Release shows, such as a parameter used only in an assertion message. Without the debug UI (`TESERRA_WITH_DEBUG_UI=OFF`), so CI builds everything with no ImGui code too | GitHub Actions |
 | `ci-windows-profile` | The profile build with warnings as errors and JUnit output, so the Tracy configuration keeps building and passing | GitHub Actions |
 | `linux-gcc-debug`, `linux-clang-debug` | GCC 14.3+ / Clang 18+ + Ninja | Local development on Linux (on Ubuntu 24.04, use `linux-clang-debug`: its GCCs are too old) |
 | `ci-linux-gcc`, `ci-linux-clang` | GCC / Clang Debug, warnings as errors, SPIR-V validation, JUnit output | The `linux` jobs |
@@ -178,6 +178,7 @@ Pinned baseline: [`9e593bb`](https://github.com/microsoft/vcpkg/commit/9e593bb18
 | `tl-expected` | 1.3.1 | core (`Result`, iteration 2) | - |
 | `glfw3` | 3.4#1 | platform (windows, OpenGL context, iteration 3) | - |
 | `stb` | 2024-07-29#1 | assets (stb_image 2.30, image decoding, iteration 7) | - |
+| `imgui` | 1.92.8#1 (`docking-experimental`) | debug_ui (the debug tools, iteration 18) | `debug-ui` (`TESERRA_WITH_DEBUG_UI`, ON by default) |
 | `catch2` | 3.15.3 | tests | `tests` |
 | `glslang` | 16.4.0 | `teserra_shaderc` (GLSL to SPIR-V, iteration 6) | - |
 | `spirv-cross` | 1.4.350.1 | `teserra_shaderc` (reflection, GLSL for OpenGL, iteration 6) | - |
