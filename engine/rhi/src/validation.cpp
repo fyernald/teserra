@@ -155,7 +155,7 @@ StoredBindGroupLayout StoredBindGroupLayout::from(const BindGroupLayoutDesc& des
 StoredPipelineLayout
 StoredPipelineLayout::from(std::string_view debugName,
                            const std::array<const StoredBindGroupLayout*, kMaxBindGroups>& layouts) {
-    StoredPipelineLayout stored{.groups = {}, .debugName = std::string(debugName)};
+    StoredPipelineLayout stored{.groups = {}, .debugName = std::string(debugName), .uniformBlocks = {}};
     for (usize set = 0; set < kMaxBindGroups; ++set) {
         if (layouts[set] != nullptr) {
             stored.groups[set] = layouts[set]->entries;

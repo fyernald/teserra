@@ -98,7 +98,7 @@ struct StoredPipelineLayout {
     std::array<std::vector<BindGroupLayoutEntry>, kMaxBindGroups> groups;
     std::string debugName;
     /// Kept by pipelines only: see PipelineLayoutInfo::uniformBlocks and uniformBlocksOf().
-    std::vector<ShaderBinding> uniformBlocks;
+    std::vector<ShaderBinding> uniformBlocks{};
 
     /// `layouts` holds the live layout of each set of the descriptor, or null for a null or stale handle,
     /// which leaves that set empty (validation reports a stale one before).
