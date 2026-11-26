@@ -9,6 +9,7 @@ All notable user-visible changes to Teserra are documented here. The format foll
 - Linux OS services (#280): `NativeFileSystem::executableDirectory()` and `userDataDirectory()` on Linux, the second following the XDG Base Directory spec (`$XDG_DATA_HOME`, else `$HOME/.local/share`). Part of the Linux port (#127).
 - The whole engine builds and passes its tests on Linux with GCC and Clang (#282), with the CI presets `ci-linux-gcc` and `ci-linux-clang` (warnings as errors, SPIR-V validation).
 - Windows on Linux (#281): the GLFW backend runs on X11 and Wayland, with OpenGL 4.5 core contexts (GLX or EGL), and `NativeWindowHandle` reports `Kind::X11` or `Kind::Wayland` with the display. vcpkg's `glfw3` is built with its Wayland feature on Linux, in Teserra's and the game template's manifests.
+- The tilemap example loads a map made in Tiled (#276): `assets/island.tmj` with an external tileset, `island.tsj`, drawn over the generated map; the sample for bringing Tiled maps in.
 
 ### Changed
 
