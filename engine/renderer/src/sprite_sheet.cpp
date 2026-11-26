@@ -34,7 +34,7 @@ Result<UVec2> readPair(assets::JsonValue object, std::string_view key, std::stri
         }
         ++index;
     });
-    constexpr i64 kMax = 1 << 20;
+    constexpr auto kMax = static_cast<i64>(1U << 20U);
     if (!value.isArray() || index != 2 || numbers[0] < 0 || numbers[1] < 0 || numbers[0] > kMax ||
         numbers[1] > kMax) {
         return invalidSheet(

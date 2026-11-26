@@ -15,7 +15,8 @@ const GladGLContext* teserraTracyGl = nullptr; // NOLINT(cppcoreguidelines-avoid
 
 } // namespace
 
-// The GL functions TracyOpenGL.hpp uses, on the device's context.
+// The GL functions TracyOpenGL.hpp uses, on the device's context. The macros must have the GL names.
+// NOLINTBEGIN(readability-identifier-naming)
 #undef glGenQueries
 #undef glGetInteger64v
 #undef glGetQueryiv
@@ -28,6 +29,7 @@ const GladGLContext* teserraTracyGl = nullptr; // NOLINT(cppcoreguidelines-avoid
 #define glGetQueryObjectiv teserraTracyGl->GetQueryObjectiv
 #define glGetQueryObjectui64v teserraTracyGl->GetQueryObjectui64v
 #define glQueryCounter teserraTracyGl->QueryCounter
+// NOLINTEND(readability-identifier-naming)
 
 #include <tracy/TracyOpenGL.hpp>
 
