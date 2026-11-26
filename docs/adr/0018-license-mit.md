@@ -1,6 +1,6 @@
 # ADR-0018: License: MIT
 
-- **Status:** Accepted
+- **Status:** Accepted (confirmed before v0.1 in [#123](https://github.com/fyernald/teserra/issues/123))
 - **Date:** 2026-10-21
 - **Related:** [LICENSE](../../LICENSE), [release process](../process/release-process.md#third-party-notices)
 
