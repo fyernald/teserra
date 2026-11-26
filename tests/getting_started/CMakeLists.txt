@@ -43,6 +43,6 @@ add_test(NAME examples.getting_started
 set_tests_properties(examples.getting_started PROPERTIES
     # "[error]" / "[critical]" level tags; [[] matches a literal '[' without escaping.
     FAIL_REGULAR_EXPRESSION "[[](error|critical)]"
-    SKIP_REGULAR_EXPRESSION "OpenGL 4[.]5 core context"
+    SKIP_REGULAR_EXPRESSION "${TESERRA_SMOKE_SKIP_REGEX}"
     LABELS "examples"
 )
