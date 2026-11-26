@@ -27,6 +27,7 @@ namespace demo {
 using teserra::Aabb;
 using teserra::IVec2;
 using teserra::LogCategory;
+using teserra::usize;
 using teserra::Vec3;
 namespace platform = teserra::platform;
 namespace math = teserra::math;
@@ -61,6 +62,11 @@ constexpr teserra::i16 kHudLayer = 100;
 Vec2 snapToPixels(Vec2 position) {
     return Vec2{std::round(position.x * kPixelsPerUnit), std::round(position.y * kPixelsPerUnit)} /
            kPixelsPerUnit;
+}
+
+// The tile of kLevel's (column, row) in the tilemap; rows count from the top, tile +Y is up.
+IVec2 tileOf(usize column, usize row) {
+    return {static_cast<int>(column), static_cast<int>(kLevel.size() - 1 - row)};
 }
 
 // The center of tile (column, row) of kLevel; rows count from the top, world +Y is up.
@@ -212,16 +218,16 @@ void buildLevel(scene::Scene& level, const scene::Tileset& tileset) {
     // The tilemap: floor everywhere, walls on their own layer for collision.
     scene::Tilemap map;
     scene::TilemapLayer& floor = map.addLayer("floor");
-    for (int row = 0; row < static_cast<int>(kLevel.size()); ++row) {
-        for (int column = 0; column < static_cast<int>(kLevel[row].size()); ++column) {
-            floor.setTile({column, static_cast<int>(kLevel.size()) - 1 - row}, kFloorTile);
+    for (usize row = 0; row < kLevel.size(); ++row) {
+        for (usize column = 0; column < kLevel[row].size(); ++column) {
+            floor.setTile(tileOf(column, row), kFloorTile);
         }
     }
     scene::TilemapLayer& walls = map.addLayer("walls");
-    for (int row = 0; row < static_cast<int>(kLevel.size()); ++row) {
-        for (int column = 0; column < static_cast<int>(kLevel[row].size()); ++column) {
+    for (usize row = 0; row < kLevel.size(); ++row) {
+        for (usize column = 0; column < kLevel[row].size(); ++column) {
             if (kLevel[row][column] == '#') {
-                walls.setTile({column, static_cast<int>(kLevel.size()) - 1 - row}, kWallTile);
+                walls.setTile(tileOf(column, row), kWallTile);
             }
         }
     }
@@ -231,9 +237,9 @@ void buildLevel(scene::Scene& level, const scene::Tileset& tileset) {
     level.add<scene::TilemapRenderer>(state.map, scene::TilemapRenderer{.tileset = &tileset});
 
     // Everything else stands on a tile.
-    for (int row = 0; row < static_cast<int>(kLevel.size()); ++row) {
-        for (int column = 0; column < static_cast<int>(kLevel[row].size()); ++column) {
-            const Vec2 at = tileCenter(column, row);
+    for (usize row = 0; row < kLevel.size(); ++row) {
+        for (usize column = 0; column < kLevel[row].size(); ++column) {
+            const Vec2 at = tileCenter(static_cast<int>(column), static_cast<int>(row));
             switch (kLevel[row][column]) {
                 case 'S':
                     state.start = at;

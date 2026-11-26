@@ -208,14 +208,14 @@ Result<SpriteSheet> SpriteSheetLoader::load(assets::AssetLoadContext& context,
     list.reserve(regions.size());
     Result<void> result;
     regions.forEach([&](assets::JsonValue item) {
-        const std::string context = std::format("region {}: ", list.size());
+        const std::string where = std::format("region {}: ", list.size());
         const std::optional<std::string_view> name = item["name"].asString();
         if (!name) {
-            result = invalidSheet(std::format("{}'name' must be a string", context));
+            result = invalidSheet(std::format("{}'name' must be a string", where));
             return false;
         }
-        Result<UVec2> position = readPair(item, "position", context);
-        Result<UVec2> size = position ? readPair(item, "size", context) : Result<UVec2>(UVec2{0U});
+        Result<UVec2> position = readPair(item, "position", where);
+        Result<UVec2> size = position ? readPair(item, "size", where) : Result<UVec2>(UVec2{0U});
         if (!position || !size) {
             result = Unexpected(position ? size.error() : position.error());
             return false;

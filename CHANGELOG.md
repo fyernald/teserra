@@ -7,11 +7,16 @@ All notable user-visible changes to Teserra are documented here. The format foll
 ### Added
 
 - Linux OS services (#280): `NativeFileSystem::executableDirectory()` and `userDataDirectory()` on Linux, the second following the XDG Base Directory spec (`$XDG_DATA_HOME`, else `$HOME/.local/share`). Part of the Linux port (#127).
+- The whole engine builds and passes its tests on Linux with GCC and Clang (#282), with the CI presets `ci-linux-gcc` and `ci-linux-clang` (warnings as errors, SPIR-V validation).
 - Windows on Linux (#281): the GLFW backend runs on X11 and Wayland, with OpenGL 4.5 core contexts (GLX or EGL), and `NativeWindowHandle` reports `Kind::X11` or `Kind::Wayland` with the display. vcpkg's `glfw3` is built with its Wayland feature on Linux, in Teserra's and the game template's manifests.
 
 ### Changed
 
 - `OpenGlContext::getProcAddress()` no longer promises `nullptr` for a function that doesn't exist (#281): GLX returns an address for any name. Whether a function exists comes from the GL version and the extensions, as glad already decides.
+
+### Fixed
+
+- The sprite pass no longer allocates every frame on Linux (#282): it sorted tilemap chunks by layer with `std::stable_sort`, which allocates a buffer in libstdc++. It now uses an allocation-free sort that keeps the same order.
 
 ## [0.1.0] - 2026-11-26
 

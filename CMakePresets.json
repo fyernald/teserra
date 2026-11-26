@@ -159,7 +159,7 @@
     {
       "name": "linux-gcc-debug",
       "displayName": "Linux GCC Debug",
-      "description": "Prepared for the Linux port: GCC 13+, Ninja, Debug",
+      "description": "Linux with GCC 13+, Ninja, Debug",
       "inherits": "linux-base",
       "cacheVariables": {
         "CMAKE_CXX_COMPILER": "g++",
@@ -169,11 +169,31 @@
     {
       "name": "linux-clang-debug",
       "displayName": "Linux Clang Debug",
-      "description": "Prepared for the Linux port: Clang 17+, Ninja, Debug",
+      "description": "Linux with Clang 17+, Ninja, Debug",
       "inherits": "linux-base",
       "cacheVariables": {
         "CMAKE_CXX_COMPILER": "clang++",
         "CMAKE_BUILD_TYPE": "Debug"
+      }
+    },
+    {
+      "name": "ci-linux-gcc",
+      "displayName": "CI Linux (GCC)",
+      "description": "GitHub Actions: GCC Debug with warnings as errors and SPIR-V validation",
+      "inherits": "linux-gcc-debug",
+      "cacheVariables": {
+        "TESERRA_WARNINGS_AS_ERRORS": "ON",
+        "TESERRA_SHADER_VALIDATION": "ON"
+      }
+    },
+    {
+      "name": "ci-linux-clang",
+      "displayName": "CI Linux (Clang)",
+      "description": "GitHub Actions: Clang Debug with warnings as errors and SPIR-V validation",
+      "inherits": "linux-clang-debug",
+      "cacheVariables": {
+        "TESERRA_WARNINGS_AS_ERRORS": "ON",
+        "TESERRA_SHADER_VALIDATION": "ON"
       }
     },
     {
@@ -210,6 +230,8 @@
     { "name": "ci-windows-asan", "configurePreset": "ci-windows-asan" },
     { "name": "linux-gcc-debug", "configurePreset": "linux-gcc-debug" },
     { "name": "linux-clang-debug", "configurePreset": "linux-clang-debug" },
+    { "name": "ci-linux-gcc", "configurePreset": "ci-linux-gcc" },
+    { "name": "ci-linux-clang", "configurePreset": "ci-linux-clang" },
     { "name": "linux-gcc-portable", "configurePreset": "linux-gcc-portable" },
     { "name": "linux-clang-portable", "configurePreset": "linux-clang-portable" }
   ],
@@ -267,6 +289,24 @@
     },
     { "name": "linux-gcc-debug", "inherits": "test-base", "configurePreset": "linux-gcc-debug" },
     { "name": "linux-clang-debug", "inherits": "test-base", "configurePreset": "linux-clang-debug" },
+    {
+      "name": "ci-linux-gcc",
+      "inherits": "test-base",
+      "configurePreset": "ci-linux-gcc",
+      "output": {
+        "outputOnFailure": true,
+        "outputJUnitFile": "junit.xml"
+      }
+    },
+    {
+      "name": "ci-linux-clang",
+      "inherits": "test-base",
+      "configurePreset": "ci-linux-clang",
+      "output": {
+        "outputOnFailure": true,
+        "outputJUnitFile": "junit.xml"
+      }
+    },
     { "name": "linux-gcc-portable", "inherits": "test-base", "configurePreset": "linux-gcc-portable" },
     { "name": "linux-clang-portable", "inherits": "test-base", "configurePreset": "linux-clang-portable" }
   ],

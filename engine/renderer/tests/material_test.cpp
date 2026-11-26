@@ -299,9 +299,9 @@ TEST_CASE("Materials: sprites draw with a material instance", "[renderer][materi
     std::istringstream lines(commands);
     for (std::string line; std::getline(lines, line);) {
         line = line.substr(line.find_first_not_of(' '));
-        draws += line.starts_with("DrawIndexed") ? 1 : 0;
-        materialGroups += line.starts_with("BindGroup index=2") ? 1 : 0;
-        drawGroups += line.starts_with("BindGroup index=3") ? 1 : 0;
+        draws += line.starts_with("DrawIndexed") ? 1U : 0U;
+        materialGroups += line.starts_with("BindGroup index=2") ? 1U : 0U;
+        drawGroups += line.starts_with("BindGroup index=3") ? 1U : 0U;
     }
     // The two red sprites batch; blue and the plain sprite draw on their own.
     CHECK(draws == 3);

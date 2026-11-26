@@ -110,7 +110,7 @@ TEST_CASE("Chunk mesh cache: finding and starting frames allocate nothing",
         const test::AllocationCounter counter;
         cache.beginFrame();
         for (u64 owner = 0; owner < 16; ++owner) {
-            found += cache.find({.owner = owner}) != nullptr ? 1 : 0;
+            found += cache.find({.owner = owner}) != nullptr ? 1U : 0U;
         }
         allocations = counter.count();
     }
