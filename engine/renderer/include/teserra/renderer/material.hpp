@@ -269,6 +269,8 @@ public:
     explicit MaterialLoader(rhi::Device& device) noexcept
         : m_device(&device) {}
 
+    [[nodiscard]] std::string_view typeName() const override { return "Material"; }
+
     /// {"json"}: asset types are part of the key, so other JSON assets have their own loaders.
     [[nodiscard]] std::span<const std::string_view> extensions() const override;
     [[nodiscard]] Result<Material> load(assets::AssetLoadContext& context,
@@ -285,6 +287,8 @@ class MaterialInstanceLoader final : public assets::AssetLoader<MaterialInstance
 public:
     explicit MaterialInstanceLoader(rhi::Device& device) noexcept
         : m_device(&device) {}
+
+    [[nodiscard]] std::string_view typeName() const override { return "Material instance"; }
 
     [[nodiscard]] std::span<const std::string_view> extensions() const override;
     [[nodiscard]] Result<MaterialInstance> load(assets::AssetLoadContext& context,

@@ -78,6 +78,8 @@ public:
     /// The layout of set 3 that sprite materials read the sprite's texture through.
     [[nodiscard]] rhi::BindGroupLayoutHandle drawGroupLayout() const noexcept { return m_drawLayout; }
     [[nodiscard]] const SpritePassStats& stats() const noexcept { return m_stats; }
+    /// The pipelines created so far for the materials of sprites, one per material and target layout.
+    [[nodiscard]] usize materialPipelineCount() const noexcept { return m_materialPipelines.size(); }
 
 private:
     struct Pipeline {

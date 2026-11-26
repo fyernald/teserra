@@ -168,7 +168,8 @@ TEST_CASE("App debug UI: Stats and the game's windows are listed, and drawn whil
     for (const debugui::DebugWindow& window : fixture.app.debugUi().windows()) {
         names.push_back(window.name);
     }
-    CHECK(names == std::vector<std::string>{"Stats", "Log", "Entities", "Inspector", "Game"});
+    CHECK(names ==
+          std::vector<std::string>{"Stats", "Log", "Entities", "Inspector", "Assets", "Renderer", "Game"});
     CHECK_FALSE(fixture.app.debugUi().windows()[1].open); // the log opens from the View menu
 
     fixture.headless.queueEvent(3, key(platform::Key::GraveAccent, true));
@@ -301,4 +302,17 @@ TEST_CASE("App debug UI: the inspector shows a selected entity of the running sc
                                 }
                             }}) == 0);
     CHECK(selected == std::vector<bool>{true, true, false, false});
+}
+
+TEST_CASE("App debug UI on the null backend: the Assets and Renderer windows draw",
+          "[engine][app][debug_ui]") {
+    AppConfig config{.title = "Debug UI windows test", .backend = rhi::Backend::Null, .maxFrames = 3};
+    config.debugUi.startOpen = true;
+    HeadlessApp fixture(std::move(config));
+    REQUIRE(fixture.app.isInitialized());
+    for (const char* name : {"Assets", "Renderer"}) {
+        REQUIRE(fixture.app.debugUi().setWindowOpen(name, true));
+    }
+    REQUIRE(fixture.app.run() == 0);
+    CHECK(fixture.app.debugUi().drawData()->TotalVtxCount > 0);
 }

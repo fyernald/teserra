@@ -72,6 +72,8 @@ public:
     explicit ImageLoader(const ImageDecodeConfig& config = {}) noexcept
         : m_config(config) {}
 
+    [[nodiscard]] std::string_view typeName() const override { return "Image"; }
+
     /// {"png"}
     [[nodiscard]] std::span<const std::string_view> extensions() const override;
     [[nodiscard]] Result<ImageData> load(AssetLoadContext& context,

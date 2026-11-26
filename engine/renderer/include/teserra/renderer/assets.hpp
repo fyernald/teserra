@@ -123,6 +123,8 @@ public:
     explicit TextureLoader(rhi::Device& device, const assets::ImageDecodeConfig& config = {}) noexcept
         : m_device(&device), m_config(config) {}
 
+    [[nodiscard]] std::string_view typeName() const override { return "Texture"; }
+
     /// {"png"}
     [[nodiscard]] std::span<const std::string_view> extensions() const override;
     [[nodiscard]] Result<Texture> load(assets::AssetLoadContext& context,
@@ -140,6 +142,8 @@ public:
     /// `device` must outlive the loader and the shaders it loads.
     explicit ShaderLoader(rhi::Device& device) noexcept
         : m_device(&device) {}
+
+    [[nodiscard]] std::string_view typeName() const override { return "Shader"; }
 
     /// {"tshader"}
     [[nodiscard]] std::span<const std::string_view> extensions() const override;

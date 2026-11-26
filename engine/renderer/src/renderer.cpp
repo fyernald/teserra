@@ -272,7 +272,10 @@ void Renderer::renderOverlays(const FrameTarget& output, rhi::CommandList& comma
 void Renderer::render(const FramePacket& packet, const FrameTarget& output, rhi::CommandList& commands) {
     TESERRA_PROFILE_FUNCTION();
     m_uploads.beginFrame();
+    m_stats.renderTargets = static_cast<u32>(m_targets.size());
     if (!updateSceneTarget(output)) {
+        m_stats.views = 0;
+        m_stats.sceneSize = UVec2{0U};
         // Nothing to draw into: the output shows the letterbox color, under the overlays.
         const Color clear = m_sceneConfig.letterboxColor;
         commands.beginRenderPass(
@@ -292,6 +295,8 @@ void Renderer::render(const FramePacket& packet, const FrameTarget& output, rhi:
         TESERRA_ASSERT(alive, "A view renders into destroyed render target {}", view.target);
         return !alive;
     });
+    m_stats.views = static_cast<u32>(m_views.size());
+    m_stats.sceneSize = m_scene.size;
     m_viewTargets.clear();
     for (const RenderView& view : m_views) {
         m_viewTargets.push_back(view.target.isNull() ? m_scene : m_targets.get(view.target));

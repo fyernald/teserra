@@ -156,6 +156,7 @@ using TiledFileReader = std::function<Result<std::vector<std::byte>>(std::string
 /// Loads TiledMaps from .tmj files; external tilesets are read through the context's mount points.
 class TiledMapLoader final : public AssetLoader<TiledMap> {
 public:
+    [[nodiscard]] std::string_view typeName() const override { return "Tiled map"; }
     /// {"tmj"}
     [[nodiscard]] std::span<const std::string_view> extensions() const override { return kExtensions; }
     [[nodiscard]] Result<TiledMap> load(AssetLoadContext& context, std::span<const std::byte> bytes) override;

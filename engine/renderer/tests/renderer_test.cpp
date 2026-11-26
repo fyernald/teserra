@@ -231,6 +231,23 @@ TEST_CASE("Renderer: renderOverlays() runs only the overlay passes, with the fra
     CHECK(output == scene.target.texture);
 }
 
+TEST_CASE("Renderer: stats count the frame's views, the camera targets and the scene target's size",
+          "[renderer]") {
+    Scene scene({.resolution = {32, 16}});
+    scene.renderer->addPass(viewsPass("Views"));
+    const RenderTargetHandle minimap = *scene.renderer->createRenderTarget({.size = {8, 8}});
+    FramePacket packet;
+    packet.views = {viewWithTime(1.0F, 0), viewWithTime(2.0F, 1)};
+    packet.views[1].target = minimap;
+
+    (void)scene.render(packet);
+
+    CHECK(scene.renderer->stats().views == 2);
+    CHECK(scene.renderer->stats().renderTargets == 1);
+    CHECK(scene.renderer->stats().sceneSize == UVec2{32, 16});
+    scene.renderer->destroyRenderTarget(minimap);
+}
+
 TEST_CASE("Renderer: views are sorted by order and their cameras bound at set 0", "[renderer]") {
     Scene scene;
     scene.renderer->addPass(viewsPass("Views"));

@@ -3,11 +3,13 @@ teserra_add_module(debug_ui LAYER 6
     # overlay pass of the renderer. Only built with TESERRA_WITH_DEBUG_UI. The engine module owns it.
     DEPENDS core platform rhi assets renderer ecs scene
     PUBLIC_HEADERS
+        include/teserra/debug_ui/asset_list.hpp
         include/teserra/debug_ui/debug_ui.hpp
         include/teserra/debug_ui/entity_inspector.hpp
         include/teserra/debug_ui/imgui_pass.hpp
         include/teserra/debug_ui/log_console.hpp
     SOURCES
+        src/asset_list.cpp
         src/debug_ui.cpp
         src/entity_inspector.cpp
         src/imgui_input.cpp

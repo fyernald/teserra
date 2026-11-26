@@ -117,6 +117,7 @@ private:
 /// neither of "grid" and "regions", and regions outside the texture.
 class SpriteSheetLoader final : public assets::AssetLoader<SpriteSheet> {
 public:
+    [[nodiscard]] std::string_view typeName() const override { return "Sprite sheet"; }
     /// {"json"}: asset types are part of the key, so other JSON assets have their own loaders.
     [[nodiscard]] std::span<const std::string_view> extensions() const override { return kExtensions; }
     [[nodiscard]] Result<SpriteSheet> load(assets::AssetLoadContext& context,
