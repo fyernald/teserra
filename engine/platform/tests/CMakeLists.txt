@@ -18,6 +18,9 @@ if(WIN32)
     list(APPEND platform_test_sources windows/window_events_windows_test.cpp)
 elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     list(APPEND platform_test_sources posix/file_system_posix_test.cpp)
+    if(NOT TESERRA_PORTABLE_ONLY)
+        list(APPEND platform_test_sources linux/window_linux_test.cpp)
+    endif()
 endif()
 
 teserra_add_test(platform

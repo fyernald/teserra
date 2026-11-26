@@ -8,6 +8,7 @@
 #include "platform_test_support.hpp"
 #include <catch2/catch_test_macros.hpp>
 
+#include <chrono>
 #include <string>
 #include <thread>
 #include <variant>
@@ -77,9 +78,13 @@ TEST_CASE("Window: setSize produces a WindowResized event", "[platform][window]"
     queue.clear();
 
     (*window)->setSize({400, 300});
-    platform->pollEvents(queue);
-
-    const std::vector<WindowResized> resizes = resizesIn(queue);
+    // Windows reports the resize during setSize(); on X11 and Wayland it arrives later from the server, so
+    // the test waits up to a second for it.
+    std::vector<WindowResized> resizes;
+    for (int attempt = 0; attempt < 100 && resizes.empty(); ++attempt) {
+        platform->waitEvents(queue, std::chrono::milliseconds{10});
+        resizes = resizesIn(queue);
+    }
     REQUIRE_FALSE(resizes.empty());
     CHECK(resizes.back().windowSize == (*window)->windowSize());
     CHECK(resizes.back().framebufferSize == (*window)->framebufferSize());
@@ -105,7 +110,7 @@ TEST_CASE("Window: GraphicsApi::OpenGL creates a 4.5 core context or explains wh
     context->setSwapInterval(0);
     CHECK(context->getProcAddress("glClear") != nullptr);
     CHECK(context->getProcAddress("glCreateBuffers") != nullptr); // 4.5 direct state access
-    CHECK(context->getProcAddress("glNoSuchFunction") == nullptr);
+    // No check that an unknown name gives nullptr: GLX returns an address for any name.
     context->swapBuffers();
 }
 

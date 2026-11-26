@@ -15,9 +15,12 @@
   ],
   "features": {
     "engine": {
-      "description": "Windows, the shader compiler and image decoding: everything but the portable modules (TESERRA_PORTABLE_ONLY=OFF)",
+      "description": "The window system, the shader compiler and image decoding: everything but the portable modules (TESERRA_PORTABLE_ONLY=OFF)",
       "dependencies": [
-        "glfw3",
+        {
+          "name": "glfw3",
+          "features": [{ "name": "wayland", "platform": "linux" }]
+        },
         "glslang",
         "spirv-cross",
         "stb",

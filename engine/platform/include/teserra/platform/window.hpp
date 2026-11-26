@@ -36,8 +36,8 @@ struct NativeWindowHandle {
     enum class Kind : u8 {
         None,
         Win32,   ///< window: HWND, display: HINSTANCE
-        X11,     ///< window: Window (as an integer in the pointer), display: Display* (future)
-        Wayland, ///< window: wl_surface*, display: wl_display* (future)
+        X11,     ///< window: Window (as an integer in the pointer), display: Display*
+        Wayland, ///< window: wl_surface*, display: wl_display*
     };
 
     Kind kind = Kind::None;
