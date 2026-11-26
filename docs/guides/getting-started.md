@@ -70,7 +70,7 @@ The log of each run is also written to `teserra.log` next to the executable.
 engine::App app{{.title = "Minimal game", .windowSize = {1280, 720}, .args = {argc, argv}}};
 ```
 
-The **App** owns the window, the GPU device, input, the asset registry and the scenes, and runs the main loop. `.args` lets it read the engine's flags, such as `--frames 120` (stop after 120 frames) and `--hidden-window`.
+The **App** owns the window, the GPU device, input, the asset registry and the scenes, and runs the main loop. `.args` lets it read the engine's flags, such as `--frames 120` (stop after 120 frames), `--hidden-window` and `--debug-ui`. The backtick key (`` ` ``) opens the debug UI, with frame stats and room for windows of your own (`app.debugUi().addWindow()`).
 
 ```cpp
 scene::Scene& level = app.scenes().create("level");

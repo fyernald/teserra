@@ -3,6 +3,7 @@
 #include <teserra/core/assert.hpp>
 
 #include <algorithm>
+#include <utility>
 
 namespace teserra::debugui {
 
@@ -68,6 +69,45 @@ ImDrawData* DebugUi::drawData() const noexcept {
     ImDrawData* data = ImGui::GetDrawData();
     ImGui::SetCurrentContext(previous);
     return data;
+}
+
+void DebugUi::addWindow(std::string name, std::function<void()> draw, bool open) {
+    TESERRA_ASSERT(
+        std::ranges::none_of(m_windows, [&](const DebugWindow& window) { return window.name == name; }),
+        "The debug UI already has a window named '{}'", name);
+    m_windows.push_back({.name = std::move(name), .draw = std::move(draw), .open = open});
+}
+
+bool DebugUi::setWindowOpen(std::string_view name, bool open) {
+    const auto window = std::ranges::find(m_windows, name, &DebugWindow::name);
+    if (window == m_windows.end()) {
+        return false;
+    }
+    window->open = open;
+    return true;
+}
+
+void DebugUi::drawWindows() {
+    TESERRA_ASSERT(m_inFrame, "DebugUi::drawWindows() outside a frame");
+    if (ImGui::BeginMainMenuBar()) {
+        if (ImGui::BeginMenu("View")) {
+            for (DebugWindow& window : m_windows) {
+                ImGui::MenuItem(window.name.c_str(), nullptr, &window.open);
+            }
+            ImGui::EndMenu();
+        }
+        ImGui::EndMainMenuBar();
+    }
+    for (DebugWindow& window : m_windows) {
+        if (!window.open) {
+            continue;
+        }
+        // ImGui::End() goes with every Begin(), also when the window is collapsed and draws nothing.
+        if (ImGui::Begin(window.name.c_str(), &window.open) && window.draw) {
+            window.draw();
+        }
+        ImGui::End();
+    }
 }
 
 ImTextureID textureId(rhi::TextureHandle texture) noexcept {

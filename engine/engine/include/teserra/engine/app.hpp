@@ -12,6 +12,7 @@
 #include <teserra/platform/fixed_step_accumulator.hpp>
 #include <teserra/platform/frame_timer.hpp>
 #include <teserra/platform/input.hpp>
+#include <teserra/platform/key.hpp>
 #include <teserra/platform/platform.hpp>
 #include <teserra/platform/window.hpp>
 #include <teserra/renderer/chunk_mesh_cache.hpp>
@@ -22,7 +23,11 @@
 #include <teserra/rhi/handles.hpp>
 #include <teserra/scene/scene.hpp>
 #include <teserra/scene/scene_manager.hpp>
+#if TESERRA_WITH_DEBUG_UI
+#include <teserra/debug_ui/debug_ui.hpp>
+#endif
 
+#include <array>
 #include <chrono>
 #include <functional>
 #include <memory>
@@ -30,12 +35,31 @@
 #include <string>
 #include <vector>
 
+#if TESERRA_WITH_DEBUG_UI
+namespace teserra::debugui {
+class ImGuiPass;
+} // namespace teserra::debugui
+#endif
+
 namespace teserra::engine {
 
 /// The program's arguments, as main() receives them: `.args = {argc, argv}`.
 struct CommandLine {
     int argc = 0;
     const char* const* argv = nullptr;
+};
+
+/// The in-game debug UI (App::debugUi()): Dear ImGui windows over the game, such as the frame stats, opened
+/// and closed with a key. Builds without TESERRA_WITH_DEBUG_UI ignore it, so a game's AppConfig builds
+/// either way.
+struct DebugUiSettings {
+    /// false: no debug UI, and the toggle key goes to the game like any other.
+    bool enabled = true;
+    /// Opens and closes the debug UI; the game never sees it, nor the text it types. Key::Unknown leaves
+    /// only App::setDebugUiOpen().
+    platform::Key toggleKey = platform::Key::GraveAccent;
+    /// Whether the debug UI is open from the first frame.
+    bool startOpen = false;
 };
 
 /// A mount point of App::mounts(): virtual paths "<scheme>://..." refer to files under `directory`.
@@ -48,6 +72,7 @@ struct AssetMount {
 /// Settings of an App. The engine flags in `args` override the matching fields:
 ///   --frames N        maxFrames = N (exit after N frames, e.g. for smoke runs)
 ///   --hidden-window   windowVisible = false
+///   --debug-ui        debugUi.startOpen = true
 /// Other arguments are left to the game.
 struct AppConfig {
     std::string title = "Teserra";
@@ -79,6 +104,7 @@ struct AppConfig {
     /// runs nothing else: no fixed steps, updates, scene phases or rendering, and scene Time stands still.
     /// The frame after it gets an image back resumes with at most this much time to catch up.
     std::chrono::nanoseconds minimizedEventWait = std::chrono::milliseconds{100};
+    DebugUiSettings debugUi{};
     /// Mount points of App::mounts() (docs/architecture/assets.md#mount-points-and-files). Unless listed
     /// here, "assets" is mounted to `<executable dir>/assets` and "engine" to `<executable dir>/engine`;
     /// those defaults may be missing. Initialization fails if a listed directory does not exist, or a scheme
@@ -130,9 +156,10 @@ public:
     App& operator=(App&&) = delete;
 
     /// Runs frames until quit(), a close request or maxFrames:
-    /// events -> fixedUpdate x N -> update -> render -> submit and present. While the window is minimized,
-    /// frames only wait for and handle events (AppConfig::minimizedEventWait). Returns the exit code given to
-    /// quit() (0 by default), or 1 at once if initialization failed.
+    /// events -> fixedUpdate x N -> update -> render -> submit and present. With the debug UI open, its
+    /// frame starts after the events and its windows are drawn over the frame's image after render. While the
+    /// window is minimized, frames only wait for and handle events (AppConfig::minimizedEventWait). Returns
+    /// the exit code given to quit() (0 by default), or 1 at once if initialization failed.
     [[nodiscard]] int run(const AppCallbacks& callbacks = {});
 
     /// Runs frames like run(callbacks), with `scene` active from the first frame. `scene` must come from
@@ -192,6 +219,20 @@ public:
     [[nodiscard]] scene::SceneManager& scenes() noexcept { return m_scenes; }
     [[nodiscard]] const scene::SceneManager& scenes() const noexcept { return m_scenes; }
 
+#if TESERRA_WITH_DEBUG_UI
+    /// The debug UI; AppConfig::debugUi.enabled must be true (asserted). Games add windows of their own with
+    /// addWindow(); the App adds "Stats" (frame times, fixed steps, the active scene, sizes). While it is
+    /// open, ImGui:: calls work in the frame's events, the active scene's phases from PreUpdate to Extract,
+    /// and the callbacks (not render); its windows are drawn after them. While it is closed, frames run no
+    /// ImGui at all. Mouse buttons and wheel over its windows, and keys and text while one of its text fields
+    /// has focus, do not reach input() or AppCallbacks::onEvent (releases always do).
+    [[nodiscard]] debugui::DebugUi& debugUi();
+    [[nodiscard]] bool isDebugUiOpen() const noexcept { return m_debugUiOpen; }
+    /// Opens or closes the debug UI, as its toggle key does; from the next frame if a frame is underway.
+    /// Nothing happens if it is disabled.
+    void setDebugUiOpen(bool open);
+#endif
+
 private:
     void start(Result<std::unique_ptr<platform::Platform>> platform);
     Result<void> initialize(Result<std::unique_ptr<platform::Platform>> platform);
@@ -209,6 +250,18 @@ private:
     void render(const AppCallbacks& callbacks, scene::Scene* active);
     // Whether the window has no image to render into: a device with a swapchain of zero size.
     [[nodiscard]] bool hasNoImage() const noexcept;
+#if TESERRA_WITH_DEBUG_UI
+    // Whether `event` is the debug UI's (its toggle key, or input its windows use), so the game does not
+    // see it. Feeds it to the debug UI while open.
+    [[nodiscard]] bool debugUiTakes(const platform::Event& event);
+    // Starts the debug UI's frame if it is open.
+    void beginDebugUiFrame();
+    // Draws its windows and ends its frame, if one was started.
+    void endDebugUiFrame();
+    // Draws the debug UI's frame over `output`, if this frame built one.
+    void renderDebugUi(const renderer::FrameTarget& output, rhi::CommandList& commands);
+    void drawStatsWindow();
+#endif
 
     AppConfig m_config;
     std::optional<Error> m_initError;
@@ -238,6 +291,23 @@ private:
     bool m_paused = false;
     bool m_quitting = false;
     int m_exitCode = 0;
+#if TESERRA_WITH_DEBUG_UI
+    // Frame times in milliseconds for the Stats window, a ring of the last kFrameTimeCount frames.
+    static constexpr usize kFrameTimeCount = 120;
+    std::unique_ptr<debugui::DebugUi> m_debugUi;
+    // An overlay-only renderer that draws the debug UI over the frame, whoever drew the frame; after the
+    // device, created the first time the debug UI is drawn.
+    std::unique_ptr<renderer::Renderer> m_debugRenderer;
+    debugui::ImGuiPass* m_imguiPass = nullptr; // owned by m_debugRenderer
+    bool m_debugRendererFailed = false;
+    bool m_debugUiOpen = false;
+    bool m_debugUiBuilt = false;   // this frame's debug UI frame ended, with draw data to render
+    bool m_dropToggleText = false; // the text of the toggle key, which follows its press
+    std::array<f32, kFrameTimeCount> m_frameTimes{};
+    usize m_frameTimeNext = 0;
+    usize m_frameTimesRecorded = 0;
+    u32 m_lastFixedSteps = 0;
+#endif
 };
 
 } // namespace teserra::engine

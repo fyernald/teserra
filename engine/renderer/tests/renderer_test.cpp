@@ -3,7 +3,8 @@
 // camera is uploaded at an aligned offset of the frame's ring partition and bound at set 0 with that offset;
 // the scene target (color and depth) follows the output or a fixed resolution, and is recreated on resize
 // without leaks; camera targets are created and destroyed; the composite pass scales by whole factors with
-// a letterbox; and a steady-state frame allocates nothing.
+// a letterbox; overlay passes run after the composite, or alone with renderOverlays(); and a steady-state
+// frame allocates nothing.
 
 #include <teserra/renderer/renderer.hpp>
 
@@ -90,11 +91,16 @@ struct Scene {
         return {.texture = texture, .format = rhi::Format::Rgba8Srgb, .size = size};
     }
 
-    // Renders one frame and returns its commands as describeCommands() lines.
-    std::vector<std::string> render(const FramePacket& packet) {
+    // Renders one frame and returns its commands as describeCommands() lines; with `overlaysOnly`, through
+    // renderOverlays().
+    std::vector<std::string> render(const FramePacket& packet, bool overlaysOnly = false) {
         device->beginFrame();
         rhi::CommandList& commands = device->acquireCommandList();
-        renderer->render(packet, target, commands);
+        if (overlaysOnly) {
+            renderer->renderOverlays(target, commands);
+        } else {
+            renderer->render(packet, target, commands);
+        }
         device->submit(commands);
         const std::string described = rhi::describeCommands(*device->submitted()[0]);
         device->endFrame();
@@ -169,6 +175,60 @@ TEST_CASE("Renderer: passes run in the order they were added, each in a debug gr
                                                                "PushDebugGroup \"Composite\"",
                                                            });
     CHECK(lines.back() == "PopDebugGroup");
+}
+
+// An overlay pass that records its name and the output it was given, and uses the upload ring.
+std::unique_ptr<RenderPass> overlayPass(std::string_view name, std::vector<std::string>& ran,
+                                        rhi::TextureHandle& output) {
+    return std::make_unique<TestPass>(
+        name, [](PassBuilder& builder) { builder.writes(PassResource::Output); },
+        [&ran, &output, name](PassContext& context, rhi::CommandList& /*commands*/) {
+            ran.emplace_back(name);
+            output = context.target(PassResource::Output).texture;
+            CHECK(context.uploads().allocate(64, 16).has_value());
+            CHECK(context.views().empty());
+        });
+}
+
+TEST_CASE("Renderer: overlay passes run after the composite, in the order they were added", "[renderer]") {
+    Scene scene;
+    std::vector<std::string> ran;
+    rhi::TextureHandle output;
+    scene.renderer->addPass(viewsPass("Scene2D"));
+    scene.renderer->addOverlayPass(overlayPass("First overlay", ran, output));
+    scene.renderer->addOverlayPass(overlayPass("Second overlay", ran, output));
+
+    const std::vector<std::string> groups = linesStartingWith(scene.render({}), {"PushDebugGroup"});
+
+    CHECK(groups == std::vector<std::string>{R"(PushDebugGroup "Scene2D")", R"(PushDebugGroup "Composite")",
+                                             R"(PushDebugGroup "First overlay")",
+                                             R"(PushDebugGroup "Second overlay")"});
+    CHECK(ran == std::vector<std::string>{"First overlay", "Second overlay"});
+    CHECK(output == scene.target.texture);
+}
+
+TEST_CASE("Renderer: renderOverlays() runs only the overlay passes, with the frame's upload memory",
+          "[renderer]") {
+    Scene scene;
+    std::vector<std::string> ran;
+    rhi::TextureHandle output;
+    bool scenePassRan = false;
+    scene.renderer->addPass(std::make_unique<TestPass>(
+        "Scene2D", [](PassBuilder& builder) { builder.writes(PassResource::SceneColor); },
+        [&](PassContext& /*context*/, rhi::CommandList& /*commands*/) { scenePassRan = true; }));
+    scene.renderer->addOverlayPass(overlayPass("Overlay", ran, output));
+
+    // Several frames, so the ring's partitions are each started once per frame (allocate() asserts
+    // otherwise).
+    for (int frame = 0; frame < 4; ++frame) {
+        const std::vector<std::string> groups =
+            linesStartingWith(scene.render({}, /*overlaysOnly=*/true), {"PushDebugGroup"});
+        CHECK(groups == std::vector<std::string>{R"(PushDebugGroup "Overlay")"});
+    }
+
+    CHECK(ran.size() == 4);
+    CHECK_FALSE(scenePassRan);
+    CHECK(output == scene.target.texture);
 }
 
 TEST_CASE("Renderer: views are sorted by order and their cameras bound at set 0", "[renderer]") {

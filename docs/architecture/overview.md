@@ -109,14 +109,16 @@ sequenceDiagram
     participant Scene
     participant Renderer
     participant Device as rhi::Device
-    App->>Platform: pollEvents() → Input updated
+    App->>Platform: pollEvents() → Input updated (debug UI input filtered out)
+    App->>App: debug UI frame begins (if open)
     loop fixed steps (accumulator)
         App->>Scene: run FixedUpdate systems
     end
     App->>Scene: run Update / PostUpdate systems
     App->>Scene: extract render data (sprites, tilemaps, cameras)
+    App->>App: debug UI windows drawn, its frame ends (if open)
     App->>Renderer: beginFrame() (waits for frame slot fence)
-    Renderer->>Device: record passes into CommandList(s)
+    Renderer->>Device: record passes into CommandList(s), then the debug UI over them
     Renderer->>Device: submit + present
     App->>Scene: flush deferred commands, clear frame events
 ```

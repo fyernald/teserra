@@ -13,7 +13,11 @@
 #if TESERRA_HAS_RHI_OPENGL
 #include <teserra/rhi_opengl/opengl_backend.hpp>
 #endif
+#if TESERRA_WITH_DEBUG_UI
+#include <teserra/debug_ui/imgui_pass.hpp>
+#endif
 
+#include <algorithm>
 #include <array>
 #include <charconv>
 #include <memory>
@@ -35,6 +39,8 @@ Result<void> applyCommandLine(AppConfig& config) {
         const std::string_view arg = args.argv[i];
         if (arg == "--hidden-window") {
             config.windowVisible = false;
+        } else if (arg == "--debug-ui") {
+            config.debugUi.startOpen = true;
         } else if (arg == "--frames") {
             if (i + 1 >= args.argc) {
                 return fail(ErrorCode::InvalidArgument, Module::App, "--frames needs a frame count");
@@ -137,6 +143,14 @@ Result<void> App::initialize(Result<std::unique_ptr<platform::Platform>> platfor
     if (m_device) {
         TESERRA_TRY(renderer::registerAssetLoaders(*m_assets, *m_device));
     }
+
+#if TESERRA_WITH_DEBUG_UI
+    if (m_config.debugUi.enabled) {
+        TESERRA_TRY_ASSIGN(m_debugUi, debugui::DebugUi::create({.contentScale = m_window->contentScale().x}));
+        m_debugUi->addWindow("Stats", [this] { drawStatsWindow(); });
+        setDebugUiOpen(m_config.debugUi.startOpen);
+    }
+#endif
     return {};
 }
 
@@ -236,6 +250,11 @@ void App::updateAndRender(const AppCallbacks& callbacks) {
     {
         TESERRA_PROFILE_SCOPE("Events");
         for (const platform::Event& event : m_events) {
+#if TESERRA_WITH_DEBUG_UI
+            if (debugUiTakes(event)) {
+                continue;
+            }
+#endif
             m_input.processEvent(event);
             if (callbacks.onEvent) {
                 callbacks.onEvent(*this, event);
@@ -257,6 +276,12 @@ void App::updateAndRender(const AppCallbacks& callbacks) {
     if (m_paused) {
         return;
     }
+#if TESERRA_WITH_DEBUG_UI
+    m_frameTimes[m_frameTimeNext] = m_frameTimer.deltaSeconds() * 1000.0F;
+    m_frameTimeNext = (m_frameTimeNext + 1) % kFrameTimeCount;
+    m_frameTimesRecorded = std::min(m_frameTimesRecorded + 1, kFrameTimeCount);
+    beginDebugUiFrame();
+#endif
     if (active != nullptr) {
         active->time().advance(m_frameTimer.deltaSeconds(), m_fixedStep.stepSeconds());
         ecs::World& world = active->world();
@@ -269,6 +294,9 @@ void App::updateAndRender(const AppCallbacks& callbacks) {
     runPhase(ecs::Phase::PreUpdate);
 
     const u32 steps = m_fixedStep.advance(m_frameTimer.delta());
+#if TESERRA_WITH_DEBUG_UI
+    m_lastFixedSteps = steps;
+#endif
     if (m_fixedStep.lastDroppedSteps() != 0) {
         TESERRA_LOG_WARN(LogCategory::App, "Frame took {} ms: skipped {} fixed steps to catch up",
                          std::chrono::duration_cast<std::chrono::milliseconds>(m_frameTimer.delta()).count(),
@@ -301,6 +329,9 @@ void App::updateAndRender(const AppCallbacks& callbacks) {
         }
     }
     runPhase(ecs::Phase::Extract);
+#if TESERRA_WITH_DEBUG_UI
+    endDebugUiFrame();
+#endif
 
     render(callbacks, active);
     runPhase(ecs::Phase::Last);
@@ -333,6 +364,10 @@ void App::render(const AppCallbacks& callbacks, scene::Scene* active) {
                 {.colorAttachments = {{.texture = m_backbuffer, .loadOp = rhi::LoadOp::Clear}}});
             commands.endRenderPass();
         }
+#if TESERRA_WITH_DEBUG_UI
+        renderDebugUi({.texture = m_backbuffer, .format = swapchain->format(), .size = swapchain->size()},
+                      commands);
+#endif
         device.submit(commands);
         // With vsync, presenting is what paces the loop.
         TESERRA_PROFILE_SCOPE("Present");
@@ -423,6 +458,150 @@ platform::Window& App::window() {
     TESERRA_ASSERT(isInitialized(), "The App failed to initialize: {}", *m_initError);
     return *m_window;
 }
+
+#if TESERRA_WITH_DEBUG_UI
+debugui::DebugUi& App::debugUi() {
+    TESERRA_ASSERT(isInitialized(), "The App failed to initialize: {}", *m_initError);
+    TESERRA_ASSERT(m_debugUi != nullptr, "The debug UI is disabled: AppConfig::debugUi.enabled is false");
+    return *m_debugUi;
+}
+
+void App::setDebugUiOpen(bool open) {
+    if (m_debugUi == nullptr || open == m_debugUiOpen) {
+        return;
+    }
+    m_debugUiOpen = open;
+    if (open) {
+        // ImGui saw no input while closed: keys and buttons it thinks held are released, and the cursor is
+        // where the game's input last saw it.
+        m_debugUi->processEvent(platform::FocusChanged{.focused = false});
+        m_debugUi->processEvent(platform::FocusChanged{.focused = true});
+        m_debugUi->processEvent(platform::MouseMoved{.position = m_input.mousePosition()});
+    }
+}
+
+bool App::debugUiTakes(const platform::Event& event) {
+    if (m_debugUi == nullptr) {
+        return false;
+    }
+    const platform::Key toggleKey = m_config.debugUi.toggleKey;
+    if (const auto* key = std::get_if<platform::KeyChanged>(&event);
+        key != nullptr && toggleKey != platform::Key::Unknown && key->key == toggleKey) {
+        if (key->down && !key->repeat) {
+            setDebugUiOpen(!m_debugUiOpen);
+            m_dropToggleText = true;
+        }
+        return true;
+    }
+    // The text the toggle key typed comes right after its press.
+    if (std::exchange(m_dropToggleText, false) && std::holds_alternative<platform::TextEntered>(event)) {
+        return true;
+    }
+    if (!m_debugUiOpen) {
+        return false;
+    }
+    m_debugUi->processEvent(event);
+    // As of the debug UI's last frame, like ImGui's own backends. Releases always reach the game, so that
+    // nothing it saw pressed stays held.
+    const bool mouse = m_debugUi->wantsMouse();
+    const bool keyboard = m_debugUi->wantsKeyboard();
+    if (const auto* button = std::get_if<platform::MouseButtonChanged>(&event)) {
+        return mouse && button->down;
+    }
+    if (std::holds_alternative<platform::MouseScrolled>(event)) {
+        return mouse;
+    }
+    if (const auto* key = std::get_if<platform::KeyChanged>(&event)) {
+        return keyboard && key->down;
+    }
+    if (std::holds_alternative<platform::TextEntered>(event)) {
+        return keyboard;
+    }
+    return false;
+}
+
+void App::beginDebugUiFrame() {
+    m_debugUiBuilt = false;
+    if (m_debugUi == nullptr || !m_debugUiOpen) {
+        return;
+    }
+    TESERRA_PROFILE_SCOPE("Debug UI begin frame");
+    const UVec2 windowSize = m_window->windowSize();
+    const UVec2 framebufferSize = m_window->framebufferSize();
+    const Vec2 scale =
+        windowSize.x != 0 && windowSize.y != 0 ? Vec2(framebufferSize) / Vec2(windowSize) : Vec2{1.0F};
+    m_debugUi->beginFrame(Vec2(windowSize), scale, m_frameTimer.deltaSeconds());
+}
+
+void App::endDebugUiFrame() {
+    if (m_debugUi == nullptr || !m_debugUi->inFrame()) {
+        return;
+    }
+    TESERRA_PROFILE_SCOPE("Debug UI end frame");
+    if (m_debugUiOpen) { // the game may have closed it during the frame
+        m_debugUi->drawWindows();
+    }
+    m_debugUi->endFrame();
+    m_debugUiBuilt = m_debugUiOpen;
+}
+
+void App::renderDebugUi(const renderer::FrameTarget& output, rhi::CommandList& commands) {
+    if (!m_debugUiBuilt || m_debugRendererFailed) {
+        return;
+    }
+    if (m_debugRenderer == nullptr) {
+        const auto create = [&]() -> Result<void> {
+            // ImGui's vertices and indices; a busy debug UI uses a few hundred kilobytes a frame.
+            TESERRA_TRY_ASSIGN(
+                m_debugRenderer,
+                renderer::Renderer::create(*m_device, {.uploadBytesPerFrame = u64{2} * 1024 * 1024}));
+            TESERRA_TRY_ASSIGN(std::unique_ptr<debugui::ImGuiPass> pass,
+                               debugui::ImGuiPass::create(*m_device));
+            m_imguiPass = pass.get();
+            m_debugRenderer->addOverlayPass(std::move(pass));
+            return {};
+        };
+        if (Result<void> created = create(); !created) {
+            TESERRA_LOG_ERROR(LogCategory::App, "Cannot create the debug UI's renderer: {}", created.error());
+            m_debugRenderer.reset();
+            m_imguiPass = nullptr;
+            m_debugRendererFailed = true;
+            return;
+        }
+    }
+    TESERRA_PROFILE_SCOPE("Debug UI");
+    m_imguiPass->setDrawData(m_debugUi->drawData());
+    m_debugRenderer->renderOverlays(output, commands);
+}
+
+void App::drawStatsWindow() {
+    const usize count = m_frameTimesRecorded;
+    f32 total = 0.0F;
+    f32 longest = 0.0F;
+    for (usize i = 0; i < count; ++i) {
+        total += m_frameTimes[i];
+        longest = std::max(longest, m_frameTimes[i]);
+    }
+    const f32 average = count != 0 ? total / static_cast<f32>(count) : 0.0F;
+    ImGui::Text("%.0f FPS (%.2f ms)", static_cast<double>(average > 0.0F ? 1000.0F / average : 0.0F),
+                static_cast<double>(average));
+    // Oldest first: once the ring is full, the next slot holds the oldest time.
+    const int offset = count == kFrameTimeCount ? static_cast<int>(m_frameTimeNext) : 0;
+    ImGui::PlotLines("##frame times", m_frameTimes.data(), static_cast<int>(count), offset, "frame ms", 0.0F,
+                     std::max(longest * 1.25F, 1000.0F / 30.0F), ImVec2(0.0F, ImGui::GetFontSize() * 4.0F));
+    ImGui::Text("Fixed steps this frame: %u", m_lastFixedSteps);
+    if (const scene::Scene* active = m_scenes.active()) {
+        ImGui::Text("Scene: %.*s, %llu entities", static_cast<int>(active->name().size()),
+                    active->name().data(), static_cast<unsigned long long>(active->world().entityCount()));
+    } else {
+        ImGui::TextUnformatted("Scene: none");
+    }
+    const UVec2 windowSize = m_window->windowSize();
+    const UVec2 framebufferSize = m_window->framebufferSize();
+    ImGui::Text("Window %u x %u, framebuffer %u x %u", windowSize.x, windowSize.y, framebufferSize.x,
+                framebufferSize.y);
+}
+#endif
 
 rhi::Device& App::device() {
     TESERRA_ASSERT(isInitialized(), "The App failed to initialize: {}", *m_initError);
