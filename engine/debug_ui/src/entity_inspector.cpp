@@ -46,8 +46,9 @@ template <typename T>
 }
 
 // "index:generation", the way entities are formatted elsewhere.
-void formatEntity(ecs::Entity entity, std::array<char, 32>& out) noexcept {
-    const auto result = std::format_to_n(out.data(), out.size() - 1, "{}", entity);
+void formatEntity(ecs::Entity entity, std::array<char, 32>& out) {
+    const auto result =
+        std::format_to_n(out.data(), static_cast<std::ptrdiff_t>(out.size() - 1), "{}", entity);
     *result.out = '\0';
 }
 
@@ -227,7 +228,7 @@ void EntityInspector::drawInspector(scene::SceneManager& scenes) {
             if (field.type == ecs::FieldType::Entity) {
                 const auto target = readField<ecs::Entity>(field, data);
                 if (world.isAlive(target)) {
-                    ImGui::PushID(field.name.data());
+                    ImGui::PushID(field.name.data(), field.name.data() + field.name.size());
                     if (ImGui::SmallButton(value.c_str())) {
                         nextScene = &scene;
                         next = target;

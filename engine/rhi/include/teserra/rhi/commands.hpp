@@ -104,9 +104,8 @@ struct BufferTextureCopy {
 // ---------------------------------------------------------------------------------------------------------
 // Records
 
-/// The command a record holds.
-// NOLINTNEXTLINE(performance-enum-size): the stream layout of spike #15 has a u16 type in the header
 /// The kind of each record of a command stream.
+// NOLINTNEXTLINE(performance-enum-size): the stream layout of spike #15 has a u16 type in the header
 enum class CommandType : u16 {
     BeginRenderPass,
     EndRenderPass,

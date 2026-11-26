@@ -48,8 +48,8 @@ constexpr std::array<std::string_view, 18> kLevel{
 };
 
 // Tile ids of the tileset: cell + 1.
-constexpr scene::TileId kFloorTile = kFloor + 1;
-constexpr scene::TileId kWallTile = kWall + 1;
+constexpr scene::TileId kFloorTile = Floor + 1;
+constexpr scene::TileId kWallTile = Wall + 1;
 
 // Sprite layers, bottom to top.
 constexpr teserra::i16 kPropLayer = 1;
@@ -180,12 +180,12 @@ void react(ecs::SystemContext& ctx) {
     // The HUD fills up, and the last coin opens the door.
     for (auto [entity, renderer, slot] : ctx.view<scene::SpriteRenderer, const HudSlot>()) {
         renderer.uv =
-            scene::spriteFromSheet(state.tileset->sheet(), slot.index < state.coins ? kCoin : kCoinSlot).uv;
+            scene::spriteFromSheet(state.tileset->sheet(), slot.index < state.coins ? Coin : CoinSlot).uv;
     }
     if (state.coins == state.totalCoins) {
         for (auto [entity, renderer, touched] : ctx.view<scene::SpriteRenderer, const Touch>()) {
             if (touched.kind == TouchKind::Goal) {
-                renderer.uv = scene::spriteFromSheet(state.tileset->sheet(), kDoorOpen).uv;
+                renderer.uv = scene::spriteFromSheet(state.tileset->sheet(), DoorOpen).uv;
             }
         }
         TESERRA_LOG_INFO(LogCategory::App, "Every coin collected: the door is open");
@@ -245,20 +245,20 @@ void buildLevel(scene::Scene& level, const scene::Tileset& tileset) {
                     state.start = at;
                     break;
                 case 'c': {
-                    const ecs::Entity coin = spawnSprite(level, tileset, kCoin, at, kCoinLayer);
+                    const ecs::Entity coin = spawnSprite(level, tileset, Coin, at, kCoinLayer);
                     level.add<scene::Collider>(coin, scene::Collider{.size = Vec2{0.5F}});
                     level.add<Touch>(coin, Touch{.kind = TouchKind::Coin});
                     ++state.totalCoins;
                     break;
                 }
                 case 'x': {
-                    const ecs::Entity spikes = spawnSprite(level, tileset, kSpikes, at, kPropLayer);
+                    const ecs::Entity spikes = spawnSprite(level, tileset, Spikes, at, kPropLayer);
                     level.add<scene::Collider>(spikes, scene::Collider{.size = Vec2{0.75F}});
                     level.add<Touch>(spikes, Touch{.kind = TouchKind::Hazard});
                     break;
                 }
                 case 'e': {
-                    const ecs::Entity slime = spawnSprite(level, tileset, kSlime, at, kSlimeLayer);
+                    const ecs::Entity slime = spawnSprite(level, tileset, Slime, at, kSlimeLayer);
                     level.add<scene::Collider>(
                         slime, scene::Collider{.size = {0.8F, 0.5F}, .offset = {0.0F, -0.2F}});
                     level.add<Touch>(slime, Touch{.kind = TouchKind::Hazard});
@@ -266,7 +266,7 @@ void buildLevel(scene::Scene& level, const scene::Tileset& tileset) {
                     break;
                 }
                 case 'G': {
-                    const ecs::Entity door = spawnSprite(level, tileset, kDoorClosed, at, kPropLayer);
+                    const ecs::Entity door = spawnSprite(level, tileset, DoorClosed, at, kPropLayer);
                     level.add<scene::Collider>(door, scene::Collider{.size = Vec2{0.5F}});
                     level.add<Touch>(door, Touch{.kind = TouchKind::Goal});
                     break;
@@ -277,7 +277,7 @@ void buildLevel(scene::Scene& level, const scene::Tileset& tileset) {
         }
     }
 
-    state.player = spawnSprite(level, tileset, kHero, state.start, kHeroLayer);
+    state.player = spawnSprite(level, tileset, Hero, state.start, kHeroLayer);
     level.add<scene::Collider>(state.player, scene::Collider{.size = Vec2{0.75F}});
     level.add<Player>(state.player, Player{.position = state.start});
 
@@ -290,7 +290,7 @@ void buildLevel(scene::Scene& level, const scene::Tileset& tileset) {
     level.add<CameraFollow>(camera);
     for (u32 index = 0; index < state.totalCoins; ++index) {
         const Vec2 at{(-kViewWidth * 0.5F) + 0.75F + static_cast<f32>(index), (kViewHeight * 0.5F) - 0.75F};
-        const ecs::Entity slot = spawnSprite(level, tileset, kCoinSlot, at, kHudLayer);
+        const ecs::Entity slot = spawnSprite(level, tileset, CoinSlot, at, kHudLayer);
         level.add<HudSlot>(slot, HudSlot{.index = index});
         scene::setParent(level.world(), slot, camera);
     }
