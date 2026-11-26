@@ -5,10 +5,12 @@ teserra_add_module(debug_ui LAYER 6
     PUBLIC_HEADERS
         include/teserra/debug_ui/debug_ui.hpp
         include/teserra/debug_ui/imgui_pass.hpp
+        include/teserra/debug_ui/log_console.hpp
     SOURCES
         src/debug_ui.cpp
         src/imgui_input.cpp
         src/imgui_pass.cpp
+        src/log_console.cpp
 )
 
 # PUBLIC: games write their own debug windows with ImGui:: calls (ADR-0013); no module below this one sees

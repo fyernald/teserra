@@ -25,6 +25,7 @@
 #include <teserra/scene/scene_manager.hpp>
 #if TESERRA_WITH_DEBUG_UI
 #include <teserra/debug_ui/debug_ui.hpp>
+#include <teserra/debug_ui/log_console.hpp>
 #endif
 
 #include <array>
@@ -231,6 +232,9 @@ public:
     /// Opens or closes the debug UI, as its toggle key does; from the next frame if a frame is underway.
     /// Nothing happens if it is disabled.
     void setDebugUiOpen(bool open);
+    /// The debug UI's log console (its "Log" window): every message logged since the App was initialized,
+    /// up to the last 2000. The debug UI must be enabled (asserted).
+    [[nodiscard]] debugui::LogConsole& logConsole();
 #endif
 
 private:
@@ -295,6 +299,7 @@ private:
     // Frame times in milliseconds for the Stats window, a ring of the last kFrameTimeCount frames.
     static constexpr usize kFrameTimeCount = 120;
     std::unique_ptr<debugui::DebugUi> m_debugUi;
+    std::unique_ptr<debugui::LogConsole> m_logConsole;
     // An overlay-only renderer that draws the debug UI over the frame, whoever drew the frame; after the
     // device, created the first time the debug UI is drawn.
     std::unique_ptr<renderer::Renderer> m_debugRenderer;
