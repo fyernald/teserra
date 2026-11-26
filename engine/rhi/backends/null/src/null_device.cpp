@@ -265,6 +265,9 @@ Result<GraphicsPipelineHandle> NullDevice::createGraphicsPipeline(const Graphics
     if (const StoredPipelineLayout* layout = storedPipelineLayout(desc.layout)) {
         object->pipelineLayout = *layout;
     }
+    if (m_validate) {
+        object->pipelineLayout.uniformBlocks = uniformBlocksOf(desc, NullLookup(*this));
+    }
     return m_pipelines.create(std::move(object));
 }
 

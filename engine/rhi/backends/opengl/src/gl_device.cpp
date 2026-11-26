@@ -594,6 +594,9 @@ Result<GraphicsPipelineHandle> GlDevice::createGraphicsPipeline(const GraphicsPi
     if (const StoredPipelineLayout* layout = m_pipelineLayouts.tryGet(desc.layout)) {
         pipeline.layout = *layout;
     }
+    if (m_validate) {
+        pipeline.layout.uniformBlocks = uniformBlocksOf(desc, GlLookup(*this));
+    }
     return m_pipelines.create(std::move(pipeline));
 }
 

@@ -514,6 +514,56 @@ TEST_CASE("Null backend: draws need compatible bind groups at the pipeline's set
           std::format("bindGroup 'Frame' uses buffer {} at binding 0, which is not alive", scene.uniforms));
 }
 
+TEST_CASE("Null backend: draws need uniform ranges that cover the shader's blocks",
+          "[rhi_null][validation]") {
+    const auto device = null::createHeadlessDevice({.enableValidation = true});
+    // The frame block is 64 bytes and the draw block 64 bytes (BindingScene's shaders); its groups bind
+    // exactly that much, which passes.
+    const BindingScene scene(*device);
+    submitFrame(*device, [&](CommandList& cmd) { scene.record(cmd); });
+
+    const auto frameGroupWith = [&](BufferBinding range) {
+        const std::array resources{BindGroupEntry{.binding = 0, .buffer = range}};
+        return *device->createBindGroup(
+            {.layout = scene.frameLayout, .entries = resources, .debugName = "Short frame"});
+    };
+    const auto drawWith = [&](BindGroupHandle frame) {
+        device->beginFrame();
+        CommandList& cmd = device->acquireCommandList();
+        cmd.beginRenderPass({.colorAttachments = {{.texture = scene.target}}});
+        cmd.bindPipeline(scene.pipeline);
+        cmd.bindGroup(kFrameGroup, frame);
+        const std::array offsets{u32{0}};
+        cmd.bindGroup(kDrawGroup, scene.drawGroup, offsets);
+        cmd.draw({.vertexCount = 3});
+        cmd.endRenderPass();
+        std::string message = failureOf([&] { device->submit(cmd); });
+        device->endFrame();
+        return message;
+    };
+
+    CHECK(drawWith(frameGroupWith({.buffer = scene.uniforms, .size = 32})) ==
+          "draw with pipeline 'Sprites' reads uniform block 'Frame' at (set 0, binding 0) as 64 bytes, but "
+          "bind group 'Short frame' binds 32 bytes there");
+    // Size 0 binds the rest of the buffer: 32 bytes from offset 256 of 288.
+    const BufferHandle small = *device->createBuffer({.sizeInBytes = 288, .usage = BufferUsage::Uniform});
+    CHECK(drawWith(frameGroupWith({.buffer = small, .offset = 256})) ==
+          "draw with pipeline 'Sprites' reads uniform block 'Frame' at (set 0, binding 0) as 64 bytes, but "
+          "bind group 'Short frame' binds 32 bytes there");
+
+    // The rest of the buffer from offset 0 covers the block.
+    const BindGroupHandle whole = frameGroupWith({.buffer = scene.uniforms});
+    submitFrame(*device, [&](CommandList& cmd) {
+        cmd.beginRenderPass({.colorAttachments = {{.texture = scene.target}}});
+        cmd.bindPipeline(scene.pipeline);
+        cmd.bindGroup(kFrameGroup, whole);
+        const std::array offsets{u32{0}};
+        cmd.bindGroup(kDrawGroup, scene.drawGroup, offsets);
+        cmd.draw({.vertexCount = 3});
+        cmd.endRenderPass();
+    });
+}
+
 TEST_CASE("Null backend: uniform buffer offsets follow the device's alignment and range limits",
           "[rhi_null][validation]") {
     const auto device = null::createHeadlessDevice({.enableValidation = true});
