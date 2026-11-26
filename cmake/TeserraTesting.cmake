@@ -229,3 +229,33 @@ target_link_libraries(teserra_test_support PUBLIC teserra_core Catch2::Catch2)
 # programs log either at error level, which their FAIL_REGULAR_EXPRESSION would otherwise catch; CTest gives
 # the skip expression precedence. CI requires every test to run, so a skip there still fails the job.
 set(TESERRA_SMOKE_SKIP_REGEX "OpenGL 4[.]5 core context|Cannot initialize GLFW")
+
+# teserra_add_smoke_run(<name> TARGET <target> FRAMES <count>)
+#
+# Smoke runs of an example or a game (docs/guides/testing-strategy.md#example-smoke-runs). examples.<name>
+# runs <target> for <count> frames in a hidden window from its build directory; it must exit with 0 and log
+# nothing at Error or above, which includes OpenGL debug errors and RHI validation. With
+# TESERRA_WITH_DEBUG_UI, examples.<name>.debug_ui does the same with the debug UI open (--debug-ui). Machines
+# without a window system or an OpenGL 4.5 driver report them skipped (TESERRA_SMOKE_SKIP_REGEX).
+function(teserra_add_smoke_run name)
+    cmake_parse_arguments(PARSE_ARGV 1 arg "" "TARGET;FRAMES" "")
+    if(NOT arg_TARGET OR NOT arg_FRAMES)
+        message(FATAL_ERROR "teserra_add_smoke_run(${name}): TARGET and FRAMES are required")
+    endif()
+    add_test(NAME examples.${name}
+             COMMAND ${arg_TARGET} --frames ${arg_FRAMES} --hidden-window
+             WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
+    set(runs examples.${name})
+    if(TESERRA_WITH_DEBUG_UI)
+        add_test(NAME examples.${name}.debug_ui
+                 COMMAND ${arg_TARGET} --frames ${arg_FRAMES} --hidden-window --debug-ui
+                 WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
+        list(APPEND runs examples.${name}.debug_ui)
+    endif()
+    set_tests_properties(${runs} PROPERTIES
+        # "[error]" / "[critical]" level tags; [[] matches a literal '[' without escaping.
+        FAIL_REGULAR_EXPRESSION "[[](error|critical)]"
+        SKIP_REGULAR_EXPRESSION "${TESERRA_SMOKE_SKIP_REGEX}"
+        LABELS "examples"
+    )
+endfunction()

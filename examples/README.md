@@ -1,6 +1,6 @@
 # Examples
 
-Each folder is one runnable program, built with the engine when Teserra is the top-level project (`TESERRA_BUILD_EXAMPLES`, on by default). After `cmake --workflow --preset windows-msvc-debug`, an example is at `build/windows-msvc-debug/examples/<name>/teserra_<name>.exe`. Every program with a window quits on Escape, and runs as a CTest smoke test with `--frames N --hidden-window` ([testing strategy](../docs/guides/testing-strategy.md#example-smoke-runs)).
+Each folder is one runnable program, built with the engine when Teserra is the top-level project (`TESERRA_BUILD_EXAMPLES`, on by default). After `cmake --workflow --preset windows-msvc-debug`, an example is at `build/windows-msvc-debug/examples/<name>/teserra_<name>.exe`. Every program with a window quits on Escape, opens the debug UI with the backtick key (`` ` ``, or `--debug-ui`), and runs as a CTest smoke test with `--frames N --hidden-window`, also with the debug UI open ([testing strategy](../docs/guides/testing-strategy.md#example-smoke-runs)).
 
 To start a game of your own, use the [game template](../templates/minimal_game/README.md) and the [getting-started guide](../docs/guides/getting-started.md) instead: the examples live inside the engine's build.
 

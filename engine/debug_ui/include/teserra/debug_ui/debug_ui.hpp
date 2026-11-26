@@ -19,7 +19,12 @@
 #include <imgui.h>
 
 #include <array>
+#include <functional>
 #include <memory>
+#include <span>
+#include <string>
+#include <string_view>
+#include <vector>
 
 namespace teserra::debugui {
 
@@ -28,6 +33,14 @@ struct DebugUiConfig {
     /// The window's content scale (platform::Window::contentScale()): fonts and sizes grow with it, so the
     /// debug UI reads the same on a 150% display as on a 100% one.
     f32 contentScale = 1.0F;
+};
+
+/// A window of the debug UI, listed in its View menu (DebugUi::addWindow()).
+struct DebugWindow {
+    std::string name;
+    /// Makes the window's contents with ImGui:: calls, between its ImGui::Begin() and End().
+    std::function<void()> draw;
+    bool open = true;
 };
 
 /// Owns one Dear ImGui context, set up for Teserra's renderer backend (ImGuiPass): textures are created and
@@ -71,6 +84,17 @@ public:
     /// The ImGui context, for code that switches contexts itself.
     [[nodiscard]] ImGuiContext* context() const noexcept { return m_context; }
 
+    /// Adds a window titled `name`, which must be unique (asserted), whose contents `draw` makes every frame
+    /// the window is open. The View menu lists it and opens or closes it, as does its title bar's close
+    /// button.
+    void addWindow(std::string name, std::function<void()> draw, bool open = true);
+    /// The windows in the order they were added.
+    [[nodiscard]] std::span<const DebugWindow> windows() const noexcept { return m_windows; }
+    /// Opens or closes the window `name`; false if there is none.
+    bool setWindowOpen(std::string_view name, bool open);
+    /// Draws the main menu bar with the View menu, then every open window. Inside a frame (asserted).
+    void drawWindows();
+
 private:
     explicit DebugUi(ImGuiContext* context) noexcept
         : m_context(context) {}
@@ -79,6 +103,7 @@ private:
     bool m_inFrame = false;
     // Left and right Ctrl, Shift, Alt and Super held, for ImGui's modifier keys.
     std::array<bool, 8> m_modifiers{};
+    std::vector<DebugWindow> m_windows;
 };
 
 /// The ImGui key of an engine key; ImGuiKey_None for Key::Unknown and for keys ImGui has none for (World1).

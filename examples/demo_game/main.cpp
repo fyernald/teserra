@@ -6,9 +6,11 @@
 //   WASD / arrows   move
 //   F1              show the colliders
 //   Esc             back to the menu; quit from the menu
+//   `               the debug UI, with the engine's stats and the game's own window
 //
 //   teserra_demo_game                                  until Escape or close
 //   teserra_demo_game --frames 600 --hidden-window     smoke run
+//   teserra_demo_game --debug-ui                       with the debug UI open
 //
 // The game renders at 320x180 and is scaled by whole factors to the window. Its art is drawn in code
 // (art.cpp, font.cpp); its rules are components and systems (gameplay.cpp); its screens are scenes
@@ -21,6 +23,11 @@
 #include <teserra/renderer/assets.hpp>
 #include <teserra/rhi/sampler.hpp>
 #include <teserra/scene/tileset.hpp>
+#if TESERRA_WITH_DEBUG_UI
+#include <teserra/debug_ui/debug_ui.hpp>
+
+#include <imgui.h>
+#endif
 
 #include "art.hpp"
 #include "flow.hpp"
@@ -63,6 +70,26 @@ int main(int argc, char** argv) { // NOLINT(bugprone-exception-escape)
     }
 
     demo::Flow flow(app, *tileset);
+
+#if TESERRA_WITH_DEBUG_UI
+    // The game's own debug window, listed in the debug UI's View menu next to the engine's.
+    app.debugUi().addWindow("Game", [&app] {
+        scene::Scene* const active = app.scenes().active();
+        const demo::GameState* const state =
+            active != nullptr ? active->world().tryResource<demo::GameState>() : nullptr;
+        if (state == nullptr) {
+            ImGui::TextUnformatted("Not in a level");
+            return;
+        }
+        ImGui::Text("Coins: %u / %u", state->coins, state->totalCoins);
+        ImGui::Text("Deaths: %u", state->deaths);
+        ImGui::Text("Time: %.1f s", static_cast<double>(state->seconds));
+        if (const demo::Player* player = active->world().tryGet<demo::Player>(state->player)) {
+            ImGui::Text("Position: %.2f, %.2f", static_cast<double>(player->position.x),
+                        static_cast<double>(player->position.y));
+        }
+    });
+#endif
     const int exitCode = app.run(flow.start(), {.update = [&](engine::App&, f32) { flow.update(); }});
     log::flush();
     return exitCode;

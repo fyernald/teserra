@@ -10,6 +10,9 @@ teserra_add_test(engine
         app_window_test.cpp
     DEPENDS engine
 )
+if(TESERRA_WITH_DEBUG_UI)
+    target_sources(teserra_engine_tests PRIVATE app_debug_ui_test.cpp)
+endif()
 target_include_directories(teserra_engine_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
 # The tests of the OpenGL device path need to know whether the engine includes that backend.
 target_compile_definitions(teserra_engine_tests PRIVATE

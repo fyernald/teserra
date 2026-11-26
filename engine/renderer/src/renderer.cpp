@@ -241,17 +241,37 @@ UVec2 Renderer::targetSize(RenderTargetHandle target, UVec2 outputSize) const no
     return found != nullptr ? found->size : UVec2{0U};
 }
 
+void Renderer::runPass(PassContext& context, RenderPass& pass, const PassBuilder& declared,
+                       rhi::CommandList& commands) {
+    TESERRA_PROFILE_SCOPE_DYNAMIC(pass.name());
+    context.m_declared = &declared;
+    context.m_passName = pass.name();
+    commands.pushDebugGroup(context.m_passName);
+    pass.execute(context, commands);
+    commands.popDebugGroup();
+}
+
+void Renderer::runOverlays(const FramePacket& packet, const FrameTarget& output, rhi::CommandList& commands) {
+    PassContext context;
+    context.m_device = &m_device;
+    context.m_packet = &packet;
+    context.m_uploads = &m_uploads;
+    context.m_output = &output;
+    for (const Pass& overlay : m_overlays) {
+        runPass(context, *overlay.pass, overlay.declared, commands);
+    }
+}
+
+void Renderer::renderOverlays(const FrameTarget& output, rhi::CommandList& commands) {
+    TESERRA_PROFILE_FUNCTION();
+    m_uploads.beginFrame();
+    static const FramePacket kEmptyPacket{};
+    runOverlays(kEmptyPacket, output, commands);
+}
+
 void Renderer::render(const FramePacket& packet, const FrameTarget& output, rhi::CommandList& commands) {
     TESERRA_PROFILE_FUNCTION();
     m_uploads.beginFrame();
-    const auto run = [&](PassContext& context, RenderPass& pass, const PassBuilder& declared) {
-        TESERRA_PROFILE_SCOPE_DYNAMIC(pass.name());
-        context.m_declared = &declared;
-        context.m_passName = pass.name();
-        commands.pushDebugGroup(context.m_passName);
-        pass.execute(context, commands);
-        commands.popDebugGroup();
-    };
     if (!updateSceneTarget(output)) {
         // Nothing to draw into: the output shows the letterbox color, under the overlays.
         const Color clear = m_sceneConfig.letterboxColor;
@@ -260,14 +280,7 @@ void Renderer::render(const FramePacket& packet, const FrameTarget& output, rhi:
                                    .loadOp = rhi::LoadOp::Clear,
                                    .clearColor = {clear.r, clear.g, clear.b, clear.a}}}});
         commands.endRenderPass();
-        PassContext context;
-        context.m_device = &m_device;
-        context.m_packet = &packet;
-        context.m_uploads = &m_uploads;
-        context.m_output = &output;
-        for (const Pass& overlay : m_overlays) {
-            run(context, *overlay.pass, overlay.declared);
-        }
+        runOverlays(packet, output, commands);
         return;
     }
 
@@ -309,11 +322,11 @@ void Renderer::render(const FramePacket& packet, const FrameTarget& output, rhi:
     context.m_output = &output;
     context.m_viewTargets = m_viewTargets;
     for (const Pass& pass : m_passes) {
-        run(context, *pass.pass, pass.declared);
+        runPass(context, *pass.pass, pass.declared, commands);
     }
-    run(context, *m_composite, m_compositeDeclared); // it presents the scene target
+    runPass(context, *m_composite, m_compositeDeclared, commands); // it presents the scene target
     for (const Pass& overlay : m_overlays) {
-        run(context, *overlay.pass, overlay.declared);
+        runPass(context, *overlay.pass, overlay.declared, commands);
     }
 }
 

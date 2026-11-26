@@ -70,6 +70,10 @@ public:
     /// the device's beginFrame() and endFrame(). Views whose target was destroyed are left out (asserted). A
     /// steady-state frame allocates nothing.
     void render(const FramePacket& packet, const FrameTarget& output, rhi::CommandList& commands);
+    /// Records only the overlay passes into `output`, over what it already holds, for a frame whose scene
+    /// was drawn some other way (an App render callback) or by another renderer. Starts the frame's upload
+    /// memory like render(): call one of the two per frame, not both. Passes see an empty FramePacket.
+    void renderOverlays(const FrameTarget& output, rhi::CommandList& commands);
 
     /// Changes how the scene target is sized and presented, from the next render().
     void setSceneTarget(const SceneTargetConfig& config);
@@ -112,6 +116,11 @@ private:
     // Makes the scene target match the config and `output`; false if it could not be created.
     [[nodiscard]] bool updateSceneTarget(const FrameTarget& output);
     void destroyTextures(FrameTarget& target) noexcept;
+    // Runs `pass` inside a debug group named after it.
+    static void runPass(PassContext& context, RenderPass& pass, const PassBuilder& declared,
+                        rhi::CommandList& commands);
+    // Runs the overlay passes with a context that has no views or scene target.
+    void runOverlays(const FramePacket& packet, const FrameTarget& output, rhi::CommandList& commands);
 
     rhi::Device& m_device;
     UploadRing m_uploads;
