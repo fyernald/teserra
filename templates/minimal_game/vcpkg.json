@@ -4,7 +4,10 @@
   "version": "0.1.0",
   "description": "A minimal game on Teserra",
   "dependencies": [
-    "glfw3",
+    {
+      "name": "glfw3",
+      "features": [{ "name": "wayland", "platform": "linux" }]
+    },
     "glm",
     "glslang",
     "spdlog",
