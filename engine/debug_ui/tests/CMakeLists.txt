@@ -2,6 +2,7 @@ teserra_add_test(debug_ui
     SOURCES
         debug_ui_input_test.cpp
         debug_ui_windows_test.cpp
+        entity_inspector_test.cpp
         imgui_pass_test.cpp
         log_console_test.cpp
     # The null backend runs the pass without a GPU (docs/guides/testing-strategy.md#rhi-and-renderer-tests).

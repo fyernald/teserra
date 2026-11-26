@@ -7,6 +7,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <format>
@@ -14,6 +15,7 @@
 #include <new>
 #include <random>
 #include <set>
+#include <string_view>
 #include <vector>
 
 using namespace teserra;
@@ -318,3 +320,69 @@ TEST_CASE("World: random component operations match a reference model", "[ecs][c
         REQUIRE(std::set<Entity>(tagged.begin(), tagged.end()) == frozen);
     }
 }
+
+TEST_CASE("World::forEachComponent visits every component of an entity, read-only, tags included",
+          "[ecs][components]") {
+    World world;
+    const Entity entity = world.create();
+    const Entity other = world.create();
+    world.add<Position>(entity, Position{.x = 3, .y = 4});
+    world.add<Velocity>(entity, Velocity{.x = 1.5F});
+    world.add<Frozen>(entity);
+    world.add<game::Plain>(other);
+
+    std::vector<std::string_view> names;
+    const void* positionData = nullptr;
+    const void* frozenData = &names;
+    world.forEachComponent(entity, [&](const ComponentMeta& meta, const void* data) {
+        names.push_back(meta.name);
+        if (meta.name == "Position") {
+            positionData = data;
+            REQUIRE(meta.fields.size() == 2);
+        }
+        if (meta.name == "Frozen") {
+            frozenData = data;
+        }
+    });
+
+    std::ranges::sort(names);
+    CHECK(names == std::vector<std::string_view>{"Frozen", "Position", "Velocity"});
+    REQUIRE(positionData != nullptr);
+    CHECK(positionData == world.tryGet<Position>(entity));
+    const auto* position = static_cast<const Position*>(positionData);
+    CHECK(position->y == 4);
+    CHECK(frozenData == nullptr); // tags have no memory
+
+    world.destroy(other);
+    world.destroy(entity);
+    const Entity reused = world.create(); // the same index, a new generation, no components
+    int visited = 0;
+    world.forEachComponent(reused, [&](const ComponentMeta&, const void*) { ++visited; });
+    CHECK(visited == 0);
+}
+
+#if TESERRA_ENABLE_ASSERTS
+TEST_CASE("World::forEachComponent asserts on structural changes during the visit and on dead entities",
+          "[ecs][components]") {
+    World world;
+    const Entity entity = world.create();
+    world.add<Position>(entity);
+    world.add<Velocity>(entity);
+
+    REQUIRE_ASSERTS(
+        world.forEachComponent(entity, [&](const ComponentMeta&, const void*) { (void)world.create(); }));
+    REQUIRE_ASSERTS(
+        world.forEachComponent(entity, [&](const ComponentMeta&, const void*) { world.destroy(entity); }));
+    REQUIRE_ASSERTS(world.forEachComponent(entity, [&](const ComponentMeta& meta, const void*) {
+        if (meta.name == "Velocity") {
+            world.remove<Velocity>(entity);
+        }
+    }));
+    REQUIRE_ASSERTS(world.forEachComponent(
+        entity, [&](const ComponentMeta&, const void*) { world.add<game::Plain>(entity); }));
+
+    const Entity dead = world.create();
+    world.destroy(dead);
+    REQUIRE_ASSERTS(world.forEachComponent(dead, [](const ComponentMeta&, const void*) {}));
+}
+#endif

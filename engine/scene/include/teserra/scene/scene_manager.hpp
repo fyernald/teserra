@@ -65,6 +65,15 @@ public:
     /// The number of scenes.
     [[nodiscard]] usize size() const noexcept { return m_scenes.size(); }
 
+    /// Calls `function(scene)` for every scene, in the order they were created. The function must not create
+    /// or destroy scenes.
+    template <typename Function>
+    void forEach(Function&& function) {
+        for (const std::unique_ptr<Scene>& scene : m_scenes) {
+            function(*scene);
+        }
+    }
+
 private:
     std::vector<std::unique_ptr<Scene>> m_scenes;
     Scene* m_active = nullptr;

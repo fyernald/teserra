@@ -51,6 +51,7 @@ public:
             m_entities = std::move(other.m_entities);
             m_pendingCount = std::exchange(other.m_pendingCount, 0);
             m_iterating = std::exchange(other.m_iterating, 0);
+            m_visitingComponents = std::exchange(other.m_visitingComponents, 0);
             m_pools = std::move(other.m_pools);
             m_resources = std::move(other.m_resources);
         }
@@ -84,6 +85,24 @@ public:
                 function(entity);
             }
         });
+    }
+
+    /// Calls `function(const ComponentMeta& meta, const void* data)` for every component `entity` has, tags
+    /// included, in the order of their TypeKeys. `data` is the component's memory, laid out as `meta.fields`
+    /// describe, or nullptr for a tag; read-only (debug tools, the inspector). The entity must be alive
+    /// (asserted). The function must not create or destroy entities, add or remove components of the type it
+    /// is visiting, or add a component type the world has never seen (all asserted).
+    template <typename Function>
+    void forEachComponent(Entity entity, Function&& function) const {
+        TESERRA_ASSERT(isAlive(entity), "World::forEachComponent() on entity {}, which is not alive", entity);
+        const IterationScope entities(m_iterating);
+        const IterationScope components(m_visitingComponents);
+        for (const PoolEntry& entry : m_pools) {
+            if (entry.pool->has(entity)) {
+                const ComponentPoolBase::Lock lock = entry.pool->lock();
+                function(entry.pool->meta(), entry.pool->data(entity));
+            }
+        }
     }
 
     // Components. The entity must be alive, and it must have (get, remove) or lack (add) the component; both
@@ -143,6 +162,9 @@ public:
         if (ComponentPool<T>* found = tryPool<T>()) {
             return *found;
         }
+        TESERRA_ASSERT(m_visitingComponents == 0,
+                       "World: a first {} added during forEachComponent(); use Commands to defer it",
+                       componentName<T>());
         auto created = std::make_unique<ComponentPool<T>>();
         ComponentPool<T>& result = *created;
         const TypeKey key = componentMeta<T>().key;
@@ -300,6 +322,8 @@ private:
     HandlePool<EntityRecord, EntityTag> m_entities;
     usize m_pendingCount = 0;
     mutable u32 m_iterating = 0;
+    // Counts nested forEachComponent() calls: no pool may be created meanwhile.
+    mutable u32 m_visitingComponents = 0;
     // Sorted by key: a world has a few dozen component types, views cache their pools, and a vector moves
     // without allocating, unlike a hash map.
     struct PoolEntry {
