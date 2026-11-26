@@ -560,8 +560,10 @@ Result<GraphicsPipelineHandle> GlDevice::createGraphicsPipeline(const GraphicsPi
         }
         m_gl.VertexArrayAttribBinding(vertexArray, attribute.location, attribute.bufferIndex);
     }
+    const auto cachedProgram = std::ranges::find(m_programs, program, &CachedProgram::program);
     GlPipeline pipeline{
         .program = program,
+        .emulatesBaseInstance = cachedProgram != m_programs.end() && cachedProgram->baseInstanceLocation >= 0,
         .vertexArray = vertexArray,
         .state = capturePipelineState(desc),
         .primitiveMode = glPrimitiveMode(desc.topology),
@@ -632,11 +634,27 @@ Result<GLuint> GlDevice::acquireProgram(const GraphicsPipelineDesc& desc, const 
     if (!label.empty()) {
         m_gl.ObjectLabel(GL_PROGRAM, program, static_cast<GLsizei>(label.size()), label.data());
     }
+    // Active only where SPIRV-Cross's GLSL falls back to it: without GL_ARB_shader_draw_parameters, in a
+    // vertex shader that reads gl_InstanceIndex.
+    const GLint baseInstanceLocation = m_gl.GetUniformLocation(program, "SPIRV_Cross_BaseInstance");
     m_programs.push_back({.vertexShader = desc.vertexShader,
                           .fragmentShader = desc.fragmentShader,
                           .program = program,
-                          .users = 1});
+                          .users = 1,
+                          .baseInstanceLocation = baseInstanceLocation});
     return program;
+}
+
+void GlDevice::applyBaseInstance(u32 firstInstance) {
+    if (!m_passPipeline->emulatesBaseInstance) {
+        return;
+    }
+    const auto cached = std::ranges::find(m_programs, m_passPipeline->program, &CachedProgram::program);
+    if (cached == m_programs.end() || cached->baseInstance == firstInstance) {
+        return;
+    }
+    m_gl.ProgramUniform1i(cached->program, cached->baseInstanceLocation, static_cast<GLint>(firstInstance));
+    cached->baseInstance = firstInstance;
 }
 
 void GlDevice::releaseProgram(GLuint program) {
@@ -1093,6 +1111,7 @@ void GlDevice::draw(const DrawArgs& args) {
     if (!flushVertexInput()) {
         return;
     }
+    applyBaseInstance(args.firstInstance);
     m_gl.DrawArraysInstancedBaseInstance(m_passPipeline->primitiveMode, static_cast<GLint>(args.firstVertex),
                                          static_cast<GLsizei>(args.vertexCount),
                                          static_cast<GLsizei>(args.instanceCount), args.firstInstance);
@@ -1102,6 +1121,7 @@ void GlDevice::drawIndexed(const DrawIndexedArgs& args) {
     if (!flushVertexInput()) {
         return;
     }
+    applyBaseInstance(args.firstInstance);
     const bool wide = m_passIndexType == IndexType::Uint32;
     const u64 indexSize = wide ? 4 : 2;
     // GL takes the byte offset into the bound element buffer as a pointer.

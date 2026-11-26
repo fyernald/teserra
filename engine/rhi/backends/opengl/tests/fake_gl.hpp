@@ -81,6 +81,8 @@ struct FakeGlState {
     /// When not empty, every link fails with this info log.
     std::string linkLog{};
     std::set<GLuint> livePrograms{};
+    /// What glGetUniformLocation() returns for a uniform name in any program; -1 for other names.
+    std::map<std::string, GLint, std::less<>> uniformLocations{};
     std::set<GLuint> liveVertexArrays{};
     /// The buffer bound to GL_PIXEL_UNPACK_BUFFER.
     GLuint unpackBuffer = 0;
@@ -578,6 +580,15 @@ inline void GLAD_API_PTR linkProgram(GLuint program) {
     log(std::format("LinkProgram({})", program));
 }
 
+inline GLint GLAD_API_PTR getUniformLocation(GLuint /*program*/, const GLchar* uniform) {
+    const auto found = current->uniformLocations.find(std::string_view(uniform));
+    return found != current->uniformLocations.end() ? found->second : -1;
+}
+
+inline void GLAD_API_PTR programUniform1i(GLuint program, GLint location, GLint value) {
+    log(std::format("ProgramUniform1i({}, {}, {})", program, location, value));
+}
+
 inline void GLAD_API_PTR getProgramiv(GLuint /*program*/, GLenum which, GLint* value) {
     if (which == GL_LINK_STATUS) {
         *value = current->linkLog.empty() ? GL_TRUE : GL_FALSE;
@@ -903,6 +914,8 @@ public:
             {"glDetachShader", reinterpret_cast<platform::GlProc>(&fake_gl::detachShader)},
             {"glLinkProgram", reinterpret_cast<platform::GlProc>(&fake_gl::linkProgram)},
             {"glGetProgramiv", reinterpret_cast<platform::GlProc>(&fake_gl::getProgramiv)},
+            {"glGetUniformLocation", reinterpret_cast<platform::GlProc>(&fake_gl::getUniformLocation)},
+            {"glProgramUniform1i", reinterpret_cast<platform::GlProc>(&fake_gl::programUniform1i)},
             {"glGetProgramInfoLog", reinterpret_cast<platform::GlProc>(&fake_gl::getProgramInfoLog)},
             {"glDeleteProgram", reinterpret_cast<platform::GlProc>(&fake_gl::deleteProgram)},
             {"glUseProgram", reinterpret_cast<platform::GlProc>(&fake_gl::useProgram)},
