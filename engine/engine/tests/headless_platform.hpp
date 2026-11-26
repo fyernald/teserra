@@ -3,7 +3,8 @@
 // A platform without a window system for App tests: time comes from a ManualClock that advances by a
 // scripted frame time on every pollEvents(), and events are scripted per poll. waitEvents() counts as a
 // poll too; when that poll has no scripted events, it advances the clock by the whole timeout, as if
-// nothing arrived.
+// nothing arrived. A poll can also script live resizes: the window resized from inside the poll, as when
+// a border is dragged on Windows, running the live-resize handler (Platform::setLiveResizeHandler()).
 
 #include <teserra/platform/clock.hpp>
 #include <teserra/platform/file_system.hpp>
@@ -79,6 +80,15 @@ public:
     /// Delivers `event` from the `poll`-th pollEvents() call, counting from 1 (the first frame).
     void queueEvent(u64 poll, const platform::Event& event) { m_scriptedEvents[poll].push_back(event); }
 
+    /// During the `poll`-th poll, after its queued events and live resizes before this one: queues a
+    /// WindowResized to `size`, runs the live-resize handler, then queues `after`.
+    void queueLiveResize(u64 poll, UVec2 size, std::vector<platform::Event> after = {}) {
+        m_liveResizes[poll].push_back({.size = size, .after = std::move(after)});
+    }
+
+    /// Whether a live-resize handler is set.
+    [[nodiscard]] bool hasLiveResizeHandler() const { return static_cast<bool>(liveResizeHandler()); }
+
     [[nodiscard]] Result<std::unique_ptr<platform::Window>>
     createWindow(const platform::WindowDesc& desc) override {
         m_lastWindowDesc = desc;
@@ -92,6 +102,18 @@ public:
         if (const auto events = m_scriptedEvents.find(m_polls); events != m_scriptedEvents.end()) {
             for (const platform::Event& event : events->second) {
                 queue.push(event);
+            }
+        }
+        if (const auto resizes = m_liveResizes.find(m_polls); resizes != m_liveResizes.end()) {
+            for (const LiveResize& resize : resizes->second) {
+                queue.push(
+                    platform::WindowResized{.windowSize = resize.size, .framebufferSize = resize.size});
+                if (liveResizeHandler()) {
+                    liveResizeHandler()();
+                }
+                for (const platform::Event& event : resize.after) {
+                    queue.push(event);
+                }
             }
         }
     }
@@ -113,11 +135,17 @@ public:
     [[nodiscard]] const platform::WindowDesc& lastWindowDesc() const noexcept { return m_lastWindowDesc; }
 
 private:
+    struct LiveResize {
+        UVec2 size;
+        std::vector<platform::Event> after;
+    };
+
     Journal* m_journal;
     platform::ManualClock m_clock;
     std::unique_ptr<platform::FileSystem> m_fileSystem = std::make_unique<platform::NativeFileSystem>();
     std::vector<std::chrono::nanoseconds> m_frameTimes{std::chrono::milliseconds{16}};
     std::map<u64, std::vector<platform::Event>> m_scriptedEvents;
+    std::map<u64, std::vector<LiveResize>> m_liveResizes;
     platform::WindowDesc m_lastWindowDesc;
     u64 m_polls = 0;
     u64 m_waits = 0;

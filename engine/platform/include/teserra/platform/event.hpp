@@ -2,8 +2,9 @@
 
 // Engine events (docs/architecture/platform-abstraction.md#interfaces). Platform::pollEvents() translates
 // what the window system reports into these values and appends them to an EventQueue; nothing is
-// delivered through callbacks from inside the window system. Input turns the keyboard, mouse and text
-// events into per-frame state.
+// delivered through callbacks from inside the window system, except the one that draws while a window is
+// resized (Platform::setLiveResizeHandler()). Input turns the keyboard, mouse and text events into
+// per-frame state.
 
 #include <teserra/core/math.hpp>
 #include <teserra/core/types.hpp>

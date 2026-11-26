@@ -197,7 +197,15 @@ private:
     Result<void> initialize(Result<std::unique_ptr<platform::Platform>> platform);
     // Mounts AppConfig::mounts and the defaults on the platform's file system.
     Result<void> mountAssets();
+    // One frame of the main loop: beginFrame(), the poll, finishFrame().
     void runFrame(const AppCallbacks& callbacks);
+    // The frame boundary (scene switch, Startup) and a fresh input state and event queue.
+    void beginFrame();
+    // Handles the frame's events, updates, renders and ends the frame; nothing if no frame is open.
+    void finishFrame(const AppCallbacks& callbacks);
+    void updateAndRender(const AppCallbacks& callbacks);
+    // The platform's live-resize handler: finishes the frame whose poll is underway and begins the next.
+    void liveResizeFrame(const AppCallbacks& callbacks);
     void render(const AppCallbacks& callbacks, scene::Scene* active);
     // Whether the window has no image to render into: a device with a swapchain of zero size.
     [[nodiscard]] bool hasNoImage() const noexcept;
@@ -226,6 +234,7 @@ private:
     platform::FrameTimer m_frameTimer;
     platform::FixedStepAccumulator m_fixedStep;
     u64 m_frameCount = 0;
+    bool m_frameOpen = false; // between beginFrame() and finishFrame()
     bool m_paused = false;
     bool m_quitting = false;
     int m_exitCode = 0;

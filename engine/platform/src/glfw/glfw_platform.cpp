@@ -8,6 +8,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <functional>
 #include <string_view>
 
 namespace teserra::platform {
@@ -102,24 +103,46 @@ Result<std::unique_ptr<Window>> GlfwPlatform::createWindow(const WindowDesc& des
 
 void GlfwPlatform::pollEvents(EventQueue& queue) {
     TESERRA_ASSERT(m_mainThread.isCurrent(), "Events must be polled on the main thread");
+    m_polling = &queue;
     glfwPollEvents();
-    for (const Event& event : m_pending) {
-        queue.push(event);
-    }
-    m_pending.clear();
+    m_polling = nullptr;
+    handOver(queue);
 }
 
 void GlfwPlatform::waitEvents(EventQueue& queue, std::chrono::nanoseconds timeout) {
     TESERRA_ASSERT(m_mainThread.isCurrent(), "Events must be polled on the main thread");
     const double seconds = std::chrono::duration<double>(timeout).count();
     if (seconds > 0.0) {
+        m_polling = &queue;
         glfwWaitEventsTimeout(seconds);
+        m_polling = nullptr;
     }
     pollEvents(queue); // hands over what the wait received, and anything that came right after
 }
 
 void GlfwPlatform::enqueue(const Event& event) {
     m_pending.push_back(event);
+}
+
+void GlfwPlatform::framebufferResized(UVec2 framebufferSize) {
+    // Inside a poll, a resize comes from the window system: on Windows from the loop it runs while a
+    // window border is dragged, which only returns when the mouse button is released.
+    const std::function<void()>& handler = liveResizeHandler();
+    if (m_polling == nullptr || m_inLiveResize || !handler || framebufferSize.x == 0 ||
+        framebufferSize.y == 0) {
+        return;
+    }
+    handOver(*m_polling);
+    m_inLiveResize = true;
+    handler();
+    m_inLiveResize = false;
+}
+
+void GlfwPlatform::handOver(EventQueue& queue) {
+    for (const Event& event : m_pending) {
+        queue.push(event);
+    }
+    m_pending.clear();
 }
 
 void GlfwPlatform::windowDestroyed() noexcept {

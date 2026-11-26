@@ -9,7 +9,9 @@
 #include <teserra/platform/window.hpp>
 
 #include <chrono>
+#include <functional>
 #include <memory>
+#include <utility>
 
 namespace teserra::platform {
 
@@ -47,6 +49,19 @@ public:
         pollEvents(queue);
     }
 
+    /// Sets the function that draws frames while the window system resizes the window inside a poll.
+    ///
+    /// On Windows, dragging a window border keeps the main thread in the window system's own loop until
+    /// the mouse button is released: pollEvents() does not return, and without a handler nothing draws the
+    /// window at its new sizes, so it shows its last frame cut off or stretched (#184). A platform with
+    /// such a loop calls `handler` from inside pollEvents() or waitEvents() each time the framebuffer gets
+    /// a new size there, other than 0 (minimized). By then the events of the poll so far, ending with that
+    /// WindowResized, are in the queue passed to the poll; the handler finishes a frame with them and may
+    /// clear the queue, which the poll goes on appending later events to. It is not called while it runs,
+    /// nor outside a poll (Window::setSize() resizes without it). An empty function removes it. Main
+    /// thread only.
+    void setLiveResizeHandler(std::function<void()> handler) { m_liveResizeHandler = std::move(handler); }
+
     /// The monotonic clock that drives the main loop: real time (SteadyClock) here, a ManualClock in a
     /// test platform. Thread-safe, unlike the rest of the platform.
     [[nodiscard]] virtual const Clock& clock() const noexcept = 0;
@@ -62,6 +77,14 @@ public:
 
 protected:
     Platform() = default;
+
+    /// The function set with setLiveResizeHandler(); empty without one.
+    [[nodiscard]] const std::function<void()>& liveResizeHandler() const noexcept {
+        return m_liveResizeHandler;
+    }
+
+private:
+    std::function<void()> m_liveResizeHandler;
 };
 
 } // namespace teserra::platform
