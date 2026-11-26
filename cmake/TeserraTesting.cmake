@@ -173,9 +173,12 @@ function(teserra_add_compile_fail_test name)
     add_test(NAME ${name}
         COMMAND "${CMAKE_COMMAND}" --build "${CMAKE_BINARY_DIR}" --target ${target} --config $<CONFIG>
     )
-    # Matching the expected error is enough: it only appears when the build failed for that reason.
+    # Matching the expected error is enough: it only appears when the build failed for that reason. The test
+    # runs ninja on the whole build tree, which two ninja processes must not do at once, so compile-fail tests
+    # take turns under `ctest -j` (they failed now and then without the lock).
     set_tests_properties(${name} PROPERTIES
         PASS_REGULAR_EXPRESSION "${arg_EXPECT}"
+        RESOURCE_LOCK teserra_build_tree
         LABELS "compile_fail;${arg_DEPENDS}"
     )
 endfunction()
