@@ -3,9 +3,6 @@
 
 #include <teserra/platform/file_system.hpp>
 
-#include <teserra/platform/platform.hpp>
-
-#include "platform_test_support.hpp"
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
 
@@ -235,14 +232,4 @@ TEST_CASE("NativeFileSystem: userDataDirectory creates a directory for the appli
                          "application directory");
         }
     }
-}
-
-TEST_CASE("Platform: fileSystem() is the native file system", "[platform][file_system]") {
-    const auto platform = test::createPlatformOrSkip();
-    FileSystem& fileSystem = platform->fileSystem();
-
-    const auto directory = fileSystem.executableDirectory();
-
-    REQUIRE(directory.has_value());
-    CHECK(fileSystem.exists(*directory + "/" + TESERRA_TEST_EXECUTABLE_NAME));
 }

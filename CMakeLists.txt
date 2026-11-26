@@ -48,9 +48,10 @@ option(TESERRA_BUILD_EXAMPLES "Build the examples in examples/" ${PROJECT_IS_TOP
 # Catch2 micro-benchmarks in benchmarks/ (docs/architecture/memory-and-performance.md#benchmarking-policy); build
 # them in Release, with the windows-msvc-bench preset.
 option(TESERRA_BUILD_BENCHMARKS "Build the micro-benchmarks in benchmarks/" OFF)
-# Only the modules without OS or GPU code: core, ecs, scene, rhi with the null backend, and the portable part
-# of platform. The Linux CI job builds this before the Linux port exists (#68, ADR-0015).
-option(TESERRA_PORTABLE_ONLY "Build only core, ecs, scene, rhi + null backend and the portable part of platform" OFF)
+# Only the modules without a window system or GPU code: core, ecs, scene, rhi with the null backend, and the
+# platform without its window backend (with its OS services where the OS has them). The Linux CI job builds
+# this while the Linux port is under way (#68, #127, ADR-0015).
+option(TESERRA_PORTABLE_ONLY "Build only core, ecs, scene, rhi + null backend and platform without a window backend" OFF)
 if(TESERRA_PORTABLE_ONLY)
     set(TESERRA_BUILD_EXAMPLES OFF)
     set(TESERRA_RHI_OPENGL OFF)

@@ -4,6 +4,10 @@ All notable user-visible changes to Teserra are documented here. The format foll
 
 ## [Unreleased]
 
+### Added
+
+- Linux OS services (#280): `NativeFileSystem::executableDirectory()` and `userDataDirectory()` on Linux, the second following the XDG Base Directory spec (`$XDG_DATA_HOME`, else `$HOME/.local/share`). Part of the Linux port (#127).
+
 ## [0.1.0] - 2026-11-26
 
 The first public release: a 2D engine for C++ developers on Windows, consumed from a game's own CMake project ([getting started](docs/guides/getting-started.md)).

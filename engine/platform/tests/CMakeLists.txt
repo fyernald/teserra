@@ -5,13 +5,19 @@ set(platform_test_sources
     input_test.cpp
     key_test.cpp
 )
+# The native file system, wherever the OS services are built (also in the portable build on Linux).
+if(TESERRA_PLATFORM_OS_SERVICES)
+    list(APPEND platform_test_sources file_system_test.cpp)
+endif()
 # These need a Platform, which the portable build (#68) does not have.
 if(NOT TESERRA_PORTABLE_ONLY)
-    list(APPEND platform_test_sources clock_test.cpp file_system_test.cpp window_test.cpp)
+    list(APPEND platform_test_sources clock_test.cpp platform_test.cpp window_test.cpp)
 endif()
 # OS-specific tests are selected here, like OS-specific sources (no #ifdef in shared code).
 if(WIN32)
     list(APPEND platform_test_sources windows/window_events_windows_test.cpp)
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    list(APPEND platform_test_sources posix/file_system_posix_test.cpp)
 endif()
 
 teserra_add_test(platform
