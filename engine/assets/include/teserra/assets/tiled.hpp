@@ -33,15 +33,15 @@ namespace teserra::assets {
 /// A custom property. Tiled's types map to: bool; int and object (an object id) to i64; float to f64;
 /// string, color ("#AARRGGBB") and file (a virtual path, resolved like images) to std::string.
 struct TiledProperty {
-    std::string name;
-    std::variant<bool, i64, f64, std::string> value;
+    std::string name{};
+    std::variant<bool, i64, f64, std::string> value{};
 
     friend bool operator==(const TiledProperty&, const TiledProperty&) = default;
 };
 
 /// The custom properties of a map, layer, object, tileset or tile, in the file's order.
 struct TiledProperties {
-    std::vector<TiledProperty> items;
+    std::vector<TiledProperty> items{};
 
     /// The property named `name`, or nullptr.
     [[nodiscard]] const TiledProperty* find(std::string_view name) const noexcept;
@@ -57,17 +57,17 @@ struct TiledProperties {
 struct TiledTile {
     /// The tile's index in its tileset, from 0.
     u32 id = 0;
-    TiledProperties properties;
+    TiledProperties properties{};
 };
 
 /// A tileset cut from one image in a grid.
 struct TiledTileset {
     /// The global tile id (gid) of the tileset's first tile; layer data uses gids.
     u32 firstGid = 1;
-    std::string name;
+    std::string name{};
     /// The image's virtual path, resolved against the file that names it (resolveRelativePath()):
     /// "assets://tiles/terrain.png".
-    std::string image;
+    std::string image{};
     UVec2 imageSize{0U};
     UVec2 tileSize{0U};
     /// Pixels around the grid and between its tiles.
@@ -76,8 +76,8 @@ struct TiledTileset {
     u32 columns = 0;
     u32 tileCount = 0;
     /// The tiles with properties, by id.
-    std::vector<TiledTile> tiles;
-    TiledProperties properties;
+    std::vector<TiledTile> tiles{};
+    TiledProperties properties{};
 
     /// Whether `gid` is one of this tileset's tiles.
     [[nodiscard]] bool contains(u32 gid) const noexcept {
@@ -89,14 +89,14 @@ struct TiledTileset {
 
 /// A layer of tiles: width x height gids, row by row from the top row (Tiled's order), 0 for no tile.
 struct TiledTileLayer {
-    std::string name;
+    std::string name{};
     UVec2 size{0U};
-    std::vector<u32> gids;
+    std::vector<u32> gids{};
     bool visible = true;
     f32 opacity = 1.0F;
     /// The layer's offset in pixels.
     Vec2 offset{0.0F};
-    TiledProperties properties;
+    TiledProperties properties{};
 
     /// The gid at column `x`, row `y` (row 0 at the top).
     [[nodiscard]] u32 gid(u32 x, u32 y) const noexcept { return gids[(static_cast<usize>(y) * size.x) + x]; }
@@ -105,24 +105,24 @@ struct TiledTileLayer {
 /// A rectangle object, in pixels with y down from the map's top-left corner.
 struct TiledObject {
     u32 id = 0;
-    std::string name;
+    std::string name{};
     /// The object's class (Tiled 1.9+) or type.
-    std::string type;
+    std::string type{};
     /// The rectangle's top-left corner.
     Vec2 position{0.0F};
     Vec2 size{0.0F};
     /// Degrees, clockwise.
     f32 rotation = 0.0F;
     bool visible = true;
-    TiledProperties properties;
+    TiledProperties properties{};
 };
 
 /// An object layer of a Tiled map: named points and shapes, such as spawn points.
 struct TiledObjectLayer {
-    std::string name;
-    std::vector<TiledObject> objects;
+    std::string name{};
+    std::vector<TiledObject> objects{};
     bool visible = true;
-    TiledProperties properties;
+    TiledProperties properties{};
 };
 
 /// An orthogonal, finite Tiled map.
@@ -131,11 +131,11 @@ struct TiledMap {
     UVec2 size{0U};
     /// Width and height of a tile in pixels.
     UVec2 tileSize{0U};
-    std::vector<TiledTileset> tilesets;
+    std::vector<TiledTileset> tilesets{};
     /// In the file's order, bottom layer first.
-    std::vector<TiledTileLayer> tileLayers;
-    std::vector<TiledObjectLayer> objectLayers;
-    TiledProperties properties;
+    std::vector<TiledTileLayer> tileLayers{};
+    std::vector<TiledObjectLayer> objectLayers{};
+    TiledProperties properties{};
 
     /// The tileset `gid` belongs to; nullptr for 0 and for gids of no tileset.
     [[nodiscard]] const TiledTileset* tilesetOf(u32 gid) const noexcept;

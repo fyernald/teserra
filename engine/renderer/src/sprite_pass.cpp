@@ -337,7 +337,9 @@ void SpritePass::execute(PassContext& context, rhi::CommandList& commands) {
             m_chunkOrder.push_back(chunk);
         }
     }
-    std::ranges::stable_sort(m_chunkOrder, {}, [&](u32 chunk) { return chunks[chunk].layer; });
+    // The index breaks ties, so the order within a layer stays the packet's without std::stable_sort, which
+    // may allocate (libstdc++ does for any size), and a steady-state frame must not.
+    std::ranges::sort(m_chunkOrder, {}, [&](u32 chunk) { return std::pair{chunks[chunk].layer, chunk}; });
     m_stats.tilemapChunks = static_cast<u32>(m_chunkOrder.size());
 
     // Without sprite vertices (no sprites, or allocate() asserted) the batches are left out; chunks still

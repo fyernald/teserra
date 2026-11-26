@@ -10,23 +10,24 @@ using namespace teserra;
 using namespace teserra::rhi::opengl;
 
 TEST_CASE("debugMessageLevel: severity and type map to log levels", "[rhi_opengl][debug]") {
-    constexpr std::array kSeverities{GL_DEBUG_SEVERITY_HIGH, GL_DEBUG_SEVERITY_MEDIUM, GL_DEBUG_SEVERITY_LOW,
-                                     GL_DEBUG_SEVERITY_NOTIFICATION};
+    constexpr std::array<GLenum, 4> kSeverities{GL_DEBUG_SEVERITY_HIGH, GL_DEBUG_SEVERITY_MEDIUM,
+                                                GL_DEBUG_SEVERITY_LOW, GL_DEBUG_SEVERITY_NOTIFICATION};
 
     // Errors are errors whatever the driver says their severity is.
     for (const GLenum severity : kSeverities) {
         CHECK(debugMessageLevel(severity, GL_DEBUG_TYPE_ERROR) == LogLevel::Error);
     }
     // Deprecated and undefined behavior are at least warnings.
-    for (const GLenum type : {GL_DEBUG_TYPE_DEPRECATED_BEHAVIOR, GL_DEBUG_TYPE_UNDEFINED_BEHAVIOR}) {
+    for (const GLenum type :
+         std::array<GLenum, 2>{GL_DEBUG_TYPE_DEPRECATED_BEHAVIOR, GL_DEBUG_TYPE_UNDEFINED_BEHAVIOR}) {
         CHECK(debugMessageLevel(GL_DEBUG_SEVERITY_HIGH, type) == LogLevel::Error);
         CHECK(debugMessageLevel(GL_DEBUG_SEVERITY_MEDIUM, type) == LogLevel::Warn);
         CHECK(debugMessageLevel(GL_DEBUG_SEVERITY_LOW, type) == LogLevel::Warn);
         CHECK(debugMessageLevel(GL_DEBUG_SEVERITY_NOTIFICATION, type) == LogLevel::Warn);
     }
     // Everything else follows the severity.
-    for (const GLenum type :
-         {GL_DEBUG_TYPE_PERFORMANCE, GL_DEBUG_TYPE_PORTABILITY, GL_DEBUG_TYPE_OTHER, GL_DEBUG_TYPE_MARKER}) {
+    for (const GLenum type : std::array<GLenum, 4>{GL_DEBUG_TYPE_PERFORMANCE, GL_DEBUG_TYPE_PORTABILITY,
+                                                   GL_DEBUG_TYPE_OTHER, GL_DEBUG_TYPE_MARKER}) {
         CHECK(debugMessageLevel(GL_DEBUG_SEVERITY_HIGH, type) == LogLevel::Error);
         CHECK(debugMessageLevel(GL_DEBUG_SEVERITY_MEDIUM, type) == LogLevel::Warn);
         CHECK(debugMessageLevel(GL_DEBUG_SEVERITY_LOW, type) == LogLevel::Info);

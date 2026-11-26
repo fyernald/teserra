@@ -67,33 +67,33 @@ int main(int argc, char** argv) { // NOLINT(bugprone-exception-escape)
 
     const engine::AppCallbacks callbacks{
         .onEvent =
-            [](engine::App& app, const Event& event) {
+            [](engine::App& running, const Event& event) {
                 logEvent(event);
                 const auto* key = std::get_if<KeyChanged>(&event);
                 if (key != nullptr && key->key == Key::Escape) {
-                    app.quit();
+                    running.quit();
                 }
             },
         .fixedUpdate =
-            [&](engine::App& app, f32 stepSeconds) {
-                position += app.input().axis2D(Key::A, Key::D, Key::S, Key::W) * kSpeed * stepSeconds;
+            [&](engine::App& running, f32 stepSeconds) {
+                position += running.input().axis2D(Key::A, Key::D, Key::S, Key::W) * kSpeed * stepSeconds;
             },
         .update =
-            [&](engine::App& app, f32 /*deltaSeconds*/) {
-                const Input& input = app.input();
+            [&](engine::App& running, f32 /*deltaSeconds*/) {
+                const Input& input = running.input();
                 if (!input.text().empty()) {
                     TESERRA_LOG_INFO(exampleCategory(), "Typed \"{}\"", input.text());
                 }
 
                 // A title change is a window-system call; four times a second is enough to read.
-                sinceTitle += app.frameTimer().delta();
+                sinceTitle += running.frameTimer().delta();
                 if (sinceTitle >= std::chrono::milliseconds{250}) {
                     sinceTitle = std::chrono::nanoseconds{0};
-                    app.window().setTitle(
+                    running.window().setTitle(
                         std::format("Teserra: window and input | {:.0f} FPS | cursor ({:.0f}, {:.0f}) | "
                                     "WASD position ({:.0f}, {:.0f})",
-                                    app.frameTimer().fps(), input.mousePosition().x, input.mousePosition().y,
-                                    position.x, position.y));
+                                    running.frameTimer().fps(), input.mousePosition().x,
+                                    input.mousePosition().y, position.x, position.y));
                 }
             },
     };

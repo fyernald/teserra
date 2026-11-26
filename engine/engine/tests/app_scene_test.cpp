@@ -118,7 +118,7 @@ TEST_CASE("App: the active scene's phases run in frame order", "[engine][app][sc
     for (const std::vector<std::string>& frame : frames) {
         u32 steps = 0;
         for (const std::string& entry : frame) {
-            steps += entry == "FixedUpdate" ? 1 : 0;
+            steps += entry == "FixedUpdate" ? 1U : 0U;
         }
         fixedStepsPerFrame.push_back(steps);
         std::vector<std::string> expected{"PreUpdate"};
