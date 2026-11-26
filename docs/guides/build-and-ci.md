@@ -121,8 +121,9 @@ The include check reads `OPTIONAL_DEPENDS` like `DEPENDS`.
 | `ci-windows` | MSVC Debug, warnings as errors, SPIR-V validation, JUnit output | GitHub Actions |
 | `ci-windows-release` | MSVC Release, warnings as errors, JUnit output: warnings only Release shows, such as a parameter used only in an assertion message | GitHub Actions |
 | `ci-windows-profile` | The profile build with warnings as errors and JUnit output, so the Tracy configuration keeps building and passing | GitHub Actions |
-| `linux-gcc-debug`, `linux-clang-debug` | GCC 13 / Clang 17 + Ninja | Prepared for the Linux port |
-| `linux-gcc-portable`, `linux-clang-portable` | GCC / Clang Debug, warnings as errors, `TESERRA_PORTABLE_ONLY` | The non-blocking `linux-portable` job |
+| `linux-gcc-debug`, `linux-clang-debug` | GCC 13+ / Clang 17+ + Ninja | Local development on Linux |
+| `ci-linux-gcc`, `ci-linux-clang` | GCC / Clang Debug, warnings as errors, SPIR-V validation, JUnit output | The `linux` jobs |
+| `linux-gcc-portable`, `linux-clang-portable` | GCC / Clang Debug, warnings as errors, `TESERRA_PORTABLE_ONLY`: no window backend | The `linux-portable` job (GCC) |
 
 Every preset builds into `build/<preset>/` and exists as a configure, build, test and workflow preset with the same name. Windows presets use the `x64-windows` vcpkg triplet, Linux presets `x64-linux`; presets only show up on their host OS.
 
@@ -286,7 +287,8 @@ Workflows live in `.github/workflows/`.
 |---|---|---|---|
 | `ci.yml` → `windows-msvc`, `windows-msvc-release`, `windows-msvc-profile` | push to `main`, PRs | **Yes** | Configure (`ci-windows` / `ci-windows-release` / `ci-windows-profile`), build all targets, run unit + integration tests, upload JUnit; in parallel. `windows-msvc` then runs the suite again on Mesa llvmpipe with GPU tests and example smoke runs required ([testing strategy](testing-strategy.md#gpu-integration-tests)), and builds `templates/minimal_game` with Teserra from FetchContent (pointed at the checkout) and runs it on llvmpipe ([using Teserra in your game](#using-teserra-in-your-game)) |
 | `ci.yml` → `checks` | push, PRs | **Yes** | format check, layer/leak checks |
-| `ci.yml` → `linux-portable` | push to `main`, PRs | No (until the Linux port) | `linux-gcc-portable` and `linux-clang-portable`: build and test `core`, `ecs`, `scene`, `rhi` + null backend and the portable part of `platform` on `ubuntu-latest`, with warnings as errors; a failure shows on the PR, but the run passes (`continue-on-error`) |
+| `ci.yml` → `linux (gcc, ubuntu-26.04)`, `linux (clang, ubuntu-26.04)`, `linux (gcc, ubuntu-24.04)` | push to `main`, PRs | **Yes** | The supported Linux targets (#127): `ci-linux-gcc` / `ci-linux-clang` build all targets with warnings as errors and run the whole suite on Mesa llvmpipe under Xvfb with GPU tests and example smoke runs required (the step fails if a test did not run), then the platform's window tests again on Wayland (Weston's X11 backend inside Xvfb, since GLFW 3.4 crashes on a compositor without a seat), then the game template as in the Windows job. Clang on 24.04 is left out: the three jobs cover both compilers and both LTS standard libraries |
+| `ci.yml` → `linux-portable` | push to `main`, PRs | **Yes** | `linux-gcc-portable`: the build without a window system (`TESERRA_PORTABLE_ONLY`: core, ecs, scene, rhi + null backend, platform without its window backend), so it keeps building for tools and servers; a few minutes, without GLFW, glslang or SPIRV-Cross |
 | `sanitizers.yml` → `windows-msvc-asan` | push to `main`, nightly, by hand, PRs labeled `needs-asan` | No | `ci-windows-asan`: build, all tests ([sanitizers](#sanitizers)) |
 | `ci.yml` → `clang-tidy` | PRs | Yes for changed files | clang-tidy on changed translation units |
 | `gpu.yml` → `gpu-software` | push to `main`, PRs touching `engine/rhi`, `engine/renderer`, `tests/gpu` | Yes once introduced | GPU tests on a software rasterizer (approach decided by the headless GPU testing spike) |
@@ -299,13 +301,13 @@ The `windows-msvc` job runs on `windows-latest`: it runs `vcvars64.bat` of the n
 
 ### Branch protection (manual repository setting)
 
-`main` requires: PR before merge, status checks `windows-msvc` and `checks` passing, linear history (squash merge), no force pushes. The maintainer may self-merge after the checklist is satisfied.
+`main` requires: PR before merge, status checks `windows-msvc`, `checks`, `linux (gcc, ubuntu-26.04)`, `linux (clang, ubuntu-26.04)`, `linux (gcc, ubuntu-24.04)` and `linux-portable` passing, linear history (squash merge), no force pushes. The maintainer may self-merge after the checklist is satisfied.
 
 To set it up (Settings → Branches → Add branch ruleset, or a classic branch protection rule for `main`):
 
 1. Target branch `main`; enforcement **Active**.
 2. **Require a pull request before merging** (required approvals: 0, so the maintainer can self-merge).
-3. **Require status checks to pass**, with "require branches to be up to date"; add `windows-msvc` and `checks` (they appear in the list after the workflow has run once).
+3. **Require status checks to pass**, with "require branches to be up to date"; add `windows-msvc`, `checks`, the three `linux (…)` jobs and `linux-portable` (they appear in the list after the workflow has run once).
 4. **Require linear history**; under Settings → General → Pull Requests allow only **squash merging**.
 5. **Block force pushes** and **restrict deletions**.
 
