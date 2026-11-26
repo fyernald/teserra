@@ -263,18 +263,159 @@ jobs:
             ${{ env.VCPKG_INSTALLATION_ROOT }}/buildtrees/**/*.log
           if-no-files-found: ignore
 
-  # The portable modules on Linux (#68): core, ecs, scene, rhi with the null backend and the portable part of
-  # platform, with GCC and Clang (TESERRA_PORTABLE_ONLY). It catches Windows-only code before it spreads
-  # (ADR-0015). Non-blocking until the Linux port (#127): a failure shows on the PR without failing the run.
-  linux-portable:
-    name: linux-portable (${{ matrix.compiler }})
-    runs-on: ubuntu-latest
+  # Linux (#127): Ubuntu 24.04 and 26.04 LTS with GCC and Clang are supported, so these jobs build everything
+  # with warnings as errors and run the whole suite on Mesa's llvmpipe under Xvfb, like the Windows job:
+  # TESERRA_REQUIRE_GPU_TESTS makes a GPU test without a context fail, and the step fails if any test did not
+  # run. GCC and Clang on 26.04 cover the compilers; 24.04 is built with its own Clang 18 and the older LTS's
+  # standard library. GCC needs 14.3 or newer: GCC 13 and 14.2, the GCCs 24.04 packages, cannot brace-
+  # initialize a struct with a C-array member that has a default member initializer, such as
+  # GraphicsPipelineDesc::colorBlend (build-and-ci.md, Linux).
+  linux:
+    name: linux (${{ matrix.compiler }}, ${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 60
-    continue-on-error: true
     strategy:
       fail-fast: false
       matrix:
-        compiler: [gcc, clang]
+        include:
+          - { os: ubuntu-26.04, compiler: gcc, cxx: g++ }
+          - { os: ubuntu-26.04, compiler: clang, cxx: clang++ }
+          - { os: ubuntu-24.04, compiler: clang, cxx: clang++ }
+    env:
+      VCPKG_TRIPLET: x64-linux
+      PRESET: ci-linux-${{ matrix.compiler }}
+    steps:
+      - uses: actions/checkout@v7
+
+      # vcpkg's glfw3 builds on the system's X11 libraries and its own Wayland (platform-abstraction.md, GLFW
+      # on Linux); Xvfb, Mesa and Weston run the GPU tests and the Wayland window tests.
+      - name: Install packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ninja-build pkg-config \
+            libxinerama-dev libxcursor-dev xorg-dev libglu1-mesa-dev \
+            libwayland-dev libxkbcommon-dev wayland-protocols extra-cmake-modules \
+            xvfb xauth libgl1-mesa-dri libegl-mesa0 weston
+
+      - name: Configure vcpkg
+        run: |
+          cache="$RUNNER_TEMP/vcpkg-binary-cache"
+          mkdir -p "$cache"
+          {
+            echo "VCPKG_ROOT=$VCPKG_INSTALLATION_ROOT"
+            echo "VCPKG_BINARY_CACHE=$cache"
+            echo "VCPKG_BINARY_SOURCES=clear;files,$cache,readwrite"
+            echo "RUNNER_IMAGE=$ImageOS-$ImageVersion"
+            echo "XDG_RUNTIME_DIR=$RUNNER_TEMP/xdg"
+          } >> "$GITHUB_ENV"
+          mkdir -m 700 -p "$RUNNER_TEMP/xdg"
+          echo "Compiler: $(${{ matrix.cxx }} --version | head -1)"
+
+      - name: Restore vcpkg binary cache
+        id: vcpkg-cache
+        uses: actions/cache/restore@v6
+        with:
+          path: ${{ env.VCPKG_BINARY_CACHE }}
+          key: vcpkg-${{ env.VCPKG_TRIPLET }}-${{ matrix.cxx }}-${{ env.RUNNER_IMAGE }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
+          restore-keys: |
+            vcpkg-${{ env.VCPKG_TRIPLET }}-${{ matrix.cxx }}-${{ env.RUNNER_IMAGE }}-
+
+      - name: Configure
+        run: cmake --preset "$PRESET" -DCMAKE_CXX_COMPILER=${{ matrix.cxx }}
+
+      - name: Save vcpkg binary cache
+        if: always() && steps.vcpkg-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: ${{ env.VCPKG_BINARY_CACHE }}
+          key: ${{ steps.vcpkg-cache.outputs.cache-primary-key }}
+
+      # -k 0: keep going after a failure, so one run shows every error GCC or Clang finds.
+      - name: Build
+        run: cmake --build --preset "$PRESET" -- -k 0
+
+      - name: Test on llvmpipe (X11)
+        env:
+          TESERRA_REQUIRE_GPU_TESTS: "1"
+          TESERRA_GPU_BACKEND: opengl
+          GALLIUM_DRIVER: llvmpipe
+        run: |
+          echo "::add-matcher::.github/problem-matchers/catch2.json"
+          set -o pipefail
+          xvfb-run -a -s "-screen 0 1280x720x24" ctest --preset "$PRESET" 2>&1 | tee ctest-gpu.log
+          if grep -E "\((Skipped|Not Run)\)" ctest-gpu.log; then
+            echo "::error::Some tests did not run on llvmpipe"
+            exit 1
+          fi
+
+      # The window tests again on Wayland: Weston's X11 backend inside Xvfb, because GLFW 3.4 crashes on a
+      # compositor without a seat, as a headless Weston is (platform-abstraction.md, GLFW on Linux).
+      - name: Window tests on Wayland
+        env:
+          GALLIUM_DRIVER: llvmpipe
+        run: |
+          xvfb-run -a -s "-screen 0 1280x720x24" bash -c '
+            weston --backend=x11 --socket=teserra-wayland --idle-time=0 > "$RUNNER_TEMP/weston.log" 2>&1 &
+            weston=$!
+            for _ in $(seq 50); do [ -S "$XDG_RUNTIME_DIR/teserra-wayland" ] && break; sleep 0.2; done
+            WAYLAND_DISPLAY=teserra-wayland "build/$PRESET/engine/platform/tests/teserra_platform_tests" "[window]"
+            status=$?
+            kill "$weston"
+            exit $status'
+
+      # The game template (#120), built the way a game builds it, as in the Windows job.
+      - name: Game template
+        working-directory: templates/minimal_game
+        env:
+          GALLIUM_DRIVER: llvmpipe
+        run: |
+          build="$RUNNER_TEMP/template"
+          cmake --preset debug -B "$build" "-DFETCHCONTENT_SOURCE_DIR_TESERRA=$GITHUB_WORKSPACE" "-DCMAKE_CXX_COMPILER=${{ matrix.cxx }}"
+          cmake --build "$build"
+          set +e
+          log="$(xvfb-run -a "$build/minimal_game" --frames 120 --hidden-window 2>&1)"
+          code=$?
+          echo "$log"
+          if [ "$code" -ne 0 ]; then echo "::error::minimal_game exited with $code"; exit 1; fi
+          if echo "$log" | grep -E "\[(error|critical)\]"; then echo "::error::minimal_game logged an error"; exit 1; fi
+
+      - name: Upload snapshot images
+        if: failure() && hashFiles('tests/golden/_actual/**') != ''
+        uses: actions/upload-artifact@v7
+        with:
+          name: linux-${{ matrix.compiler }}-${{ matrix.os }}-snapshots
+          path: |
+            tests/golden/_actual/
+            tests/golden/_diff/
+
+      - name: Annotate test results
+        if: always() && hashFiles(format('build/{0}/junit.xml', env.PRESET)) != ''
+        uses: mikepenz/action-junit-report@6ef3fdcfcd5f0b5d14df3e659ef19b8c6820f93d # v6.6.1
+        with:
+          report_paths: build/${{ env.PRESET }}/junit.xml
+          check_name: linux (${{ matrix.compiler }}, ${{ matrix.os }}) tests
+          annotate_only: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
+          include_passed: false
+          detailed_summary: true
+
+      - name: Upload vcpkg logs
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: linux-${{ matrix.compiler }}-${{ matrix.os }}-vcpkg-logs
+          path: |
+            build/${{ env.PRESET }}/vcpkg-manifest-install.log
+            ${{ env.VCPKG_INSTALLATION_ROOT }}/buildtrees/**/*.log
+          if-no-files-found: ignore
+
+  # A build without a window system (TESERRA_PORTABLE_ONLY): core, ecs, scene, rhi with the null backend and
+  # the platform without its window backend, for tools and servers that need no window. It keeps that
+  # configuration building now that the jobs above build everything. GCC only, and fast: no GLFW, glslang or
+  # SPIRV-Cross.
+  linux-portable:
+    name: linux-portable
+    runs-on: ubuntu-26.04
+    timeout-minutes: 30
     env:
       VCPKG_TRIPLET: x64-linux
     steps:
@@ -293,19 +434,18 @@ jobs:
             echo "VCPKG_BINARY_SOURCES=clear;files,$cache,readwrite"
             echo "RUNNER_IMAGE=$ImageOS-$ImageVersion"
           } >> "$GITHUB_ENV"
-          echo "Compilers: $(g++ --version | head -1) / $(clang++ --version | head -1)"
 
       - name: Restore vcpkg binary cache
         id: vcpkg-cache
         uses: actions/cache/restore@v6
         with:
           path: ${{ env.VCPKG_BINARY_CACHE }}
-          key: vcpkg-${{ env.VCPKG_TRIPLET }}-portable-${{ matrix.compiler }}-${{ env.RUNNER_IMAGE }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
+          key: vcpkg-${{ env.VCPKG_TRIPLET }}-portable-gcc-${{ env.RUNNER_IMAGE }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
           restore-keys: |
-            vcpkg-${{ env.VCPKG_TRIPLET }}-portable-${{ matrix.compiler }}-
+            vcpkg-${{ env.VCPKG_TRIPLET }}-portable-gcc-
 
       - name: Configure
-        run: cmake --preset linux-${{ matrix.compiler }}-portable
+        run: cmake --preset linux-gcc-portable
 
       - name: Save vcpkg binary cache
         if: always() && steps.vcpkg-cache.outputs.cache-hit != 'true'
@@ -314,9 +454,8 @@ jobs:
           path: ${{ env.VCPKG_BINARY_CACHE }}
           key: ${{ steps.vcpkg-cache.outputs.cache-primary-key }}
 
-      # -k 0: keep going after a failure, so one run shows every error GCC or Clang finds.
       - name: Build
-        run: cmake --build --preset linux-${{ matrix.compiler }}-portable -- -k 0
+        run: cmake --build --preset linux-gcc-portable -- -k 0
 
       - name: Test
-        run: ctest --preset linux-${{ matrix.compiler }}-portable
+        run: ctest --preset linux-gcc-portable

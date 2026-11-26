@@ -156,7 +156,7 @@ Use this list when adding Linux (or any platform). If a step requires touching c
 
 ### Findings so far (Linux)
 
-The non-blocking `linux-portable` CI job (#68) builds `TESERRA_PORTABLE_ONLY` with GCC and Clang on `ubuntu-latest`, warnings as errors: `core`, `ecs`, `rhi` + null backend, and the portable part of `platform` (no OS services, no window backend). What it found:
+Before the port, the non-blocking `linux-portable` CI job (#68) built only `TESERRA_PORTABLE_ONLY` with GCC and Clang on `ubuntu-latest`, warnings as errors: `core`, `ecs`, `rhi` + null backend, and the portable part of `platform` (no OS services, no window backend). Since #283, three blocking `linux` jobs build and test everything (build-and-ci.md), and `linux-portable` keeps the build without a window system. What the portable job found:
 
 - **`std::mt19937::result_type` is 64 bits on Linux** (`uint_fast32_t`), 32 on Windows. Storing `random() % n` in a `u32` compiles on MSVC and fails `-Wconversion` on GCC; cast explicitly.
 - **GCC's `-Wshadow` flags a constructor parameter named like the member it initializes** (`Scene(Device& device) : device(device)`), which MSVC and Clang accept. Name the parameter differently.
