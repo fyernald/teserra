@@ -8,6 +8,8 @@ set(_teserra_fixture_args
     "-DCMAKE_MAKE_PROGRAM=${CMAKE_MAKE_PROGRAM}"
     "-DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}"
     "-DCMAKE_PREFIX_PATH=${_teserra_fixture_prefix_path}"
+    # The fixtures find their packages in this build's vcpkg tree, which has ImGui only when this build does.
+    "-DTESERRA_WITH_DEBUG_UI=${TESERRA_WITH_DEBUG_UI}"
 )
 
 function(_teserra_add_layer_rule_test case)
