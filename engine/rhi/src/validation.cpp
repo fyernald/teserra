@@ -155,7 +155,7 @@ StoredBindGroupLayout StoredBindGroupLayout::from(const BindGroupLayoutDesc& des
 StoredPipelineLayout
 StoredPipelineLayout::from(std::string_view debugName,
                            const std::array<const StoredBindGroupLayout*, kMaxBindGroups>& layouts) {
-    StoredPipelineLayout stored{.groups = {}, .debugName = std::string(debugName)};
+    StoredPipelineLayout stored{.groups = {}, .debugName = std::string(debugName), .uniformBlocks = {}};
     for (usize set = 0; set < kMaxBindGroups; ++set) {
         if (layouts[set] != nullptr) {
             stored.groups[set] = layouts[set]->entries;
@@ -165,7 +165,7 @@ StoredPipelineLayout::from(std::string_view debugName,
 }
 
 PipelineLayoutInfo StoredPipelineLayout::info() const noexcept {
-    PipelineLayoutInfo result{.groups = {}, .debugName = debugName};
+    PipelineLayoutInfo result{.groups = {}, .debugName = debugName, .uniformBlocks = uniformBlocks};
     for (usize set = 0; set < kMaxBindGroups; ++set) {
         result.groups[set] = groups[set];
     }
@@ -447,6 +447,37 @@ void validateBindGroupDesc(const BindGroupDesc& desc, const ResourceLookup& obje
                        "maxUniformBufferRange ({})",
                        desc.debugName, entry.binding, seen, buffer->debugName, limits.maxUniformBufferRange);
     }
+}
+
+std::vector<ShaderBinding> uniformBlocksOf(const GraphicsPipelineDesc& desc, const ResourceLookup& objects) {
+    std::vector<ShaderBinding> blocks;
+    for (const ShaderModuleHandle handle : {desc.vertexShader, desc.fragmentShader}) {
+        const std::optional<ShaderModuleInfo> shader =
+            handle.isNull() ? std::nullopt : objects.shaderModule(handle);
+        if (!shader) {
+            continue;
+        }
+        for (const ShaderBinding& used : shader->reflection->bindings) {
+            if (used.type != BindingType::UniformBuffer) {
+                continue;
+            }
+            const auto same = std::ranges::find_if(blocks, [&](const ShaderBinding& block) {
+                return block.group == used.group && block.binding == used.binding;
+            });
+            if (same == blocks.end()) {
+                blocks.push_back({.group = used.group,
+                                  .binding = used.binding,
+                                  .type = used.type,
+                                  .size = used.size,
+                                  .name = used.name});
+            } else {
+                same->size = std::max(same->size, used.size);
+            }
+        }
+    }
+    std::ranges::sort(blocks, {},
+                      [](const ShaderBinding& block) { return std::pair{block.group, block.binding}; });
+    return blocks;
 }
 
 void validateGraphicsPipelineResources(const GraphicsPipelineDesc& desc, const ResourceLookup& objects) {

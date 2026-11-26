@@ -56,6 +56,10 @@ void validateGenerateMipmaps(const TextureDesc& desc);
 struct PipelineLayoutInfo {
     std::array<std::span<const BindGroupLayoutEntry>, kMaxBindGroups> groups{};
     std::string_view debugName{};
+    /// For the layout of a pipeline (ResourceLookup::graphicsPipelineLayout()): the uniform buffers its
+    /// shaders read, each with the smallest range that may be bound for it (ShaderBinding::size). Empty
+    /// for a pipeline layout itself.
+    std::span<const ShaderBinding> uniformBlocks{};
 };
 
 /// A bind group as a device keeps it.
@@ -93,6 +97,8 @@ struct StoredBindGroupLayout {
 struct StoredPipelineLayout {
     std::array<std::vector<BindGroupLayoutEntry>, kMaxBindGroups> groups;
     std::string debugName;
+    /// Kept by pipelines only: see PipelineLayoutInfo::uniformBlocks and uniformBlocksOf().
+    std::vector<ShaderBinding> uniformBlocks{};
 
     /// `layouts` holds the live layout of each set of the descriptor, or null for a null or stale handle,
     /// which leaves that set empty (validation reports a stale one before).
@@ -150,7 +156,8 @@ protected:
 /// Checks a submitted command list against a device's objects and limits: handles are alive; attachments,
 /// vertex and index buffers and copies have the usage they need; a bound pipeline declares the formats of
 /// the open render pass; draws have every vertex buffer slot of the pipeline bound, and at every set of its
-/// layout a bind group with an equal layout; bind groups get one dynamic offset per dynamic binding, each a
+/// layout a bind group with an equal layout, whose uniform buffer ranges are at least as large as the
+/// blocks the pipeline's shaders read there; bind groups get one dynamic offset per dynamic binding, each a
 /// multiple of the uniform buffer offset alignment that keeps the binding's window inside its buffer, and
 /// their resources are alive; copies stay inside their buffers and textures.
 void validateCommands(const CommandList& commands, const ResourceLookup& objects, const DeviceLimits& limits);
@@ -185,6 +192,12 @@ void validateBindGroupDesc(const BindGroupDesc& desc, const ResourceLookup& obje
 /// gaps that can be rendered to (and blended, where blending is on), and a depth-stencil target with a depth
 /// format.
 void validateGraphicsPipelineDesc(const GraphicsPipelineDesc& desc);
+
+/// The uniform buffers that the live shaders of `desc` read, sorted by (group, binding); a block both
+/// stages read appears once, with the larger size. Backends keep them with the pipeline for
+/// validateCommands().
+[[nodiscard]] std::vector<ShaderBinding> uniformBlocksOf(const GraphicsPipelineDesc& desc,
+                                                         const ResourceLookup& objects);
 
 /// The pipeline against the device's objects: a null or live layout, and every resource that the shaders'
 /// reflection lists is in that layout at its (group, binding), with the same type, visible to the stage

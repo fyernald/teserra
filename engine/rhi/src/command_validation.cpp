@@ -209,6 +209,32 @@ void validateCommands(const CommandList& commands, const ResourceLookup& objects
                                        bound->debugName, set, passPipeline->debugName,
                                        passPipelineLayout->debugName);
                     }
+                    // A short range would read zeros on OpenGL and is an error on Vulkan (#191).
+                    for (const ShaderBinding& block : passPipelineLayout->uniformBlocks) {
+                        const std::optional<BindGroupInfo>& bound =
+                            block.group < kMaxBindGroups ? boundGroups[block.group] : std::nullopt;
+                        if (!bound) {
+                            continue; // reported above
+                        }
+                        const auto entry =
+                            std::ranges::find(bound->entries, block.binding, &BindGroupEntry::binding);
+                        if (entry == bound->entries.end()) {
+                            continue;
+                        }
+                        const BufferBinding& range = entry->buffer;
+                        const std::optional<BufferDesc> buffer = objects.buffer(range.buffer);
+                        if (!buffer || range.offset > buffer->sizeInBytes) {
+                            continue; // reported when the group was bound
+                        }
+                        [[maybe_unused]] const u64 seen =
+                            range.size != 0 ? range.size : buffer->sizeInBytes - range.offset;
+                        TESERRA_ASSERT(
+                            seen >= block.size,
+                            "draw with pipeline '{}' reads uniform block '{}' at (set {}, binding {}) "
+                            "as {} bytes, but bind group '{}' binds {} bytes there",
+                            passPipeline->debugName, block.name, block.group, block.binding, block.size,
+                            bound->debugName, seen);
+                    }
                 }
                 break;
             case CommandType::BindGroup: {
