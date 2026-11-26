@@ -148,6 +148,8 @@ Result<void> App::initialize(Result<std::unique_ptr<platform::Platform>> platfor
     if (m_config.debugUi.enabled) {
         TESERRA_TRY_ASSIGN(m_debugUi, debugui::DebugUi::create({.contentScale = m_window->contentScale().x}));
         m_debugUi->addWindow("Stats", [this] { drawStatsWindow(); });
+        m_logConsole = std::make_unique<debugui::LogConsole>();
+        m_debugUi->addWindow("Log", [this] { m_logConsole->draw(); }, /*open=*/false);
         setDebugUiOpen(m_config.debugUi.startOpen);
     }
 #endif
@@ -464,6 +466,12 @@ debugui::DebugUi& App::debugUi() {
     TESERRA_ASSERT(isInitialized(), "The App failed to initialize: {}", *m_initError);
     TESERRA_ASSERT(m_debugUi != nullptr, "The debug UI is disabled: AppConfig::debugUi.enabled is false");
     return *m_debugUi;
+}
+
+debugui::LogConsole& App::logConsole() {
+    TESERRA_ASSERT(isInitialized(), "The App failed to initialize: {}", *m_initError);
+    TESERRA_ASSERT(m_logConsole != nullptr, "The debug UI is disabled: AppConfig::debugUi.enabled is false");
+    return *m_logConsole;
 }
 
 void App::setDebugUiOpen(bool open) {

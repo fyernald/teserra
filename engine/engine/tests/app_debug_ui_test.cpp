@@ -4,6 +4,8 @@
 // the game, while releases and input elsewhere do; on the null backend, the debug UI is drawn over the frame
 // after the game's render callback. Built only with TESERRA_WITH_DEBUG_UI.
 
+#include <teserra/core/log.hpp>
+#include <teserra/debug_ui/log_console.hpp>
 #include <teserra/engine/app.hpp>
 #include <teserra/rhi/command_list.hpp>
 #include <teserra/rhi_null/null_device.hpp>
@@ -164,7 +166,8 @@ TEST_CASE("App debug UI: Stats and the game's windows are listed, and drawn whil
     for (const debugui::DebugWindow& window : fixture.app.debugUi().windows()) {
         names.push_back(window.name);
     }
-    CHECK(names == std::vector<std::string>{"Stats", "Game"});
+    CHECK(names == std::vector<std::string>{"Stats", "Log", "Game"});
+    CHECK_FALSE(fixture.app.debugUi().windows()[1].open); // the log opens from the View menu
 
     fixture.headless.queueEvent(3, key(platform::Key::GraveAccent, true));
     REQUIRE(fixture.app.run() == 0);
@@ -256,4 +259,22 @@ TEST_CASE("App debug UI on the null backend: drawn over the frame after the rend
     } else {
         CHECK(debugUi == std::string::npos);
     }
+}
+
+TEST_CASE("App debug UI: the log console has the App's messages, also from before it was opened",
+          "[engine][app][debug_ui]") {
+    HeadlessApp fixture(headlessConfig(2));
+    TESERRA_LOG_WARN(LogCategory::Game, "logged while the debug UI is closed");
+    fixture.headless.queueEvent(2, key(platform::Key::GraveAccent, true));
+    REQUIRE(fixture.app.debugUi().setWindowOpen("Log", true));
+    REQUIRE(fixture.app.run() == 0);
+
+    bool found = false;
+    bool running = false;
+    for (const debugui::LogEntry& entry : fixture.app.logConsole().entries()) {
+        found = found || entry.message == "logged while the debug UI is closed";
+        running = running || entry.message == "Running 'Debug UI test'";
+    }
+    CHECK(found);
+    CHECK(running);
 }
