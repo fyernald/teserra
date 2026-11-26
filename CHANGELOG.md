@@ -140,6 +140,7 @@ All notable user-visible changes to Teserra are documented here. The format foll
 
 ### Fixed
 
+- A window resized by dragging its border on Windows is drawn at every size it passes through (#184): the window system's resize loop kept `pollEvents()` from returning, so the window showed its last frame cut off at the new size until the mouse button was released. The platform now calls a live-resize handler (`Platform::setLiveResizeHandler()`) from inside the poll, and the App finishes a frame there for each new size.
 - Log calls removed by `TESERRA_LOG_LEVEL_MIN` (Trace and Debug in Release) have their format string checked with GCC too; GCC does not evaluate the `consteval` check in a discarded `if constexpr` branch, so a wrong format string compiled there (#68).
 - `teserra_add_shaders()` works in deep build directories on Windows (#192): generated blobs and sources moved from `generated/teserra_shaders/<target>/blobs/` and `.../src/` to `tsh/<hash of the target>/`, which saves about 45 characters, and a generated path that Windows could not write (260 characters or more) now fails configuration with a message that names it, instead of failing the build.
 - `tools/scripts/package_example.py` includes the example's `assets/` folder, so a packaged `textured_quad` finds its image, and its README describes what `textured_quad` testers should see.

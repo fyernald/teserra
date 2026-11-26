@@ -125,8 +125,9 @@ void GlfwWindow::onFramebufferSize(GLFWwindow* window, int width, int height) {
     int windowWidth = 0;
     int windowHeight = 0;
     glfwGetWindowSize(window, &windowWidth, &windowHeight);
-    windowOf(window).m_platform.enqueue(
-        WindowResized{toSize(windowWidth, windowHeight), toSize(width, height)});
+    GlfwPlatform& platform = windowOf(window).m_platform;
+    platform.enqueue(WindowResized{toSize(windowWidth, windowHeight), toSize(width, height)});
+    platform.framebufferResized(toSize(width, height));
 }
 
 void GlfwWindow::onClose(GLFWwindow* window) {

@@ -288,6 +288,83 @@ TEST_CASE("App: onEvent sees events after Input processed them", "[engine][app]"
     CHECK(pressedInUpdate == std::vector<bool>{true, false}); // edges last one frame
 }
 
+TEST_CASE("App: a live resize finishes the frame whose poll is underway and begins the next",
+          "[engine][app]") {
+    AppConfig config = headlessConfig();
+    config.maxFrames = 4;
+    HeadlessApp fixture{config};
+    const auto press = [](platform::Key key) {
+        return platform::KeyChanged{.key = key, .down = true, .repeat = false};
+    };
+    // Poll 2: A, a live resize, B, a second live resize, C.
+    fixture.headless.queueEvent(2, press(platform::Key::A));
+    fixture.headless.queueLiveResize(2, {640, 360}, {press(platform::Key::B)});
+    fixture.headless.queueLiveResize(2, {320, 180}, {press(platform::Key::C)});
+    struct Frame {
+        u64 poll;
+        bool a, b, c;
+        std::vector<UVec2> resizes;
+    };
+    std::vector<Frame> frames;
+    std::vector<UVec2> resizes;
+
+    static_cast<void>(fixture.app.run({
+        .onEvent =
+            [&](App&, const platform::Event& event) {
+                if (const auto* resized = std::get_if<platform::WindowResized>(&event)) {
+                    resizes.push_back(resized->framebufferSize);
+                }
+            },
+        .update =
+            [&](App& app, f32) {
+                const platform::Input& input = app.input();
+                frames.push_back({fixture.headless.polls(), input.wasPressed(platform::Key::A),
+                                  input.wasPressed(platform::Key::B), input.wasPressed(platform::Key::C),
+                                  std::exchange(resizes, {})});
+            },
+    }));
+
+    // Poll 2 runs three frames: up to each resize, and after the last one.
+    REQUIRE(frames.size() == 4);
+    CHECK(fixture.headless.polls() == 2);
+    CHECK(fixture.app.frameCount() == 4);
+    CHECK((frames[0].poll == 1 && !frames[0].a && frames[0].resizes.empty()));
+    CHECK((frames[1].poll == 2 && frames[1].a && !frames[1].b && !frames[1].c));
+    CHECK(frames[1].resizes == std::vector<UVec2>{{640, 360}});
+    CHECK((frames[2].poll == 2 && !frames[2].a && frames[2].b && !frames[2].c));
+    CHECK(frames[2].resizes == std::vector<UVec2>{{320, 180}});
+    CHECK((frames[3].poll == 2 && !frames[3].a && !frames[3].b && frames[3].c));
+    CHECK(frames[3].resizes.empty());
+}
+
+TEST_CASE("App: a frame that quits during a live resize is the last one", "[engine][app]") {
+    AppConfig config = headlessConfig();
+    config.maxFrames = 2;
+    HeadlessApp fixture{config};
+    fixture.headless.queueLiveResize(2, {640, 360});
+    fixture.headless.queueLiveResize(2, {320, 180});
+    int updates = 0;
+
+    static_cast<void>(fixture.app.run({.update = [&](App&, f32) { ++updates; }}));
+
+    CHECK(updates == 2); // the second frame ends at the first resize; nothing runs after it
+    CHECK(fixture.app.frameCount() == 2);
+}
+
+TEST_CASE("App: the live-resize handler is set only while run() runs", "[engine][app]") {
+    AppConfig config = headlessConfig();
+    config.maxFrames = 1;
+    HeadlessApp fixture{config};
+    bool setWhileRunning = false;
+
+    CHECK_FALSE(fixture.headless.hasLiveResizeHandler());
+    static_cast<void>(fixture.app.run(
+        {.update = [&](App&, f32) { setWhileRunning = fixture.headless.hasLiveResizeHandler(); }}));
+
+    CHECK(setWhileRunning);
+    CHECK_FALSE(fixture.headless.hasLiveResizeHandler());
+}
+
 TEST_CASE("App: services are destroyed in reverse order of creation", "[engine][app]") {
     test::Journal journal;
     {

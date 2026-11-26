@@ -147,19 +147,14 @@ int App::run(const AppCallbacks& callbacks) {
     TESERRA_LOG_INFO(LogCategory::App, "Running '{}'", m_config.title);
 
     TESERRA_PROFILE_THREAD_NAME("Main");
+    // While the window system resizes the window inside a poll (a border dragged on Windows), frames are
+    // drawn from there, so the window shows the game at every size it passes through (#184).
+    m_platform->setLiveResizeHandler([this, &callbacks] { liveResizeFrame(callbacks); });
     m_frameTimer.tick(m_platform->clock().now()); // the first frame's delta starts here
     while (!m_quitting) {
         runFrame(callbacks);
-        // After the frame's work was submitted: the device keeps GPU objects past the frames in flight.
-        {
-            TESERRA_PROFILE_SCOPE("Assets end frame");
-            m_assets->endFrame();
-        }
-        ++m_frameCount;
-        if (m_config.maxFrames != 0 && m_frameCount >= m_config.maxFrames && !m_quitting) {
-            quit();
-        }
     }
+    m_platform->setLiveResizeHandler({});
 
     TESERRA_LOG_INFO(LogCategory::App, "'{}' ended after {} frames with exit code {}", m_config.title,
                      m_frameCount, m_exitCode);
@@ -174,28 +169,72 @@ int App::run(scene::Scene& scene, const AppCallbacks& callbacks) {
 }
 
 void App::runFrame(const AppCallbacks& callbacks) {
-    TESERRA_PROFILE_FRAME_MARK();
+    beginFrame();
+    {
+        TESERRA_PROFILE_SCOPE("Poll events");
+        if (m_paused) {
+            m_platform->waitEvents(m_events, m_config.minimizedEventWait); // nothing to draw: do not spin
+        } else {
+            m_platform->pollEvents(m_events);
+        }
+    }
+    // A live resize during the poll may have finished frames of its own; this finishes the last one it
+    // began, with the events that came after.
+    finishFrame(callbacks);
+}
 
+void App::beginFrame() {
+    TESERRA_PROFILE_FRAME_MARK();
     // The frame boundary: a scene switch requested during the previous frame takes effect here. The active
     // scene stays the same for the rest of the frame, whatever is requested during it.
     m_scenes.beginFrame();
+    if (scene::Scene* const active = m_scenes.active()) {
+        active->run(ecs::Phase::Startup); // only the first frame this scene runs
+    }
+    m_input.beginFrame();
+    m_events.clear();
+    m_frameOpen = true;
+}
+
+void App::liveResizeFrame(const AppCallbacks& callbacks) {
+    if (!m_frameOpen) {
+        return; // a frame finished from here quit
+    }
+    // The frame whose poll is underway, with the events so far, ending with the resize; then the next
+    // one, whose events the poll goes on collecting.
+    finishFrame(callbacks);
+    if (!m_quitting) {
+        beginFrame();
+    }
+}
+
+void App::finishFrame(const AppCallbacks& callbacks) {
+    if (!m_frameOpen) {
+        return;
+    }
+    m_frameOpen = false;
+    updateAndRender(callbacks);
+    // After the frame's work was submitted: the device keeps GPU objects past the frames in flight.
+    {
+        TESERRA_PROFILE_SCOPE("Assets end frame");
+        m_assets->endFrame();
+    }
+    ++m_frameCount;
+    if (m_config.maxFrames != 0 && m_frameCount >= m_config.maxFrames && !m_quitting) {
+        quit();
+    }
+}
+
+void App::updateAndRender(const AppCallbacks& callbacks) {
     scene::Scene* const active = m_scenes.active();
     const auto runPhase = [active](ecs::Phase phase) {
         if (active != nullptr) {
             active->run(phase);
         }
     };
-    runPhase(ecs::Phase::Startup); // only the first frame this scene runs
 
     {
         TESERRA_PROFILE_SCOPE("Events");
-        m_input.beginFrame();
-        m_events.clear();
-        if (m_paused) {
-            m_platform->waitEvents(m_events, m_config.minimizedEventWait); // nothing to draw: do not spin
-        } else {
-            m_platform->pollEvents(m_events);
-        }
         for (const platform::Event& event : m_events) {
             m_input.processEvent(event);
             if (callbacks.onEvent) {
