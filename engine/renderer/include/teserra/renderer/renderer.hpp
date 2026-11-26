@@ -54,6 +54,10 @@ public:
 
     /// Adds a pass after the ones added before and calls its declare().
     void addPass(std::unique_ptr<RenderPass> pass);
+    /// Adds an overlay pass, drawn into the frame's output after the composite pass, in the order overlays
+    /// were added, so it is not scaled with the scene target (e.g. the debug UI). It may only declare
+    /// PassResource::Output (asserted). Overlays also run when the scene target could not be created.
+    void addOverlayPass(std::unique_ptr<RenderPass> pass);
 
     /// The layout of set 0 (rhi::kFrameGroup): the view's CameraData as a uniform buffer with a dynamic
     /// offset, seen by the vertex and fragment stages. Pipelines of passes use it at set 0 of their layout.
@@ -120,6 +124,7 @@ private:
     rhi::BindGroupLayoutHandle m_frameLayout;
     rhi::BindGroupHandle m_frameGroup;
     std::vector<Pass> m_passes;
+    std::vector<Pass> m_overlays;
     // The frame's views in render order and the ring offset of each one's CameraData; reused every frame.
     std::vector<RenderView> m_views;
     std::vector<u32> m_viewOffsets;

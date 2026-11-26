@@ -51,6 +51,17 @@
         }
       ]
     },
+    "debug-ui": {
+      "description": "Dear ImGui for the in-game debug tools (TESERRA_WITH_DEBUG_UI, ADR-0013)",
+      "dependencies": [
+        {
+          "name": "imgui",
+          "features": [
+            "docking-experimental"
+          ]
+        }
+      ]
+    },
     "benchmarks": {
       "description": "Catch2 micro-benchmarks in benchmarks/ (TESERRA_BUILD_BENCHMARKS)",
       "dependencies": [

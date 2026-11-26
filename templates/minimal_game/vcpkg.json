@@ -9,6 +9,10 @@
       "features": [{ "name": "wayland", "platform": "linux" }]
     },
     "glm",
+    {
+      "name": "imgui",
+      "features": ["docking-experimental"]
+    },
     "glslang",
     "spdlog",
     "spirv-cross",

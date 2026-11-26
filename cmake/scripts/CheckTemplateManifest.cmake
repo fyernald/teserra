@@ -1,5 +1,6 @@
 # Checks that templates/minimal_game builds with the libraries and versions Teserra is built with (#120):
-# its vcpkg.json lists exactly the dependencies of Teserra's vcpkg.json plus those of its default features,
+# its vcpkg.json lists exactly the dependencies of Teserra's vcpkg.json plus those of its default features and
+# of the features a game builds with by default (debug-ui: TESERRA_WITH_DEBUG_UI is ON in a game too),
 # and its vcpkg-configuration.json equals Teserra's.
 #
 #   cmake -DTESERRA_SOURCE_DIR=<repo> -P CheckTemplateManifest.cmake
@@ -37,6 +38,7 @@ file(READ "${template}/vcpkg.json" template_manifest)
 
 _teserra_dependency_names(expected "${engine_manifest}" dependencies)
 _teserra_dependency_names(default_features "${engine_manifest}" default-features)
+list(APPEND default_features debug-ui)
 foreach(feature IN LISTS default_features)
     _teserra_dependency_names(feature_dependencies "${engine_manifest}" features ${feature} dependencies)
     list(APPEND expected ${feature_dependencies})
@@ -48,7 +50,7 @@ list(SORT actual)
 if(NOT actual STREQUAL expected)
     message(FATAL_ERROR
         "templates/minimal_game/vcpkg.json lists '${actual}', but Teserra builds with '${expected}' "
-        "(vcpkg.json: dependencies and the default features). Update the template's dependencies.")
+        "(vcpkg.json: dependencies, the default features and debug-ui). Update the template's dependencies.")
 endif()
 
 file(READ "${TESERRA_SOURCE_DIR}/vcpkg-configuration.json" engine_configuration)

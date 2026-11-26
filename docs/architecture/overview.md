@@ -54,8 +54,9 @@ Arrows point from a module to what it depends on. A module may depend on any mod
 | 3 | `teserra_renderer` | Frame structure, render passes, cameras, materials, sprite batching, debug draw | rhi, assets | - |
 | 4 | `teserra_ecs` | Entities, component storage, views, events, deferred commands | core | - |
 | 5 | `teserra_scene` | Scenes owning worlds, transforms, system scheduling, ECS-to-renderer extraction, tilemaps | ecs, renderer, assets | - |
-| 6 | `teserra_engine` | `App`, main loop, wiring of services, backend selection, umbrella header `<teserra/teserra.hpp>` | scene, rhi backends | - |
-| 7 | `teserra_editor` (future) | Editor executable | engine | Dear ImGui |
+| 6 | `teserra_debug_ui` | The in-game debug tools: a Dear ImGui context and its renderer backend on the RHI, drawn as an overlay pass of the renderer ([ADR-0013](../adr/0013-dear-imgui-debug-ui-and-editor.md)); only with `TESERRA_WITH_DEBUG_UI` | scene, renderer, assets, platform | Dear ImGui (PUBLIC: games write their own debug windows) |
+| 7 | `teserra_engine` | `App`, main loop, wiring of services, backend selection, umbrella header `<teserra/teserra.hpp>` | scene, debug_ui, rhi backends | - |
+| 8 | `teserra_editor` (future) | Editor executable | engine | Dear ImGui |
 
 Notes:
 
