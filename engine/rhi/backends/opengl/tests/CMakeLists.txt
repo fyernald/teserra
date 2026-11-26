@@ -22,14 +22,16 @@ target_include_directories(teserra_rhi_opengl_tests PRIVATE ../src)
 teserra_add_header_check(rhi_opengl)
 
 # Shaders of the GPU tests, compiled and embedded: <rhi_opengl_tests/shaders.hpp> declares
-# teserra::test::shaders::kBindingSetsVert, kBindingSetsFrag, kSampledVert, kSampledFrag, kVertexColorVert
-# and kVertexColorFrag.
+# teserra::test::shaders::kBindingSetsVert, kBindingSetsFrag, kInstanceIndexVert, kInstanceIndexFrag,
+# kSampledVert, kSampledFrag, kVertexColorVert and kVertexColorFrag.
 teserra_add_shaders(teserra_rhi_opengl_tests EMBED
     NAMESPACE teserra::test::shaders
     HEADER rhi_opengl_tests/shaders.hpp
     SOURCES
         shaders/binding_sets.vert
         shaders/binding_sets.frag
+        shaders/instance_index.vert
+        shaders/instance_index.frag
         shaders/sampled.vert
         shaders/sampled.frag
         shaders/vertex_color.vert

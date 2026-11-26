@@ -14,6 +14,7 @@
 #include <array>
 #include <format>
 #include <functional>
+#include <iterator>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -230,3 +231,35 @@ TEST_CASE("OpenGL backend: without validation, replay still catches stale buffer
     scene.device->endFrame();
 }
 #endif
+
+TEST_CASE("OpenGL backend: draws set the emulated base instance when the first instance changes",
+          "[rhi_opengl][draw]") {
+    Scene scene;
+    // SPIRV-Cross's GLSL declares this uniform for gl_InstanceIndex where the driver lacks
+    // GL_ARB_shader_draw_parameters; programs linked from now on have it.
+    scene.gl().uniformLocations.emplace("SPIRV_Cross_BaseInstance", 7);
+    const ShaderModuleHandle vertex = *scene.device->createShaderModule(
+        {.stage = ShaderStage::Vertex, .blob = test::glslBlob(ShaderStage::Vertex, kVertexSource)});
+    const ShaderModuleHandle fragment = *scene.device->createShaderModule(
+        {.stage = ShaderStage::Fragment, .blob = test::glslBlob(ShaderStage::Fragment, kFragmentSource)});
+    const GraphicsPipelineHandle instanced = scene.createPipeline(vertex, fragment, "Instanced");
+    const GLuint program = scene.gl().lastName - 1; // created just before the vertex array
+
+    const Calls calls = scene.submitPass([&](CommandList& cmd) {
+        cmd.bindPipeline(instanced);
+        cmd.bindVertexBuffer(0, scene.vertices);
+        cmd.draw({.vertexCount = 3});                                         // the uniform starts at 0
+        cmd.draw({.vertexCount = 3, .instanceCount = 2, .firstInstance = 3}); // set
+        cmd.draw({.vertexCount = 3, .firstInstance = 3});                     // unchanged
+        cmd.bindIndexBuffer(scene.indices, IndexType::Uint16);
+        cmd.drawIndexed({.indexCount = 3}); // back to 0
+        cmd.bindPipeline(scene.pipeline);   // a program without it
+        cmd.draw({.vertexCount = 3, .firstInstance = 4});
+    });
+
+    Calls uniforms;
+    std::ranges::copy_if(calls, std::back_inserter(uniforms),
+                         [](const std::string& call) { return call.starts_with("ProgramUniform1i"); });
+    CHECK(uniforms == Calls{std::format("ProgramUniform1i({}, 7, 3)", program),
+                            std::format("ProgramUniform1i({}, 7, 0)", program)});
+}

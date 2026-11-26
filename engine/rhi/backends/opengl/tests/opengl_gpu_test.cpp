@@ -980,3 +980,86 @@ TEST_CASE("OpenGL backend (GPU): textures are sampled through bind groups, neare
         CHECK(record.level < LogLevel::Warn);
     }
 }
+
+TEST_CASE("OpenGL backend (GPU): gl_InstanceIndex counts from the draw's first instance",
+          "[rhi_opengl][gpu][conventions]") {
+    const GpuWindow gpu = createGpuWindowOrSkip();
+    auto created =
+        createDevice({.backend = Backend::OpenGL, .enableValidation = true, .enableBackendDebug = true},
+                     gpu.window.get(), std::array{opengl::backendFactory()});
+    REQUIRE(created.has_value());
+    Device& device = **created;
+    const test::LogCapture log;
+    constexpr UVec2 kSize{4, 4};
+    constexpr Format kFormat = Format::Rgba8Unorm;
+
+    // The compiled shader takes gl_BaseInstanceARB where the driver has GL_ARB_shader_draw_parameters.
+    // The hand-written one is what SPIRV-Cross emits without it: the uniform the backend sets (#185).
+    constexpr std::string_view kUniformPath = R"(#version 450
+uniform int SPIRV_Cross_BaseInstance;
+layout(location = 0) flat out int vInstance;
+void main() {
+    vInstance = gl_InstanceID + SPIRV_Cross_BaseInstance;
+    const vec2 corner = vec2((gl_VertexID << 1) & 2, gl_VertexID & 2);
+    gl_Position = vec4(corner * 2.0 - 1.0, 0.0, 1.0);
+}
+)";
+    static constexpr std::array<u32, 2> kSpirvWords{0x07230203, 0x00010500}; // not read by OpenGL
+    const std::vector<std::byte> uniformBlob = writeShaderBlob(
+        {.stage = ShaderStage::Vertex, .spirv = std::as_bytes(std::span(kSpirvWords)), .glsl = kUniformPath});
+    const std::array vertexShaders{
+        std::pair{"compiled .tshader", *device.createShaderModule({.stage = ShaderStage::Vertex,
+                                                                   .blob = test::shaders::kInstanceIndexVert,
+                                                                   .debugName = "Instance index vertex"})},
+        std::pair{"uniform fallback", *device.createShaderModule({.stage = ShaderStage::Vertex,
+                                                                  .blob = uniformBlob,
+                                                                  .debugName = "Uniform base instance"})},
+    };
+    const ShaderModuleHandle fragment = *device.createShaderModule({.stage = ShaderStage::Fragment,
+                                                                    .blob = test::shaders::kInstanceIndexFrag,
+                                                                    .debugName = "Instance index fragment"});
+    for (const auto& [name, vertex] : vertexShaders) {
+        INFO(name);
+        const GraphicsPipelineHandle pipeline = *device.createGraphicsPipeline({
+            .vertexShader = vertex,
+            .fragmentShader = fragment,
+            .targets = {.colorFormats = {kFormat}},
+            .debugName = "Instance index",
+        });
+        // Three draws, each into its own target: first instance 3, then 5, then 0 again.
+        constexpr std::array<u32, 3> kFirstInstances{3, 5, 0};
+        std::vector<TextureHandle> targets;
+        std::vector<std::unique_ptr<Readback>> readbacks;
+        device.beginFrame();
+        CommandList& cmd = device.acquireCommandList();
+        for (const u32 first : kFirstInstances) {
+            targets.push_back(
+                *device.createTexture({.format = kFormat,
+                                       .width = kSize.x,
+                                       .height = kSize.y,
+                                       .usage = TextureUsage::RenderTarget | TextureUsage::CopySrc}));
+            readbacks.push_back(std::make_unique<Readback>(device, kSize));
+            cmd.beginRenderPass({.colorAttachments = {{.texture = targets.back(), .loadOp = LoadOp::Clear}}});
+            cmd.bindPipeline(pipeline);
+            cmd.draw({.vertexCount = 3, .firstInstance = first});
+            cmd.endRenderPass();
+            readbacks.back()->record(cmd, targets.back());
+        }
+        device.submit(cmd);
+        device.endFrame();
+        device.waitIdle();
+
+        for (usize i = 0; i < kFirstInstances.size(); ++i) {
+            INFO("first instance " << kFirstInstances[i]);
+            CHECK(readbacks[i]->texel(1, 1)[0] == kFirstInstances[i]);
+        }
+        readbacks.clear();
+        for (const TextureHandle target : targets) {
+            device.destroy(target);
+        }
+        device.destroy(pipeline);
+        device.destroy(vertex);
+    }
+    device.destroy(fragment);
+    checkNoWarnings(log);
+}

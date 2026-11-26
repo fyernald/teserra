@@ -69,6 +69,8 @@ struct GlShaderModule {
 /// the state that binding it sets.
 struct GlPipeline {
     GLuint program = 0;
+    /// Whether the program has the SPIRV_Cross_BaseInstance uniform (see GlDevice::applyBaseInstance()).
+    bool emulatesBaseInstance = false;
     GLuint vertexArray = 0;
     GlPipelineState state{};
     GLenum primitiveMode = GL_TRIANGLES;
@@ -273,6 +275,11 @@ private:
         ShaderModuleHandle fragmentShader{};
         GLuint program = 0;
         u32 users = 0;
+        // The location of SPIRV-Cross's `SPIRV_Cross_BaseInstance` uniform, which stands in for
+        // gl_BaseInstanceARB without GL_ARB_shader_draw_parameters (#185); -1 where the program has none.
+        GLint baseInstanceLocation = -1;
+        // The value it was last set to; a program's uniforms start at 0.
+        u32 baseInstance = 0;
     };
 
     // Loads GL, checks the version and limits, and sets up debug output, conventions and the swapchain.
@@ -288,6 +295,9 @@ private:
     [[nodiscard]] Result<GLuint> acquireProgram(const GraphicsPipelineDesc& desc,
                                                 const GlShaderModule& vertex, const GlShaderModule* fragment);
     void releaseProgram(GLuint program);
+    // Before a draw: gives the bound pipeline's program the draw's first instance where it emulates
+    // gl_BaseInstanceARB with a uniform.
+    void applyBaseInstance(u32 firstInstance);
     // Replays the commands of a list (docs/architecture/rhi.md#opengl-backend-mapping).
     void replay(const CommandList& commands);
     void copyBuffer(const BufferCopy& copy);
