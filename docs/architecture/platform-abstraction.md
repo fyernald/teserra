@@ -154,7 +154,10 @@ Use this list when adding Linux (or any platform). If a step requires touching c
 9. **Docs:** update build instructions, supported platforms table in README, this checklist with lessons learned.
 10. **Release:** add platform artifacts to the release workflow.
 
-### Findings so far (Linux)
+### Lessons of the Linux port (#127)
+
+The port is done for v0.2 ([ADR-0026](../adr/0026-linux-support-targets.md)): steps 1–4 and 6–9 above (#280–#284); step 5 waits for the first dynamic library (#134), step 10 for the v0.2 release (#287).
+
 
 Before the port, the non-blocking `linux-portable` CI job (#68) built only `TESERRA_PORTABLE_ONLY` with GCC and Clang on `ubuntu-latest`, warnings as errors: `core`, `ecs`, `rhi` + null backend, and the portable part of `platform` (no OS services, no window backend). Since #283, three blocking `linux` jobs build and test everything (build-and-ci.md), and `linux-portable` keeps the build without a window system. What the portable job found:
 
@@ -173,6 +176,7 @@ Before the port, the non-blocking `linux-portable` CI job (#68) built only `TESE
 - **The whole build on Linux** (step 7, #282): every module, the OpenGL backend, `teserra_shaderc`, the examples and the tests build with GCC 15 and Clang 21 with warnings as errors (`ci-linux-gcc`, `ci-linux-clang`), and all 681 tests pass on Mesa llvmpipe under Xvfb, GPU tests, snapshots and example smoke runs included. The code needed no platform `#ifdef`; what the compilers found was:
   - **libstdc++'s `std::stable_sort` allocates a buffer for any size,** where MSVC's does not for small ranges. The sprite pass sorted tilemap chunks with it, so every Linux frame allocated once (the steady-state allocation test caught it); an unstable sort keyed on (layer, index) keeps the same order without allocating. Iteration 8 had found the same about pass ordering.
   - **GCC's `-Wsign-conversion` and `-Wshadow` flag more than MSVC's `/W4`:** an `int` loop index into a `std::array`, `{GL_ENUM, ...}` lists that deduce `int` where `GLenum` is meant, and lambda parameters named like a local (`app`). Test code with designated initializers needs default member initializers on the structs it leaves out (`-Wmissing-field-initializers`), so the Tiled structs got them.
+- **Compiler minimums come from the API's style** (#283): GCC 13 and 14.2, Ubuntu 24.04's GCCs, cannot brace-initialize a struct with a C-array member that has a default member initializer (`GraphicsPipelineDesc::colorBlend`, `RenderPassDesc::colorAttachments`), so even `createGraphicsPipeline({})` fails; GCC 14.3 fixed it. Only CI on the older LTS found it, since the dev container had GCC 15. Changing the headers would have changed how games write those structs, so the minimum is GCC 14.3 or Clang 18, and 24.04 uses its Clang.
 
 ## Anti-patterns specific to this layer
 

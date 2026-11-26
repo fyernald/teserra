@@ -29,12 +29,13 @@ Teserra aims to be an engine you can **read, understand and ship games with**:
 
 ### Supported platforms
 
-| | v0.1 |
-|---|---|
-| Operating system | Windows 10 and 11, x64 |
-| GPU | Any GPU with an OpenGL 4.5 core driver |
-| Compiler | MSVC from Visual Studio 2022 17.8+ or 2026 |
-| Linux | Planned for v0.2; CI already builds the portable modules with GCC and Clang |
+| | Windows (v0.1) | Linux (v0.2, on `main` now) |
+|---|---|---|
+| Operating system | Windows 10 and 11, x64 | Ubuntu 24.04 and 26.04 LTS, x64, on X11 or Wayland; other distributions best-effort |
+| GPU | Any GPU with an OpenGL 4.5 core driver | Any GPU with an OpenGL 4.5 core driver (Mesa or vendor) |
+| Compiler | MSVC from Visual Studio 2022 17.8+ or 2026 | GCC 14.3+ or Clang 18+ (on Ubuntu 24.04, Clang) |
+
+Linux support is decided in [ADR-0026](docs/adr/0026-linux-support-targets.md); CI builds and tests every supported target on each pull request.
 
 The detailed roadmap, iterations and backlog live **only** in the [GitHub Project](https://github.com/users/fyernald/projects/3) and [issues](https://github.com/fyernald/teserra/issues).
 
@@ -51,6 +52,8 @@ cd my_game
 cmake --workflow --preset debug
 build/debug/minimal_game
 ```
+
+On Linux the same steps work from a terminal once the packages are installed ([getting started](docs/guides/getting-started.md#1-install-the-tools)); until v0.2.0 is released, point the template's `GIT_TAG` at `main`.
 
 The template fetches Teserra with CMake's FetchContent, so the game is its own project. The **[getting-started guide](docs/guides/getting-started.md)** walks through it and grows it into a small game; the [examples](examples/README.md) show the rest of the engine.
 

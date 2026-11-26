@@ -21,6 +21,23 @@ By hand:
 - Optional: LLVM 17+ for `clang-cl`, `clang-format`, `clang-tidy` (the Visual Studio component "C++ Clang tools for Windows" provides all three).
 - A GPU and driver supporting OpenGL 4.5 core.
 
+## Prerequisites (Linux)
+
+Supported: Ubuntu 24.04 and 26.04 LTS with GCC 14.3+ or Clang 18+, X11 or Wayland ([ADR-0026](../adr/0026-linux-support-targets.md)). On Ubuntu:
+
+```bash
+sudo apt install build-essential cmake ninja-build git curl zip unzip tar pkg-config \
+  libxinerama-dev libxcursor-dev xorg-dev libglu1-mesa-dev \
+  libwayland-dev libxkbcommon-dev wayland-protocols extra-cmake-modules
+sudo apt install clang   # needed on Ubuntu 24.04, optional on 26.04
+git clone https://github.com/microsoft/vcpkg ~/vcpkg && ~/vcpkg/bootstrap-vcpkg.sh -disableMetrics
+export VCPKG_ROOT=~/vcpkg   # and in ~/.bashrc
+```
+
+- The second line of packages is what vcpkg's `glfw3` needs to build its X11 backend, the third its Wayland backend (vcpkg builds `wayland` itself).
+- A desktop session with an OpenGL 4.5 driver runs everything. Without one, `xvfb-run` and Mesa (`xvfb libgl1-mesa-dri`) run the GPU tests and the examples headless, as CI does.
+- `tools/setup/setup.sh` is Windows-only for now.
+
 ## One-command build
 
 Run from a **Developer PowerShell for VS** (`-Arch amd64`) or an **x64 Native Tools Command Prompt**, so that MSVC and Ninja are on `PATH`. Visual Studio, VS Code (CMake Tools) and CLion set this environment up themselves when they open the presets.
@@ -28,6 +45,8 @@ Run from a **Developer PowerShell for VS** (`-Arch amd64`) or an **x64 Native To
 ```bash
 cmake --workflow --preset windows-msvc-debug
 ```
+
+On Linux, from any terminal: `cmake --workflow --preset linux-gcc-debug` (Ubuntu 26.04) or `cmake --workflow --preset linux-clang-debug` (24.04 and 26.04). Tests that need a window or a GPU skip themselves without a display; run them in a desktop session or under `xvfb-run -a`.
 
 The workflow preset configures, builds and runs tests. If `VCPKG_ROOT` is missing, configuration stops with a one-line message saying so. Individual steps:
 
