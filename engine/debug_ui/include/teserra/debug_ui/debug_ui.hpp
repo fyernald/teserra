@@ -12,10 +12,13 @@
 #include <teserra/core/math.hpp>
 #include <teserra/core/result.hpp>
 #include <teserra/core/types.hpp>
+#include <teserra/platform/event.hpp>
+#include <teserra/platform/key.hpp>
 #include <teserra/rhi/handles.hpp>
 
 #include <imgui.h>
 
+#include <array>
 #include <memory>
 
 namespace teserra::debugui {
@@ -52,6 +55,16 @@ public:
     /// Whether a frame is between beginFrame() and endFrame().
     [[nodiscard]] bool inFrame() const noexcept { return m_inFrame; }
 
+    /// Feeds a platform event to ImGui (ADR-0013: engine events, not imgui_impl_glfw): keys and modifiers,
+    /// mouse buttons, movement and wheel, typed text and focus. Call it for every event of a frame, before
+    /// beginFrame(); window sizes come with beginFrame().
+    void processEvent(const platform::Event& event);
+    /// Whether the debug UI uses the mouse or the keyboard (ImGui's WantCaptureMouse / WantCaptureKeyboard),
+    /// as of the last beginFrame(): the mouse is over or dragging one of its windows, or a text field has
+    /// focus. The game should not react to that input meanwhile.
+    [[nodiscard]] bool wantsMouse() const noexcept;
+    [[nodiscard]] bool wantsKeyboard() const noexcept;
+
     /// What the last endFrame() built, for ImGuiPass::setDrawData(); nullptr before the first frame. Valid
     /// until the next beginFrame().
     [[nodiscard]] ImDrawData* drawData() const noexcept;
@@ -64,7 +77,12 @@ private:
 
     ImGuiContext* m_context;
     bool m_inFrame = false;
+    // Left and right Ctrl, Shift, Alt and Super held, for ImGui's modifier keys.
+    std::array<bool, 8> m_modifiers{};
 };
+
+/// The ImGui key of an engine key; ImGuiKey_None for Key::Unknown and for keys ImGui has none for (World1).
+[[nodiscard]] ImGuiKey imguiKey(platform::Key key) noexcept;
 
 /// The ImTextureID of an RHI texture, to show it with ImGui::Image(); the ImGui pass samples it.
 [[nodiscard]] ImTextureID textureId(rhi::TextureHandle texture) noexcept;

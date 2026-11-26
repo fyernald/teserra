@@ -6,6 +6,7 @@ All notable user-visible changes to Teserra are documented here. The format foll
 
 ### Added
 
+- Debug UI input (#297): `DebugUi::processEvent()` feeds ImGui from engine `platform::Event`s (keys and modifiers through `debugui::imguiKey()`, mouse buttons, movement and wheel, typed text, focus), and `wantsMouse()` / `wantsKeyboard()` say when the debug UI uses that input.
 - The debug UI module (#296): `teserra_debug_ui` with `debugui::DebugUi` (a Dear ImGui 1.92 context) and `debugui::ImGuiPass`, Teserra's ImGui renderer backend on the RHI: one indexed draw per ImGui command with its scissor, textures created and updated as ImGui asks, colors decoded for sRGB outputs. `TESERRA_WITH_DEBUG_UI` (ON by default) builds it with vcpkg's `imgui`; OFF builds no ImGui code. The game template lists `imgui`. `renderer::Renderer::addOverlayPass()` adds passes that draw into the output after the composite pass, unscaled by the scene target. The engine module moves to layer 7.
 - Linux is a supported platform (#127, [ADR-0026](docs/adr/0026-linux-support-targets.md)): Ubuntu 24.04 and 26.04 LTS with GCC 14.3+ or Clang 18+, on X11 or Wayland, built and tested in CI on every pull request (#283). Build instructions in the getting-started guide and build-and-ci.md (#284).
 - Linux OS services (#280): `NativeFileSystem::executableDirectory()` and `userDataDirectory()` on Linux, the second following the XDG Base Directory spec (`$XDG_DATA_HOME`, else `$HOME/.local/share`). Part of the Linux port (#127).
