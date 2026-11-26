@@ -188,7 +188,9 @@ void validateGraphicsPipelineDesc(const GraphicsPipelineDesc& desc);
 
 /// The pipeline against the device's objects: a null or live layout, and every resource that the shaders'
 /// reflection lists is in that layout at its (group, binding), with the same type, visible to the stage
-/// that uses it. Shaders that are not alive are left to the device.
+/// that uses it; and every input of the vertex shader has a vertex attribute at its location whose format
+/// it can read: float or normalized formats for float inputs, integer formats for integer inputs, with at
+/// least the input's components. Shaders that are not alive are left to the device.
 void validateGraphicsPipelineResources(const GraphicsPipelineDesc& desc, const ResourceLookup& objects);
 
 } // namespace teserra::rhi

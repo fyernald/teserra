@@ -132,6 +132,7 @@ All notable user-visible changes to Teserra are documented here. The format foll
 
 ### Changed
 
+- Pipeline validation checks the vertex shader's inputs against the vertex attributes (#188): an input without an attribute at its location, an integer input fed by a float or normalized attribute (or the reverse), or an attribute with fewer components than the input now fails `createGraphicsPipeline()` with validation on.
 - Passes draw into the scene target instead of the frame's output: `PassResource::SceneColor` is the scene target (`FrameTarget` gains `depthTexture`, `depthFormat` and `layout()`), `PassResource::Output` is the frame's output, and `PassContext::viewTarget()` gives each view's target. The sprite and debug passes start one render pass per run of views with the same target, and key their pipelines by the target's layout. `RenderExtraction::targetSize` is the scene target's size; `RenderExtraction::renderer` sizes the views of cameras with targets.
 
 - Shader modules take only `.tshader` blobs, on every backend: the temporary GLSL path (`rhi::temporaryGlslBlob()`, `rhi::temporaryGlslSource()`) is removed. The new `rhi::readShaderModuleBlob()` reads a module's blob for the backends. The null backend now refuses other blobs, as OpenGL does: `InvalidData` with the module name, or `InvalidArgument` for a blob of another stage. The OpenGL GPU tests compile their shaders with `teserra_add_shaders()`.

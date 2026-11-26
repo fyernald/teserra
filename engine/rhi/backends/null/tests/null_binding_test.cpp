@@ -367,6 +367,56 @@ TEST_CASE("Null backend: pipelines are validated against their shaders' reflecti
           std::format("Graphics pipeline 'P': its layout {} is not alive", stale));
 }
 
+TEST_CASE("Null backend: pipelines are validated against their vertex shader's inputs",
+          "[rhi_null][validation]") {
+    const auto device = null::createHeadlessDevice({.enableValidation = true});
+    // A vertex shader reading a vec3 position at location 0 and a uvec2 index at location 2.
+    const std::vector<std::byte> code = writeShaderBlob(
+        {.stage = ShaderStage::Vertex,
+         .spirv = std::as_bytes(std::span(kSpirvWords)),
+         .glsl = "#version 450\nvoid main() {}\n",
+         .reflection = {
+             .vertexInputs = {
+                 {.location = 0, .scalarType = ShaderScalarType::Float, .components = 3, .name = "position"},
+                 {.location = 2, .scalarType = ShaderScalarType::Uint, .components = 2, .name = "index"},
+             }}});
+    const ShaderModuleHandle vertex =
+        *device->createShaderModule({.stage = ShaderStage::Vertex, .blob = code, .debugName = "VS"});
+    constexpr std::array kBuffers{VertexBufferLayout{.stride = 16}};
+    const auto create = [&](std::span<const VertexAttribute> attributes) {
+        return device->createGraphicsPipeline({.vertexShader = vertex,
+                                               .vertexBuffers = kBuffers,
+                                               .vertexAttributes = attributes,
+                                               .targets = {.colorFormats = {Format::Rgba8Srgb}},
+                                               .debugName = "P"});
+    };
+    const auto failure = [&](std::span<const VertexAttribute> attributes) {
+        return failureOf([&] { static_cast<void>(create(attributes)); });
+    };
+    constexpr VertexAttribute kPosition{.location = 0, .format = VertexFormat::Float3};
+    constexpr VertexAttribute kIndex{.location = 2, .format = VertexFormat::Uint16x2, .offset = 12};
+
+    // Matching attributes pass, and so do wider formats and attributes no input reads.
+    CHECK(create(std::array{kPosition, kIndex}).has_value());
+    CHECK(create(std::array{VertexAttribute{.location = 0, .format = VertexFormat::Float4}, kIndex,
+                            VertexAttribute{.location = 5, .format = VertexFormat::Unorm8x4}})
+              .has_value());
+
+    CHECK(failure(std::array{kPosition}) ==
+          "Graphics pipeline 'P': vertex shader 'VS' reads input 'index' at "
+          "location 2, which no vertex attribute provides");
+    // A float attribute for an integer input, and the reverse.
+    CHECK(failure(std::array{kPosition, VertexAttribute{.location = 2, .format = VertexFormat::Float2}}) ==
+          "Graphics pipeline 'P': vertex shader 'VS' reads input 'index' at location 2 as uint, but its "
+          "attribute has the float format Float2");
+    CHECK(failure(std::array{VertexAttribute{.location = 0, .format = VertexFormat::Uint8x4}, kIndex}) ==
+          "Graphics pipeline 'P': vertex shader 'VS' reads input 'position' at location 0 as float, but its "
+          "attribute has the uint format Uint8x4");
+    CHECK(failure(std::array{VertexAttribute{.location = 0, .format = VertexFormat::Float2}, kIndex}) ==
+          "Graphics pipeline 'P': vertex shader 'VS' reads 3 components of input 'position' at location 0, "
+          "but its attribute's format Float2 has 2");
+}
+
 TEST_CASE("Null backend: draws need compatible bind groups at the pipeline's sets",
           "[rhi_null][validation]") {
     const auto device = null::createHeadlessDevice({.enableValidation = true});
