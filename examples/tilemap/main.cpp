@@ -8,8 +8,10 @@
 //   teserra_tilemap --frames 120 --hidden-window     smoke run
 //
 // The tiles are assets/tiles.png next to the executable, loaded as assets://tiles.png and cut into a grid of
-// 16x16 tiles.
+// 16x16 tiles. A small island at the origin comes from a map made in Tiled, assets/island.tmj, with its
+// tileset in island.tsj (#276): the way to bring your own Tiled maps in.
 
+#include <teserra/assets/tiled.hpp>
 #include <teserra/core/log.hpp>
 #include <teserra/core/math.hpp>
 #include <teserra/core/types.hpp>
@@ -25,6 +27,7 @@
 #include <teserra/scene/render_extraction.hpp>
 #include <teserra/scene/scene.hpp>
 #include <teserra/scene/tile_queries.hpp>
+#include <teserra/scene/tiled.hpp>
 #include <teserra/scene/tilemap.hpp>
 #include <teserra/scene/tileset.hpp>
 #include <teserra/scene/time.hpp>
@@ -235,6 +238,27 @@ int main(int argc, char** argv) { // NOLINT(bugprone-exception-escape)
     level.add<scene::Transform>(map);
     level.add<scene::Tilemap>(map, buildMap());
     level.add<scene::TilemapRenderer>(map, scene::TilemapRenderer{.tileset = &*tileset});
+
+    // The island from Tiled, centered on the origin and drawn over the generated map. Without the file the
+    // registry logs one error and the example runs without it.
+    const assets::Asset<assets::TiledMap> island = app.assets().load<assets::TiledMap>("assets://island.tmj");
+    std::optional<scene::Tileset> islandTileset;
+    if (island.isLoaded() && !island.get().tilesets.empty()) {
+        Result<scene::Tileset> madeTileset = scene::tilesetFromTiled(island.get().tilesets[0], app.assets());
+        Result<scene::Tilemap> madeMap = scene::tilemapFromTiled(island.get());
+        if (madeTileset && madeMap) {
+            islandTileset = std::move(madeTileset).value();
+            const ecs::Entity islandMap = level.spawn();
+            const Vec2 size = Vec2{island.get().size} * madeMap->tileSize;
+            level.add<scene::Transform>(islandMap, scene::Transform{.position = Vec3{-size / 2.0F, 0.0F}});
+            level.add<scene::Tilemap>(islandMap, std::move(madeMap).value());
+            level.add<scene::TilemapRenderer>(
+                islandMap, scene::TilemapRenderer{.tileset = &*islandTileset, .layer = 10});
+        } else {
+            TESERRA_LOG_ERROR(LogCategory::App, "Cannot use the island: {}",
+                              madeTileset ? madeMap.error() : madeTileset.error());
+        }
+    }
 
     level.systems()
         .add(ecs::Phase::Update, "move_camera", moveCamera)
