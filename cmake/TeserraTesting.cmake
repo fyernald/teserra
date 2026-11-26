@@ -220,3 +220,9 @@ _teserra_configure_test_target(teserra_test_support)
 target_include_directories(teserra_test_support PUBLIC "${CMAKE_CURRENT_LIST_DIR}/../tests/support/include")
 # teserra_core is defined later (engine/core); target names are resolved when the build is generated.
 target_link_libraries(teserra_test_support PUBLIC teserra_core Catch2::Catch2)
+
+# What makes a smoke run of an example or a game skip instead of fail: the machine has no window system (no
+# desktop session, no DISPLAY or WAYLAND_DISPLAY: an SSH shell, a container) or no OpenGL 4.5 driver. The
+# programs log either at error level, which their FAIL_REGULAR_EXPRESSION would otherwise catch; CTest gives
+# the skip expression precedence. CI requires every test to run, so a skip there still fails the job.
+set(TESERRA_SMOKE_SKIP_REGEX "OpenGL 4[.]5 core context|Cannot initialize GLFW")
