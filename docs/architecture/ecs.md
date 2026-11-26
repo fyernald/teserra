@@ -174,9 +174,12 @@ level.systems().add(ecs::Phase::Update, "move_player", movePlayer)
   - `Scene` owns its `ecs::World` and has `spawn()` and `add<T>()` shortcuts. Every scene's World has a `scene::Time` resource: `deltaSeconds()`, `fixedStepSeconds()`, and `elapsedSeconds()` and `frame()` while the scene was active.
   - `App::scenes()` creates scenes (unique names, stable references) and `App::run(scene)` activates one before the first frame.
   - `scenes().switchTo(other)` takes effect at the start of the next frame, wherever in a frame it is called.
+  - **Enter and exit hooks** (#253): `Scene::onEnter(f)` and `Scene::onExit(f)` take a `void(Scene&)` that the SceneManager calls at that frame boundary: first the exit hook of the scene that stops being active, then the enter hook of the new one (the first scene of `App::run(scene)` gets its enter hook before the first frame). Neither scene runs during the hooks, so they build and clear content directly, without commands. `switchTo()` of the active scene runs both on it: a restart.
+  - **`Scene::reset()`** returns a scene to how `create()` made it: `World::destroyAll()` destroys every entity, `Time` and the collision state start over, pending events of every type are dropped, and Startup runs again. The systems and the game's own resources stay. `onExit([](Scene& s) { s.reset(); })` plus `switchTo(level)` restarts a level in one call; the demo game's screens work this way.
+  - `scenes().destroy(scene)` removes a scene that is neither active nor the target of a pending switch.
   - The App advances the active scene's `Time` once per frame, so each scene keeps its own play time.
   - `Scene::systems()` is the scene's Schedule, and `Scene::run(phase)` runs a phase on its world; Startup runs only the first time.
-  - Each frame the App runs the active scene's phases, with the `AppCallbacks` next to them: frame boundary (switch; Startup the first frame a scene is active) → events → `Time` advances → PreUpdate → FixedUpdate × steps → Update → PostUpdate → Extract → render → Last.
+  - Each frame the App runs the active scene's phases, with the `AppCallbacks` next to them: frame boundary (switch with its exit and enter hooks; Startup the first frame a scene is active, and again after a reset) → events → `Time` advances → PreUpdate → FixedUpdate × steps → Update → PostUpdate → Extract → render → Last.
   - The module depends only on `core` and `ecs`, so the portable Linux build includes it.
   - **Transforms are 3D** (renderer.md, 3D readiness #1):
     - `scene::Transform` is `Vec3 position`, `Quat rotation`, `Vec3 scale`; `matrix()` is translate × rotate × scale.

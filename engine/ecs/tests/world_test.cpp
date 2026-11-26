@@ -4,6 +4,7 @@
 
 #include <teserra/ecs/world.hpp>
 
+#include <teserra/ecs/commands.hpp>
 #include <teserra/test/assert.hpp>
 
 #include <catch2/catch_test_macros.hpp>
@@ -19,6 +20,13 @@ using namespace teserra;
 using namespace teserra::ecs;
 
 namespace {
+
+struct Mass {
+    int value = 0;
+};
+struct Score {
+    int points = 0;
+};
 
 std::vector<Entity> liveEntities(const World& world) {
     std::vector<Entity> entities;
@@ -84,6 +92,49 @@ TEST_CASE("World: forEachEntity visits exactly the live entities", "[ecs][world]
     CHECK(liveEntities(world) == std::vector<Entity>{a, c}); // index order
 }
 
+TEST_CASE("World: destroyAll destroys every live entity and keeps the resources", "[ecs][world]") {
+    World world;
+    world.insertResource<Score>(Score{.points = 7});
+    std::vector<Entity> before;
+    for (int i = 0; i < 5; ++i) {
+        const Entity entity = world.create();
+        world.add<Mass>(entity, Mass{.value = i});
+        before.push_back(entity);
+    }
+    world.destroy(before[2]);
+
+    world.destroyAll();
+
+    CHECK(world.entityCount() == 0);
+    CHECK(liveEntities(world).empty());
+    for (const Entity entity : before) {
+        CHECK_FALSE(world.isAlive(entity));
+    }
+    CHECK(world.resource<Score>().points == 7);
+    // The components went with their entities: a new entity starts without them.
+    const Entity fresh = world.create();
+    CHECK_FALSE(world.has<Mass>(fresh));
+    world.destroyAll(); // twice in a row, and on a world with one entity, is fine
+    world.destroyAll();
+    CHECK(world.entityCount() == 0);
+}
+
+TEST_CASE("World: destroyAll leaves entities that Commands reserved", "[ecs][world]") {
+    World world;
+    static_cast<void>(world.create());
+    Commands commands(world);
+    const Entity reserved = commands.create();
+    commands.add<Mass>(reserved, Mass{.value = 3});
+
+    world.destroyAll();
+    CHECK(world.entityCount() == 0);
+    commands.apply();
+
+    CHECK(world.isAlive(reserved));
+    CHECK(world.get<Mass>(reserved).value == 3);
+    CHECK(world.entityCount() == 1);
+}
+
 TEST_CASE("World: several worlds are independent", "[ecs][world]") {
     World first;
     World second;
@@ -125,6 +176,9 @@ TEST_CASE("World: creating or destroying during forEachEntity asserts", "[ecs][w
     CHECK(test::requireAssert([&] {
               world.forEachEntity([&](Entity visited) { world.destroy(visited); });
           }).message() == "World::destroy() during forEachEntity(); use Commands to defer it");
+    CHECK(test::requireAssert([&] {
+              world.forEachEntity([&](Entity /*visited*/) { world.destroyAll(); });
+          }).message() == "World::destroyAll() during forEachEntity(); use Commands to defer it");
     // The lock ends with the iteration, also after an assertion left it.
     world.destroy(entity);
     CHECK(world.entityCount() == 0);

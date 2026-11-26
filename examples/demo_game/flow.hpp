@@ -1,8 +1,8 @@
 #pragma once
 
 // The demo game's screens (#105): menu -> level -> win screen -> level again or the menu, each a scene of the
-// App's SceneManager. A screen's content is built when it is entered and cleared one frame after it is left,
-// once it no longer runs, so the assets only it used are released at the end of that frame.
+// App's SceneManager. A screen's content is built by its scene's enter hook and cleared by its exit hook, at
+// the frame boundary of the switch (#253), so the assets only it used are released at the end of that frame.
 
 #include <teserra/assets/asset_registry.hpp>
 #include <teserra/engine/app.hpp>
@@ -47,17 +47,17 @@ public:
     /// Creates the three scenes and adds their systems. `tileset` must outlive the App's scenes.
     Flow(teserra::engine::App& app, const scene::Tileset& tileset);
 
-    /// The scene to run first: the menu, built.
+    /// The scene to run first: the menu, which its enter hook builds when the App runs it.
     [[nodiscard]] scene::Scene& start();
-    /// Called once per frame, outside the scenes' systems: clears the screen left last frame, and acts on
-    /// the active screen's request. Escape on the menu quits.
+    /// Called once per frame, outside the scenes' systems: acts on the active screen's request. Escape on
+    /// the menu quits.
     void update();
 
 private:
+    // Switches to `screen` at the next frame boundary.
     void enter(Screen screen);
+    // The enter hook of `screen`'s scene.
     void build(Screen screen);
-    // Destroys every entity of `screen`'s scene and the resources its content added.
-    void clear(Screen screen);
     [[nodiscard]] scene::Scene& sceneOf(Screen screen);
     // The font, loaded when the menu or the win screen needs it.
     [[nodiscard]] teserra::Result<teserra::renderer::SpriteSheet> font();
@@ -69,7 +69,6 @@ private:
     scene::Scene& m_level;
     scene::Scene& m_win;
     Screen m_active = Screen::Menu;
-    std::optional<Screen> m_toClear;
     Results m_results;
     u32 m_plays = 0;
     // Frames until the counts are logged: after the end of the frame that cleared a screen.

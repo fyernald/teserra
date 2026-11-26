@@ -19,6 +19,9 @@ namespace teserra::scene {
 ///     scene::Scene& menu = app.scenes().create("menu");
 ///     scene::Scene& level = app.scenes().create("level");
 ///     app.scenes().switchTo(level); // from a menu callback: the level runs from the next frame on
+///
+/// The scene that stops being active is not run again until it is switched to; that is where its exit hook
+/// clears it.
 class SceneManager {
 public:
     SceneManager() = default;
@@ -41,13 +44,20 @@ public:
     [[nodiscard]] const Scene* active() const noexcept { return m_active; }
 
     /// Makes `scene`, which must belong to this manager (asserted), the active scene from the next frame
-    /// boundary on. The last request before the boundary wins.
+    /// boundary on. The last request before the boundary wins. At the boundary the active scene's exit hook
+    /// runs, then `scene`'s enter hook (Scene::onExit(), Scene::onEnter()); switching to the active scene
+    /// runs both on it, which restarts it when its exit hook resets it.
     void switchTo(Scene& scene);
 
     [[nodiscard]] bool hasPendingSwitch() const noexcept { return m_pending != nullptr; }
 
-    /// The frame boundary: applies a pending switch. Called by the App at the start of every frame.
-    void beginFrame() noexcept;
+    /// The frame boundary: applies a pending switch and runs the hooks. Called by the App at the start of
+    /// every frame.
+    void beginFrame();
+
+    /// Destroys `scene`, which must belong to this manager and be neither active nor the target of a pending
+    /// switch (asserted). References to it dangle from now on. Its hooks do not run.
+    void destroy(Scene& scene);
 
     /// Whether `scene` belongs to this manager.
     [[nodiscard]] bool owns(const Scene& scene) const noexcept;

@@ -7,6 +7,7 @@
 #include <teserra/ecs/world.hpp>
 #include <teserra/scene/time.hpp>
 
+#include <functional>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -24,6 +25,13 @@ namespace teserra::scene {
 ///     level.add<Player>(hero);
 ///     level.systems().add(ecs::Phase::Update, "move_player", movePlayer).writes<Transform>();
 ///     return app.run(level);
+///
+/// A scene can build its content when it becomes active and clear it when it stops being active, with
+/// hooks that the SceneManager runs at the frame boundary of a switch (scene_manager.hpp):
+///
+///     level.onEnter([&](scene::Scene& s) { buildLevel(s); });
+///     level.onExit([](scene::Scene& s) { s.reset(); });
+///     app.scenes().switchTo(level); // while the level runs: restarts it at the next frame boundary
 class Scene {
 public:
     explicit Scene(std::string name);
@@ -64,6 +72,28 @@ public:
         return ecs::addEvents<T>(m_world);
     }
 
+    /// Returns the scene to how SceneManager::create() made it, keeping what the game set up once:
+    ///  - every entity is destroyed (ecs::World::destroyAll());
+    ///  - the built-in state starts over: Time (elapsed time and frame count from 0), the collision state
+    ///    (no pairs carried over, so no CollisionEnded for destroyed entities), and the pending events of
+    ///    every type are dropped;
+    ///  - Startup runs again the next time the scene runs.
+    /// The systems and the game's own resources stay; remove those that belong to the content yourself.
+    /// Call it while the scene does not run (asserted only through World: not during forEachEntity()),
+    /// e.g. from an exit hook or an App callback.
+    void reset();
+
+    /// Hooks the SceneManager calls at the frame boundary where a switch takes effect: `onExit` of the scene
+    /// that stops being active, then `onEnter` of the one that becomes active. Switching to the active scene
+    /// runs both on it: a restart. Neither scene runs during the hooks, so they may create and destroy
+    /// entities and resources freely. Setting a hook replaces the previous one; an empty function removes
+    /// it.
+    void onEnter(std::function<void(Scene&)> hook) { m_onEnter = std::move(hook); }
+    void onExit(std::function<void(Scene&)> hook) { m_onExit = std::move(hook); }
+    /// Runs the enter or exit hook, if any. Called by the SceneManager.
+    void enter();
+    void exit();
+
     /// Whether Startup has run.
     [[nodiscard]] bool started() const noexcept { return m_started; }
 
@@ -76,6 +106,8 @@ private:
     ecs::World m_world;
     // After the world: the schedule's commands refer to it, so they are destroyed first.
     ecs::Schedule m_schedule;
+    std::function<void(Scene&)> m_onEnter;
+    std::function<void(Scene&)> m_onExit;
     bool m_started = false;
 };
 

@@ -63,6 +63,9 @@ public:
     /// Destroys a live entity and its components; it is stale from now on. Destroying a null or stale entity
     /// is a programmer error (asserted).
     void destroy(Entity entity);
+    /// Destroys every live entity and its components; the resources stay. Entities that Commands reserved
+    /// but have not applied yet are left alone. Like destroy(), not during forEachEntity() (asserted).
+    void destroyAll();
     /// Whether `entity` was created by this world and not destroyed since. Never asserts.
     [[nodiscard]] bool isAlive(Entity entity) const noexcept {
         const EntityRecord* record = m_entities.tryGet(entity);
