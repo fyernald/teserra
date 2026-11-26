@@ -113,6 +113,11 @@ void AssetRegistry::logFailure(std::string_view normalizedPath, const Error& err
     TESERRA_LOG_ERROR(LogCategory::Assets, "Cannot load '{}': {}", normalizedPath, error);
 }
 
+std::string_view AssetRegistry::typeNameOf(detail::AssetTypeId type) const {
+    const auto found = std::ranges::find(m_loaders, type, &LoaderEntry::type);
+    return found != m_loaders.end() ? found->loader->typeName() : std::string_view{};
+}
+
 void AssetRegistry::addLoader(detail::AssetTypeId type, std::span<const std::string_view> extensions,
                               std::unique_ptr<detail::AssetLoaderBase> loader) {
     for (const std::string_view extension : extensions) {

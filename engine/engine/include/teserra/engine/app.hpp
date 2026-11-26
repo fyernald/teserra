@@ -16,6 +16,7 @@
 #include <teserra/platform/platform.hpp>
 #include <teserra/platform/window.hpp>
 #include <teserra/renderer/chunk_mesh_cache.hpp>
+#include <teserra/renderer/debug_pass.hpp>
 #include <teserra/renderer/renderer.hpp>
 #include <teserra/renderer/sprite_pass.hpp>
 #include <teserra/rhi/command_list.hpp>
@@ -24,6 +25,7 @@
 #include <teserra/scene/scene.hpp>
 #include <teserra/scene/scene_manager.hpp>
 #if TESERRA_WITH_DEBUG_UI
+#include <teserra/debug_ui/asset_list.hpp>
 #include <teserra/debug_ui/debug_ui.hpp>
 #include <teserra/debug_ui/entity_inspector.hpp>
 #include <teserra/debug_ui/log_console.hpp>
@@ -269,6 +271,7 @@ private:
     // Draws the debug UI's frame over `output`, if this frame built one.
     void renderDebugUi(const renderer::FrameTarget& output, rhi::CommandList& commands);
     void drawStatsWindow();
+    void drawRendererWindow();
 #endif
 
     AppConfig m_config;
@@ -305,6 +308,10 @@ private:
     std::unique_ptr<debugui::DebugUi> m_debugUi;
     std::unique_ptr<debugui::LogConsole> m_logConsole;
     debugui::EntityInspector m_entityInspector;
+    debugui::AssetList m_assetList;
+    // The passes of m_renderer, for the Renderer window; owned by m_renderer.
+    const renderer::SpritePass* m_spritePass = nullptr;
+    const renderer::DebugPass* m_debugPass = nullptr;
     // An overlay-only renderer that draws the debug UI over the frame, whoever drew the frame; after the
     // device, created the first time the debug UI is drawn.
     std::unique_ptr<renderer::Renderer> m_debugRenderer;

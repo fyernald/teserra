@@ -114,6 +114,10 @@ class AssetLoaderBase {
 public:
     virtual ~AssetLoaderBase() = default;
 
+    /// The readable name of the type the loader makes ("Texture"), which AssetRegistry::forEach() reports
+    /// for every asset of that type; empty by default.
+    [[nodiscard]] virtual std::string_view typeName() const { return {}; }
+
 protected:
     AssetLoaderBase() = default;
     AssetLoaderBase(const AssetLoaderBase&) = default;
@@ -245,6 +249,29 @@ private:
 };
 
 /// Options of an AssetRegistry.
+/// Whether an asset loaded, or its load failed (AssetRegistry::forEach()). Loads are synchronous: an asset is
+/// never seen half-loaded.
+enum class AssetState : u8 {
+    Loaded,
+    /// The load failed, and the asset resolves to the fallback of its type (AssetRegistry::setFallback()).
+    Fallback,
+    /// The load failed, and its type has no fallback: the asset is not ready.
+    Failed,
+};
+
+/// What AssetRegistry::forEach() reports of an asset. The views are valid during the visit only.
+struct AssetInfo {
+    AssetId id;
+    /// The normalized virtual path.
+    std::string_view path;
+    /// The name given by the loader of the asset's type (AssetLoader::typeName()); empty when its type has no
+    /// loader or the loader gives none.
+    std::string_view typeName;
+    AssetState state = AssetState::Loaded;
+    /// The Asset<T> handles that refer to it; 0 for one that the next endFrame() unloads.
+    u32 references = 0;
+};
+
 struct AssetRegistryConfig {
     /// Hashes a normalized path into an AssetId value. Null uses FNV-1a (AssetId::fromPath()); tests
     /// inject collisions with it.
@@ -306,6 +333,22 @@ public:
     /// Loaded and failed assets, including those waiting for endFrame() to unload them.
     [[nodiscard]] usize size() const noexcept { return m_slots.size(); }
 
+    /// Calls `function(const AssetInfo&)` for every asset size() counts, in no particular order. The function
+    /// must not load or release assets.
+    template <typename Function>
+    void forEach(Function&& function) const {
+        m_slots.forEach([&](AssetHandle, const Slot& slot) {
+            const AssetState state = slot.object.get() != nullptr ? AssetState::Loaded
+                                     : slot.fallback != nullptr   ? AssetState::Fallback
+                                                                  : AssetState::Failed;
+            function(AssetInfo{.id = slot.id,
+                               .path = slot.path,
+                               .typeName = typeNameOf(slot.type),
+                               .state = state,
+                               .references = slot.references});
+        });
+    }
+
 private:
     template <typename T>
     friend class Asset;
@@ -341,6 +384,8 @@ private:
     [[nodiscard]] AssetHandle insert(AssetId id, std::string normalizedPath, detail::AssetTypeId type,
                                      detail::ErasedObject object);
     void logFailure(std::string_view normalizedPath, const Error& error) const;
+    // The name the first loader of `type` gives, or empty.
+    [[nodiscard]] std::string_view typeNameOf(detail::AssetTypeId type) const;
 
     void addLoader(detail::AssetTypeId type, std::span<const std::string_view> extensions,
                    std::unique_ptr<detail::AssetLoaderBase> loader);

@@ -1,5 +1,6 @@
 teserra_add_test(debug_ui
     SOURCES
+        asset_list_test.cpp
         debug_ui_input_test.cpp
         debug_ui_windows_test.cpp
         entity_inspector_test.cpp

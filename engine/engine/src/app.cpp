@@ -154,6 +154,8 @@ Result<void> App::initialize(Result<std::unique_ptr<platform::Platform>> platfor
             "Entities", [this] { m_entityInspector.drawEntityList(m_scenes); }, /*open=*/false);
         m_debugUi->addWindow(
             "Inspector", [this] { m_entityInspector.drawInspector(m_scenes); }, /*open=*/false);
+        m_debugUi->addWindow("Assets", [this] { m_assetList.draw(*m_assets); }, /*open=*/false);
+        m_debugUi->addWindow("Renderer", [this] { drawRendererWindow(); }, /*open=*/false);
         setDebugUiOpen(m_config.debugUi.startOpen);
     }
 #endif
@@ -399,9 +401,15 @@ renderer::Renderer* App::renderer() {
         TESERRA_TRY_ASSIGN(
             std::unique_ptr<renderer::SpritePass> sprites,
             renderer::SpritePass::create(*m_device, created->frameGroupLayout(), m_config.spritePass));
+#if TESERRA_WITH_DEBUG_UI
+        m_spritePass = sprites.get();
+#endif
         created->addPass(std::move(sprites));
         TESERRA_TRY_ASSIGN(std::unique_ptr<renderer::DebugPass> debug,
                            renderer::DebugPass::create(*m_device, created->frameGroupLayout()));
+#if TESERRA_WITH_DEBUG_UI
+        m_debugPass = debug.get();
+#endif
         created->addPass(std::move(debug));
         return created;
     };
@@ -612,6 +620,35 @@ void App::drawStatsWindow() {
     const UVec2 framebufferSize = m_window->framebufferSize();
     ImGui::Text("Window %u x %u, framebuffer %u x %u", windowSize.x, windowSize.y, framebufferSize.x,
                 framebufferSize.y);
+}
+
+void App::drawRendererWindow() {
+    if (m_renderer == nullptr || m_spritePass == nullptr || m_debugPass == nullptr) {
+        ImGui::TextWrapped(
+            "The App's scene renderer has not drawn: the game renders with a render callback, or "
+            "there is no device.");
+    } else {
+        const renderer::RendererStats& stats = m_renderer->stats();
+        ImGui::SeparatorText("Frame");
+        ImGui::Text("Views: %u, camera render targets: %u", stats.views, stats.renderTargets);
+        ImGui::Text("Scene target: %u x %u", stats.sceneSize.x, stats.sceneSize.y);
+        const renderer::SpritePassStats& sprites = m_spritePass->stats();
+        ImGui::SeparatorText("Sprite pass");
+        ImGui::Text("Sprites: %u in %u batches", sprites.sprites, sprites.batches);
+        ImGui::Text("Tilemap chunks: %u", sprites.tilemapChunks);
+        ImGui::Text("Draw calls: %u", sprites.drawCalls);
+        ImGui::Text("Material pipelines: %llu",
+                    static_cast<unsigned long long>(m_spritePass->materialPipelineCount()));
+        const renderer::DebugPassStats& debug = m_debugPass->stats();
+        ImGui::SeparatorText("Debug pass");
+        ImGui::Text("Lines: %u, draw calls: %u", debug.lines, debug.drawCalls);
+    }
+    if (m_imguiPass != nullptr) {
+        const debugui::ImGuiPassStats& imgui = m_imguiPass->stats();
+        ImGui::SeparatorText("Debug UI pass");
+        ImGui::Text("Draw calls: %u, vertices: %u, textures: %u", imgui.drawCalls, imgui.vertices,
+                    imgui.textures);
+    }
 }
 #endif
 

@@ -30,6 +30,16 @@ struct RendererConfig {
 
 class CompositePass;
 
+/// What the last render() drew.
+struct RendererStats {
+    /// The views of the packet that were drawn.
+    u32 views = 0;
+    /// Camera render targets alive (createRenderTarget()).
+    u32 renderTargets = 0;
+    /// The main scene target's size; {0, 0} if it could not be created.
+    UVec2 sceneSize{0U};
+};
+
 /// Records frames with the passes added to it. Passes draw into the main scene target (color and
 /// Depth32Float, PassResource::SceneColor) or the render targets of cameras; the renderer's own composite
 /// pass runs after them and scales the scene target into the frame's output. Created, used and destroyed on
@@ -74,6 +84,8 @@ public:
     /// was drawn some other way (an App render callback) or by another renderer. Starts the frame's upload
     /// memory like render(): call one of the two per frame, not both. Passes see an empty FramePacket.
     void renderOverlays(const FrameTarget& output, rhi::CommandList& commands);
+
+    [[nodiscard]] const RendererStats& stats() const noexcept { return m_stats; }
 
     /// Changes how the scene target is sized and presented, from the next render().
     void setSceneTarget(const SceneTargetConfig& config);
@@ -139,6 +151,7 @@ private:
     std::vector<u32> m_viewOffsets;
     // The target of each view in m_views.
     std::vector<FrameTarget> m_viewTargets;
+    RendererStats m_stats;
 };
 
 } // namespace teserra::renderer
