@@ -4,9 +4,10 @@
 
 [![CI](https://github.com/fyernald/teserra/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/fyernald/teserra/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-![Status: pre-alpha](https://img.shields.io/badge/status-pre--alpha-orange.svg)
+[![Release: v0.1.0](https://img.shields.io/badge/release-v0.1.0-blue.svg)](https://github.com/fyernald/teserra/releases/tag/v0.1.0)
+![Status: alpha](https://img.shields.io/badge/status-alpha-orange.svg)
 
-> **Status: pre-release, preparing v0.1.** The 2D engine works on Windows: sprites, tilemaps, scenes with an ECS, assets, input and a pixel-perfect render path, shown by a [small demo game](examples/demo_game/main.cpp). The API can still change before 1.0. Follow progress on the **[GitHub Project](https://github.com/users/fyernald/projects/3)**.
+> **Status: [v0.1.0](https://github.com/fyernald/teserra/releases/tag/v0.1.0) is out, the first public release.** The 2D engine works on Windows: sprites, tilemaps, scenes with an ECS, assets, input and a pixel-perfect render path, shown by a [small demo game](examples/demo_game/main.cpp). Try the examples from the release's zip, or [make a game](docs/guides/getting-started.md) with it. The API can still change before 1.0. Follow progress on the **[GitHub Project](https://github.com/users/fyernald/projects/3)**.
 
 ## Vision
 
@@ -25,6 +26,15 @@ Teserra aims to be an engine you can **read, understand and ship games with**:
 | v0.3 → v1.0 | Editor, 2D physics integration, API stabilization |
 | v2.0 | Vulkan backend, 3D renderer |
 | v3.0+ | Scripting |
+
+### Supported platforms
+
+| | v0.1 |
+|---|---|
+| Operating system | Windows 10 and 11, x64 |
+| GPU | Any GPU with an OpenGL 4.5 core driver |
+| Compiler | MSVC from Visual Studio 2022 17.8+ or 2026 |
+| Linux | Planned for v0.2; CI already builds the portable modules with GCC and Clang |
 
 The detailed roadmap, iterations and backlog live **only** in the [GitHub Project](https://github.com/users/fyernald/projects/3) and [issues](https://github.com/fyernald/teserra/issues).
 
