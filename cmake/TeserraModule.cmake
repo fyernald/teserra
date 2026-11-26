@@ -156,8 +156,8 @@ function(teserra_check_public_includes target)
     get_target_property(sources ${target} SOURCES)
     get_target_property(directory ${target} SOURCE_DIR)
     file(GLOB public_roots LIST_DIRECTORIES true
-        "${PROJECT_SOURCE_DIR}/engine/*/include"
-        "${PROJECT_BINARY_DIR}/engine/*/include")
+        "${Teserra_SOURCE_DIR}/engine/*/include"
+        "${Teserra_BINARY_DIR}/engine/*/include")
     foreach(source IN LISTS sources)
         cmake_path(ABSOLUTE_PATH source BASE_DIRECTORY "${directory}" OUTPUT_VARIABLE path)
         file(STRINGS "${path}" includes REGEX "^[ \t]*#[ \t]*include")

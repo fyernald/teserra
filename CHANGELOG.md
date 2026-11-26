@@ -122,6 +122,8 @@ All notable user-visible changes to Teserra are documented here. The format foll
 
 - Public API review before v0.1 (#119): `<teserra/teserra.hpp>` includes everything a game usually needs; every public declaration has a `///` comment; `public-api.md`'s example is now real code that the build compiles (`tests/public_api/`, extracted from the page), and the page describes the API as it is. Findings that need design decisions are in #264.
 
+- A game template and subproject support (#120): `templates/minimal_game` fetches Teserra with FetchContent at a release tag and builds a moving sprite with `cmake --workflow --preset debug`; its `vcpkg.json` lists the libraries Teserra builds with. `teserra_copy_assets(<target>)` copies a game's `assets/` next to its executable (the examples use it). As a subproject, Teserra leaves the parent's flags and directory properties alone, also with warnings as errors and sanitizers on (`cmake.subproject.options_do_not_leak`). CI builds the template against the commit under test and runs it on llvmpipe.
+
 ### Changed
 
 - Passes draw into the scene target instead of the frame's output: `PassResource::SceneColor` is the scene target (`FrameTarget` gains `depthTexture`, `depthFormat` and `layout()`), `PassResource::Output` is the frame's output, and `PassContext::viewTarget()` gives each view's target. The sprite and debug passes start one render pass per run of views with the same target, and key their pipelines by the target's layout. `RenderExtraction::targetSize` is the scene target's size; `RenderExtraction::renderer` sizes the views of cameras with targets.

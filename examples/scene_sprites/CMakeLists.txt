@@ -4,14 +4,7 @@ teserra_set_warnings(teserra_scene_sprites)
 
 # The example reads its sprite sheet as assets://sprites.png, which the App mounts at assets/ next to the
 # executable. The copy runs on every build and only writes when the file changed.
-add_custom_target(teserra_scene_sprites_assets
-    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:teserra_scene_sprites>/assets
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CMAKE_CURRENT_SOURCE_DIR}/assets/sprites.png
-            $<TARGET_FILE_DIR:teserra_scene_sprites>/assets/sprites.png
-    COMMENT "Copying the scene_sprites sprite sheet"
-    VERBATIM
-)
-add_dependencies(teserra_scene_sprites teserra_scene_sprites_assets)
+teserra_copy_assets(teserra_scene_sprites)
 
 # Smoke run (docs/guides/testing-strategy.md#example-smoke-runs): 120 frames in a hidden window must exit with 0
 # and log nothing at Error or above, which includes OpenGL debug errors and RHI validation. Machines without

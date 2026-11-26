@@ -4,14 +4,7 @@ teserra_set_warnings(teserra_tilemap)
 
 # The example reads its tileset as assets://tiles.png, which the App mounts at assets/ next to the
 # executable. The copy runs on every build and only writes when the file changed.
-add_custom_target(teserra_tilemap_assets
-    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:teserra_tilemap>/assets
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CMAKE_CURRENT_SOURCE_DIR}/assets/tiles.png
-            $<TARGET_FILE_DIR:teserra_tilemap>/assets/tiles.png
-    COMMENT "Copying the tilemap tileset"
-    VERBATIM
-)
-add_dependencies(teserra_tilemap teserra_tilemap_assets)
+teserra_copy_assets(teserra_tilemap)
 
 # Smoke run (docs/guides/testing-strategy.md#example-smoke-runs): 120 frames in a hidden window must exit with 0
 # and log nothing at Error or above, which includes OpenGL debug errors and RHI validation. Machines without

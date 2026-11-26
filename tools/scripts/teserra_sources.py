@@ -16,7 +16,7 @@ import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
-SOURCE_DIRS = ("engine", "examples", "tests", "tools", "benchmarks", "editor")
+SOURCE_DIRS = ("engine", "examples", "templates", "tests", "tools", "benchmarks", "editor")
 CPP_EXTENSIONS = frozenset({".cpp", ".hpp", ".h", ".inl"})
 EXCLUDED_PARTS = frozenset({"third_party", "generated"})
 

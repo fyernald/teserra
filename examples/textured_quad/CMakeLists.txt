@@ -14,14 +14,7 @@ teserra_add_shaders(teserra_textured_quad EMBED
 
 # The example reads its image from assets/ next to the executable. The copy runs on every build and only
 # writes when the file changed, so an edited image reaches the build without relinking the example.
-add_custom_target(teserra_textured_quad_assets
-    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:teserra_textured_quad>/assets
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CMAKE_CURRENT_SOURCE_DIR}/assets/orientation_f.png
-            $<TARGET_FILE_DIR:teserra_textured_quad>/assets/orientation_f.png
-    COMMENT "Copying the textured_quad image"
-    VERBATIM
-)
-add_dependencies(teserra_textured_quad teserra_textured_quad_assets)
+teserra_copy_assets(teserra_textured_quad)
 
 # Smoke run (docs/guides/testing-strategy.md#example-smoke-runs): 120 frames in a hidden window must exit with
 # 0 and log nothing at Error or above, which includes OpenGL debug errors and RHI validation. Machines without

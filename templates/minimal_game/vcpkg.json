@@ -1,0 +1,16 @@
+{
+  "$schema": "https://raw.githubusercontent.com/microsoft/vcpkg-tool/main/docs/vcpkg.schema.json",
+  "name": "minimal-game",
+  "version": "0.1.0",
+  "description": "A minimal game on Teserra",
+  "dependencies": [
+    "glfw3",
+    "glm",
+    "glslang",
+    "spdlog",
+    "spirv-cross",
+    "stb",
+    "tl-expected",
+    "yyjson"
+  ]
+}

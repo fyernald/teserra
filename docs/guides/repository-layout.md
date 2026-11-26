@@ -10,7 +10,7 @@ teserra/
 ├── vcpkg-configuration.json    # Pinned baseline/registries
 ├── .clang-format, .clang-tidy  # Enforced style and static analysis
 ├── cmake/                      # CMake helpers: TeserraModule.cmake, TeserraWarnings.cmake,
-│                               #   TeserraTesting.cmake, TeserraShaders.cmake
+│                               #   TeserraTesting.cmake, TeserraShaders.cmake, TeserraAssets.cmake
 ├── engine/                     # The engine, one directory per module (= one CMake target)
 │   ├── core/                   # Layer 0: types, assert, log, Result, handles, math, memory, profile
 │   ├── platform/               # Layer 1: Platform, Window, Input, FileSystem, Clock, DynamicLibrary
@@ -30,6 +30,8 @@ teserra/
 │   ├── shaderc/                # teserra_shaderc host tool (GLSL -> SPIR-V -> GL GLSL + reflection)
 │   └── scripts/                # check_format, check_layers, check_gl_leaks (used by CI)
 ├── examples/                   # One directory per runnable example (hello, window_input, rhi_clear, rhi_triangle, textured_quad, ...)
+├── templates/
+│   └── minimal_game/           # Starting point for a game: Teserra through FetchContent, one sprite
 ├── tests/                      # Cross-module integration tests, GPU tests, golden images
 │   ├── integration/
 │   ├── gpu/

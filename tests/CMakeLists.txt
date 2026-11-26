@@ -18,6 +18,12 @@ if(TARGET teserra_engine)
     add_subdirectory(public_api)
 endif()
 
+# The game template's source, built against this tree with the engine's warnings, and its smoke run (#120).
+# CI also builds the template itself, with Teserra from FetchContent.
+if(TARGET teserra_engine)
+    add_subdirectory(template)
+endif()
+
 # Snapshot tests render with the real backend and compare with golden images (#111).
 if(TARGET teserra_engine AND TARGET teserra_rhi_opengl)
     add_subdirectory(snapshot)
