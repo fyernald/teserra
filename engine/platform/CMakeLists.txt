@@ -25,19 +25,24 @@ target_sources(teserra_platform PRIVATE
     src/common/native_file_system.cpp
 )
 
-# The portable build (#68) stops here: the interfaces and the portable sources above, without OS services
-# or a window backend. Nothing in it creates a Platform; the null RHI backend only uses the Window
-# interface.
+# OS services: the parts of the file system only the OS knows (executable and user-data directories). The
+# portable build (#68) has them too where the OS has an implementation, so the Linux job tests them.
+if(WIN32)
+    target_sources(teserra_platform PRIVATE src/windows/file_system_windows.cpp)
+    # SHGetKnownFolderPath (shell32), CoTaskMemFree (ole32) and the FOLDERID_* GUIDs (uuid).
+    target_link_libraries(teserra_platform PRIVATE shell32 ole32 uuid)
+    set(TESERRA_PLATFORM_OS_SERVICES ON)
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    target_sources(teserra_platform PRIVATE src/posix/file_system_posix.cpp)
+    set(TESERRA_PLATFORM_OS_SERVICES ON)
+elseif(NOT TESERRA_PORTABLE_ONLY)
+    message(FATAL_ERROR "teserra_platform: no OS services for ${CMAKE_SYSTEM_NAME} yet (see the new "
+        "platform port checklist in platform-abstraction.md)")
+endif()
+
+# The portable build stops here: the interfaces, the portable sources and the OS services above, without a
+# window backend. Nothing in it creates a Platform; the null RHI backend only uses the Window interface.
 if(NOT TESERRA_PORTABLE_ONLY)
-    # OS services: the parts of the file system only the OS knows (executable and user-data directories).
-    if(WIN32)
-        target_sources(teserra_platform PRIVATE src/windows/file_system_windows.cpp)
-        # SHGetKnownFolderPath (shell32), CoTaskMemFree (ole32) and the FOLDERID_* GUIDs (uuid).
-        target_link_libraries(teserra_platform PRIVATE shell32 ole32 uuid)
-    else()
-        message(FATAL_ERROR "teserra_platform: no OS services for ${CMAKE_SYSTEM_NAME} yet (see the new "
-            "platform port checklist in platform-abstraction.md)")
-    endif()
 
     # Window backend, chosen at configure time; shared code never uses #ifdef to pick it
     # (docs/architecture/platform-abstraction.md#selection-mechanism). GLFW is the only backend in v1.
