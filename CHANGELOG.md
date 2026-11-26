@@ -128,6 +128,8 @@ All notable user-visible changes to Teserra are documented here. The format foll
 
 - Release packages (#122): a version tag now also builds Release and attaches `teserra-<version>-windows-x64-examples.zip` to the draft release: every example with a window in its own folder with its DLLs, assets and the Visual C++ runtime, plus `LICENSE`, `THIRD_PARTY_NOTICES.md` and a `README.txt` that links to the release's feedback request. `package_example.py --all-examples` makes it locally and refuses DLLs missing from the notices.
 
+- Scene lifecycle (#253): `Scene::onEnter()` / `onExit()` hooks run at the frame boundary of a switch (switching to the active scene restarts it), `Scene::reset()` destroys every entity and restarts the scene's built-in state (time, collisions, events, Startup) while keeping its systems and the game's resources, `SceneManager::destroy()` removes a scene that is not running, and `ecs::World::destroyAll()` destroys every entity. The demo game builds and clears its screens with the hooks.
+
 ### Changed
 
 - Passes draw into the scene target instead of the frame's output: `PassResource::SceneColor` is the scene target (`FrameTarget` gains `depthTexture`, `depthFormat` and `layout()`), `PassResource::Output` is the frame's output, and `PassContext::viewTarget()` gives each view's target. The sprite and debug passes start one render pass per run of views with the same target, and key their pipelines by the target's layout. `RenderExtraction::targetSize` is the scene target's size; `RenderExtraction::renderer` sizes the views of cameras with targets.

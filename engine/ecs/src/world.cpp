@@ -2,6 +2,8 @@
 
 #include <teserra/core/assert.hpp>
 
+#include <vector>
+
 namespace teserra::ecs {
 
 Entity World::create() {
@@ -19,6 +21,20 @@ void World::destroy(Entity entity) {
         entry.pool->removeIfPresent(entity);
     }
     m_entities.destroy(entity);
+}
+
+void World::destroyAll() {
+    TESERRA_ASSERT(m_iterating == 0, "World::destroyAll() during forEachEntity(); use Commands to defer it");
+    std::vector<Entity> live;
+    live.reserve(entityCount());
+    m_entities.forEach([&](Entity entity, const EntityRecord& record) {
+        if (!record.pending) {
+            live.push_back(entity);
+        }
+    });
+    for (const Entity entity : live) {
+        destroy(entity);
+    }
 }
 
 Entity World::reserve() {

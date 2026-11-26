@@ -73,6 +73,29 @@ void Scene::run(ecs::Phase phase) {
     m_schedule.run(phase, m_world);
 }
 
+void Scene::reset() {
+    m_world.destroyAll();
+    m_world.resource<Time>() = Time{};
+    m_world.resource<CollisionState>() = CollisionState{};
+    // Each update moves the current events to the previous ones and drops the previous ones: after two,
+    // none are left.
+    ecs::updateEvents(m_world);
+    ecs::updateEvents(m_world);
+    m_started = false;
+}
+
+void Scene::enter() {
+    if (m_onEnter) {
+        m_onEnter(*this);
+    }
+}
+
+void Scene::exit() {
+    if (m_onExit) {
+        m_onExit(*this);
+    }
+}
+
 Scene& SceneManager::create(std::string name) {
     TESERRA_ASSERT(find(name) == nullptr, "A scene named '{}' already exists", name);
     m_scenes.push_back(std::make_unique<Scene>(std::move(name)));
@@ -91,11 +114,26 @@ void SceneManager::switchTo(Scene& scene) {
     m_pending = &scene;
 }
 
-void SceneManager::beginFrame() noexcept {
-    if (m_pending != nullptr) {
-        m_active = m_pending;
-        m_pending = nullptr;
+void SceneManager::beginFrame() {
+    if (m_pending == nullptr) {
+        return;
     }
+    Scene* const next = std::exchange(m_pending, nullptr);
+    if (m_active != nullptr) {
+        m_active->exit();
+    }
+    m_active = next;
+    m_active->enter();
+}
+
+void SceneManager::destroy(Scene& scene) {
+    TESERRA_ASSERT(owns(scene), "Destroying scene '{}', which belongs to another SceneManager", scene.name());
+    TESERRA_ASSERT(&scene != m_active, "Destroying scene '{}', which is active", scene.name());
+    TESERRA_ASSERT(&scene != m_pending, "Destroying scene '{}', which a switch is pending to", scene.name());
+    if (&scene == m_active || &scene == m_pending) {
+        return;
+    }
+    std::erase_if(m_scenes, [&](const auto& owned) { return owned.get() == &scene; });
 }
 
 bool SceneManager::owns(const Scene& scene) const noexcept {

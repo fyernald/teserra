@@ -15,7 +15,6 @@
 #include <format>
 #include <string>
 #include <utility>
-#include <vector>
 
 namespace demo {
 
@@ -78,8 +77,20 @@ Flow::Flow(engine::App& app, const scene::Tileset& tileset)
       m_menu(app.scenes().create("menu")),
       m_level(app.scenes().create("level")),
       m_win(app.scenes().create("win")) {
-    for (scene::Scene* screen : {&m_menu, &m_level, &m_win}) {
-        screen->world().insertResource<ScreenRequest>();
+    for (const Screen screen : {Screen::Menu, Screen::Level, Screen::Win}) {
+        scene::Scene& target = sceneOf(screen);
+        target.world().insertResource<ScreenRequest>();
+        target.onEnter([this, screen](scene::Scene& /*entered*/) { build(screen); });
+        target.onExit([](scene::Scene& left) {
+            left.reset();
+            // The resources the content added; the font's texture is released with the sheet.
+            if (left.world().hasResource<GameState>()) {
+                left.world().removeResource<GameState>();
+            }
+            if (left.world().hasResource<ScreenFont>()) {
+                left.world().removeResource<ScreenFont>();
+            }
+        });
     }
     m_menu.systems()
         .add(ecs::Phase::Update, "menu_input", menuInput)
@@ -97,9 +108,8 @@ Flow::Flow(engine::App& app, const scene::Tileset& tileset)
 }
 
 scene::Scene& Flow::start() {
-    build(Screen::Menu);
     m_active = Screen::Menu;
-    logCounts("at start");
+    m_logCountdown = 1; // after the first frame, which the menu's enter hook built
     return m_menu;
 }
 
@@ -117,13 +127,7 @@ scene::Scene& Flow::sceneOf(Screen screen) {
 
 void Flow::update() {
     if (m_logCountdown > 0 && --m_logCountdown == 0) {
-        logCounts("after the switch");
-    }
-    // The screen left last frame no longer runs: its content can go.
-    if (m_toClear) {
-        clear(*m_toClear);
-        m_toClear.reset();
-        m_logCountdown = 2; // its assets unload at the end of this frame
+        logCounts("after entering a screen");
     }
 
     const platform::Input& input = m_app.input();
@@ -155,14 +159,10 @@ void Flow::update() {
 }
 
 void Flow::enter(Screen screen) {
-    if (m_toClear == screen) { // left last frame and entered again at once
-        clear(screen);
-        m_toClear.reset();
-    }
-    build(screen);
     m_app.scenes().switchTo(sceneOf(screen));
-    m_toClear = m_active;
     m_active = screen;
+    // The hooks run at the start of the next frame; the assets only the left screen used unload at its end.
+    m_logCountdown = 2;
 }
 
 Result<renderer::SpriteSheet> Flow::font() {
@@ -207,23 +207,6 @@ void Flow::build(Screen screen) {
     spawnText(target, sheet, std::format("TIME {:.1f}", m_results.seconds), {0.0F, 0.0F}, 2.0F, kTextColor);
     spawnText(target, sheet, std::format("RESTARTS {}", m_results.restarts), {0.0F, -1.0F}, 2.0F, kTextColor);
     spawnText(target, sheet, "ENTER: PLAY AGAIN   ESC: MENU", {0.0F, -3.5F}, 1.0F, kHintColor);
-}
-
-void Flow::clear(Screen screen) {
-    ecs::World& world = sceneOf(screen).world();
-    std::vector<ecs::Entity> entities;
-    entities.reserve(world.entityCount());
-    world.forEachEntity([&](ecs::Entity entity) { entities.push_back(entity); });
-    for (const ecs::Entity entity : entities) {
-        world.destroy(entity);
-    }
-    // The resources the content added; the font's texture is released with the sheet.
-    if (world.hasResource<GameState>()) {
-        world.removeResource<GameState>();
-    }
-    if (world.hasResource<ScreenFont>()) {
-        world.removeResource<ScreenFont>();
-    }
 }
 
 void Flow::logCounts(const char* moment) {
