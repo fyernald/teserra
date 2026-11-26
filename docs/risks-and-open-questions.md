@@ -13,7 +13,7 @@ Living document: assumptions made while setting up the project, known risks with
 | Q5 | **Exam/holiday calendar.** Which weeks should be light iterations or breaks? | Continuous 2-week iterations from 2026-10-26; iteration 5 overlaps the year-end holidays | Next planning |
 | Q6 | **Reference machine** for the performance budget (CPU/GPU). | Author's development machine, documented when the first benchmark lands | Iteration 8 |
 | Q7 | ~~**MIT vs zlib** final confirmation (relicensing is only cheap before external contributions).~~ **Resolved 2026-11-26 ([#123](https://github.com/fyernald/teserra/issues/123)):** MIT stays ([ADR-0018](adr/0018-license-mit.md)). zlib would spare games the notice for Teserra alone, but they ship notices for GLFW, spdlog and fmt anyway; the getting-started guide tells them how. | - | - |
-| Q8 | **Minimum Windows version and GPU** to state as supported (Windows 10 22H2+? GL 4.5 GPUs from ~2014+). | Windows 10/11 x64, any GPU with an OpenGL 4.5 core driver | Iteration 5 feedback round |
+| Q8 | ~~**Minimum Windows version and GPU** to state as supported (Windows 10 22H2+? GL 4.5 GPUs from ~2014+).~~ **Resolved 2026-11-26 for v0.1:** Windows 10 and 11 x64, any GPU with an OpenGL 4.5 core driver, as the README's supported-platform table states. The iteration 5 hardware check got no answers (#181); the v0.1.0 feedback request asks again. | - | - |
 
 ## Assumptions made
 
