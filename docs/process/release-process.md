@@ -30,7 +30,7 @@ How Teserra versions, tags, packages and announces builds. Related: [development
 2. `CHANGELOG.md`: the `Unreleased` section lists the iteration's user-visible changes.
 3. **For feedback iterations, open the *Feedback request* issue first** (template). Its build link is the release's URL, `https://github.com/fyernald/teserra/releases/tag/v0.1.0-alpha.N` (N = the next pre-release number for that version), which the tag name fixes before the release exists; it works from step 6 on. The zip's `README.txt` links to this issue, so it has to exist before packaging. Iterations without a feedback round skip this step, and their zip links to the issue chooser.
 4. Tag `v0.1.0-alpha.N` on the commit of step 1 and push the tag.
-5. Package. The `release.yml` workflow drafts the GitHub pre-release when the tag is pushed. Building and attaching the Windows x64 artifacts there, with the feedback request's URL as an input, is #122. Until then, build the Release preset, make the zip with `python tools/scripts/package_example.py --build-dir build/windows-msvc-release --example <name> --version 0.1.0-alpha.N --feedback-url <feedback request of step 3>` (from a Visual Studio developer prompt, which locates the Visual C++ runtime), and attach it to the draft.
+5. Package. Pushing the tag runs `release.yml`: it drafts the GitHub pre-release, builds Release on Windows, and attaches `teserra-<version>-windows-x64-examples.zip`, whose `README.txt` links to the open `feedback` issue that has the release's URL in its body (step 3), or to the issue chooser. A feedback round about one example can add a zip of only that example: `python tools/scripts/package_example.py --build-dir build/windows-msvc-release --example <name> --version 0.1.0-alpha.N --feedback-url <feedback request of step 3>` (from a Visual Studio developer prompt, which locates the Visual C++ runtime), attached to the draft by hand.
 6. Edit the draft: short summary, link to the iteration epic, known issues, and how to give feedback (the feedback request). Publish. The feedback request's build link now works; share it ([feedback loop](development-process.md#feedback-loop)).
 
 ## Release checklist (`v0.x.0`)
@@ -47,10 +47,14 @@ How Teserra versions, tags, packages and announces builds. Related: [development
 | Artifact | Content | From |
 |---|---|---|
 | Source archive | Automatic GitHub archive | Tag |
-| `teserra-<version>-windows-x64-examples.zip` | Example and demo executables, assets, `README.txt`, `LICENSE`, `THIRD_PARTY_NOTICES.md` | `release.yml` |
-| `teserra-<version>-windows-x64-sdk.zip` (from v0.1.0) | CMake install tree: headers, static libraries (Debug + Release), `TeserraConfig.cmake`, shader tool | `release.yml` |
+| `teserra-<version>-windows-x64-examples.zip` | One folder per example with a window (executable, DLLs, assets, the Visual C++ runtime), and `README.txt`, `LICENSE`, `THIRD_PARTY_NOTICES.md` | `release.yml`, every version tag |
+| `teserra-<version>-windows-x64-sdk.zip` (later, with #143) | CMake install tree: headers, static libraries (Debug + Release), `TeserraConfig.cmake`, shader tool | `release.yml` |
+
+Until the SDK package exists, games build Teserra from source with FetchContent or `add_subdirectory()`.
 
 Executables are not code-signed in v0.x; Windows SmartScreen may warn. The README of each zip explains this.
+
+`tools/scripts/package_example.py --all-examples` makes the examples zip from a Release build. It refuses a debug build, a missing example, and a DLL that `THIRD_PARTY_NOTICES.md` does not list. A pull request that changes the packaging (the workflow, the script, `tools/packaging/` or the notices) runs the package job as a dry run and uploads the zip, versioned `<version>-pr.<number>`, as a workflow artifact.
 
 ## Changelog policy
 
