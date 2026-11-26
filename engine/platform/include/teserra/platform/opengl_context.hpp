@@ -24,8 +24,9 @@ public:
     /// the current context.
     virtual void setSwapInterval(int interval) = 0;
 
-    /// Address of an OpenGL function or extension function, or nullptr if it does not exist. The context
-    /// must be current.
+    /// Address of an OpenGL function or extension function. The context must be current. Whether a
+    /// function exists comes from the GL version and the extension strings (as glad decides): some drivers
+    /// return nullptr for an unknown name, but GLX returns an address for any name.
     [[nodiscard]] virtual GlProc getProcAddress(const char* name) = 0;
 
 protected:

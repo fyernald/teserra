@@ -57,6 +57,9 @@ if(NOT TESERRA_PORTABLE_ONLY)
         )
         if(WIN32)
             target_sources(teserra_platform PRIVATE src/glfw/glfw_native_windows.cpp)
+        elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+            # X11 or Wayland, whichever GLFW picks at run time; vcpkg's glfw3 builds both (vcpkg.json).
+            target_sources(teserra_platform PRIVATE src/glfw/glfw_native_linux.cpp)
         else()
             message(FATAL_ERROR "teserra_platform: the GLFW backend has no native-handle implementation for "
                 "${CMAKE_SYSTEM_NAME} yet (see the new platform port checklist in platform-abstraction.md)")
