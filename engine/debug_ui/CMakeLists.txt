@@ -7,6 +7,7 @@ teserra_add_module(debug_ui LAYER 6
         include/teserra/debug_ui/imgui_pass.hpp
     SOURCES
         src/debug_ui.cpp
+        src/imgui_input.cpp
         src/imgui_pass.cpp
 )
 
