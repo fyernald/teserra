@@ -4,10 +4,12 @@ teserra_add_module(debug_ui LAYER 6
     DEPENDS core platform rhi assets renderer ecs scene
     PUBLIC_HEADERS
         include/teserra/debug_ui/debug_ui.hpp
+        include/teserra/debug_ui/entity_inspector.hpp
         include/teserra/debug_ui/imgui_pass.hpp
         include/teserra/debug_ui/log_console.hpp
     SOURCES
         src/debug_ui.cpp
+        src/entity_inspector.cpp
         src/imgui_input.cpp
         src/imgui_pass.cpp
         src/log_console.cpp

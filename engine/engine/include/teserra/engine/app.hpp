@@ -25,6 +25,7 @@
 #include <teserra/scene/scene_manager.hpp>
 #if TESERRA_WITH_DEBUG_UI
 #include <teserra/debug_ui/debug_ui.hpp>
+#include <teserra/debug_ui/entity_inspector.hpp>
 #include <teserra/debug_ui/log_console.hpp>
 #endif
 
@@ -235,6 +236,9 @@ public:
     /// The debug UI's log console (its "Log" window): every message logged since the App was initialized,
     /// up to the last 2000. The debug UI must be enabled (asserted).
     [[nodiscard]] debugui::LogConsole& logConsole();
+    /// The selection of the debug UI's "Entities" and "Inspector" windows: the entities of every scene, and
+    /// the selected one's components.
+    [[nodiscard]] debugui::EntityInspector& entityInspector() noexcept { return m_entityInspector; }
 #endif
 
 private:
@@ -300,6 +304,7 @@ private:
     static constexpr usize kFrameTimeCount = 120;
     std::unique_ptr<debugui::DebugUi> m_debugUi;
     std::unique_ptr<debugui::LogConsole> m_logConsole;
+    debugui::EntityInspector m_entityInspector;
     // An overlay-only renderer that draws the debug UI over the frame, whoever drew the frame; after the
     // device, created the first time the debug UI is drawn.
     std::unique_ptr<renderer::Renderer> m_debugRenderer;

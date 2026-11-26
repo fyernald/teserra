@@ -132,6 +132,11 @@ template <typename T>
     return degrees * (std::numbers::pi_v<f32> / 180.0F);
 }
 
+/// `radians` in degrees.
+[[nodiscard]] constexpr f32 degrees(f32 radians) noexcept {
+    return radians * (180.0F / std::numbers::pi_v<f32>);
+}
+
 // Matrices and rotations
 
 // The clip planes are zNear/zFar, not near/far: <windows.h> defines `near` and `far` as macros.
@@ -166,6 +171,12 @@ template <typename T>
 /// the axis (from +axis toward the origin).
 [[nodiscard]] inline Quat angleAxis(f32 angle, const Vec3& axis) noexcept {
     return glm::angleAxis(angle, axis);
+}
+
+/// The Euler angles of the unit quaternion `q` in radians: pitch around X, yaw around Y and roll around Z, in
+/// GLM's convention. For showing a rotation, not for building one back: the angles are not unique.
+[[nodiscard]] inline Vec3 eulerAngles(const Quat& q) noexcept {
+    return glm::eulerAngles(q);
 }
 
 /// The rotation matrix of the unit quaternion `q`.

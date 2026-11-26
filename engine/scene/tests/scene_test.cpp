@@ -12,6 +12,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <string>
+#include <string_view>
 #include <vector>
 
 using namespace teserra;
@@ -41,6 +42,9 @@ TEST_CASE("SceneManager: creates scenes and finds them by name", "[scene]") {
     CHECK(scenes.size() == 2);
     CHECK(menu.name() == "menu");
     CHECK(scenes.find("level") == &level);
+    std::vector<std::string_view> names;
+    scenes.forEach([&](Scene& scene) { names.push_back(scene.name()); });
+    CHECK(names == std::vector<std::string_view>{"menu", "level"}); // in creation order
     CHECK(scenes.find("credits") == nullptr);
     CHECK(scenes.owns(menu));
     Scene elsewhere("elsewhere");

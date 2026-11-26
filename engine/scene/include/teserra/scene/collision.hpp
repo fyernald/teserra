@@ -10,6 +10,7 @@
 
 #include <teserra/core/math.hpp>
 #include <teserra/core/types.hpp>
+#include <teserra/ecs/component_meta.hpp>
 #include <teserra/ecs/entity.hpp>
 #include <teserra/ecs/system_context.hpp>
 #include <teserra/ecs/type_key.hpp>
@@ -17,6 +18,8 @@
 #include <teserra/scene/tilemap.hpp>
 
 #include <algorithm>
+#include <array>
+#include <cstddef>
 #include <limits>
 #include <optional>
 #include <string_view>
@@ -131,3 +134,11 @@ void collisionSystem(ecs::SystemContext& context);
 } // namespace teserra::scene
 
 TESERRA_COMPONENT(teserra::scene::Collider, "Collider");
+
+template <>
+struct teserra::ecs::ComponentFields<teserra::scene::Collider> {
+    static constexpr std::array<FieldDescriptor, 2> kFields{{
+        {.name = "size", .offset = offsetof(teserra::scene::Collider, size), .type = FieldType::Vec2},
+        {.name = "offset", .offset = offsetof(teserra::scene::Collider, offset), .type = FieldType::Vec2},
+    }};
+};

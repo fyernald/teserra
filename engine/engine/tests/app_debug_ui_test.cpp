@@ -9,6 +9,8 @@
 #include <teserra/engine/app.hpp>
 #include <teserra/rhi/command_list.hpp>
 #include <teserra/rhi_null/null_device.hpp>
+#include <teserra/scene/scene.hpp>
+#include <teserra/scene/transform.hpp>
 
 #include "headless_platform.hpp"
 #include <catch2/catch_test_macros.hpp>
@@ -166,7 +168,7 @@ TEST_CASE("App debug UI: Stats and the game's windows are listed, and drawn whil
     for (const debugui::DebugWindow& window : fixture.app.debugUi().windows()) {
         names.push_back(window.name);
     }
-    CHECK(names == std::vector<std::string>{"Stats", "Log", "Game"});
+    CHECK(names == std::vector<std::string>{"Stats", "Log", "Entities", "Inspector", "Game"});
     CHECK_FALSE(fixture.app.debugUi().windows()[1].open); // the log opens from the View menu
 
     fixture.headless.queueEvent(3, key(platform::Key::GraveAccent, true));
@@ -277,4 +279,26 @@ TEST_CASE("App debug UI: the log console has the App's messages, also from befor
     }
     CHECK(found);
     CHECK(running);
+}
+
+TEST_CASE("App debug UI: the inspector shows a selected entity of the running scene until it is destroyed",
+          "[engine][app][debug_ui]") {
+    AppConfig config = headlessConfig(4);
+    config.debugUi.startOpen = true;
+    HeadlessApp fixture(std::move(config));
+    scene::Scene& level = fixture.app.scenes().create("level");
+    const ecs::Entity hero = level.world().create();
+    level.world().add<scene::Transform>(hero);
+    REQUIRE(fixture.app.debugUi().setWindowOpen("Entities", true));
+    REQUIRE(fixture.app.debugUi().setWindowOpen("Inspector", true));
+    fixture.app.entityInspector().select(level, hero);
+
+    std::vector<bool> selected;
+    REQUIRE(fixture.app.run(level, {.update = [&](App& app, f32) {
+                                selected.push_back(app.entityInspector().selectedEntity() == hero);
+                                if (app.frameCount() == 1) {
+                                    level.world().destroy(hero); // before the windows draw
+                                }
+                            }}) == 0);
+    CHECK(selected == std::vector<bool>{true, true, false, false});
 }

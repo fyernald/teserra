@@ -43,6 +43,9 @@ public:
         const u32 index = denseIndex(entity.index());
         return index != kAbsent && m_entities[index] == entity;
     }
+    /// The entity's component as raw memory laid out as meta() describes, for type-erased readers such as
+    /// World::forEachComponent(); nullptr if it has none, and always for tags.
+    [[nodiscard]] virtual const void* data(Entity entity) const noexcept = 0;
     /// Removes the entity's component if it has one; for World::destroy().
     void removeIfPresent(Entity entity) {
         if (has(entity)) {
@@ -186,6 +189,14 @@ public:
         requires(!kTag)
     {
         return has(entity) ? &m_components[denseIndex(entity.index())] : nullptr;
+    }
+
+    [[nodiscard]] const void* data(Entity entity) const noexcept override {
+        if constexpr (kTag) {
+            return nullptr;
+        } else {
+            return tryGet(entity);
+        }
     }
 
     /// The components in dense order, matching entities().

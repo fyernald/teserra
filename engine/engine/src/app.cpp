@@ -150,6 +150,10 @@ Result<void> App::initialize(Result<std::unique_ptr<platform::Platform>> platfor
         m_debugUi->addWindow("Stats", [this] { drawStatsWindow(); });
         m_logConsole = std::make_unique<debugui::LogConsole>();
         m_debugUi->addWindow("Log", [this] { m_logConsole->draw(); }, /*open=*/false);
+        m_debugUi->addWindow(
+            "Entities", [this] { m_entityInspector.drawEntityList(m_scenes); }, /*open=*/false);
+        m_debugUi->addWindow(
+            "Inspector", [this] { m_entityInspector.drawInspector(m_scenes); }, /*open=*/false);
         setDebugUiOpen(m_config.debugUi.startOpen);
     }
 #endif

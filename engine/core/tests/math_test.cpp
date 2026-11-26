@@ -83,6 +83,10 @@ TEST_CASE("math: vector functions follow the right-handed conventions", "[core][
     CHECK(math::lerp(Color{0.0F, 0.0F, 0.0F, 0.0F}, Color{1.0F, 0.5F, 0.25F, 1.0F}, 0.5F) ==
           Color{0.5F, 0.25F, 0.125F, 0.5F});
     STATIC_CHECK(math::radians(180.0F) == std::numbers::pi_v<f32>);
+    STATIC_CHECK(math::degrees(std::numbers::pi_v<f32>) == 180.0F);
+    // A quarter turn around Z shows as a roll of 90 degrees.
+    checkNear(math::eulerAngles(math::angleAxis(math::radians(90.0F), {0.0F, 0.0F, 1.0F})),
+              {0.0F, 0.0F, math::radians(90.0F)});
 }
 
 TEST_CASE("Aabb: is 3D; contains, intersects and merges", "[core][math]") {
