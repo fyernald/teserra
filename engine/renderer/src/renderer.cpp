@@ -24,7 +24,8 @@ namespace teserra::renderer {
 
 namespace {
 
-std::string_view resourceName(PassResource resource) noexcept {
+// Only assertion messages use it, so builds without assertions do not.
+[[maybe_unused]] std::string_view resourceName(PassResource resource) noexcept {
     switch (resource) {
         case PassResource::SceneColor:
             return "SceneColor";

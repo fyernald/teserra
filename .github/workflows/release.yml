@@ -277,7 +277,8 @@ jobs:
         run: cmake --preset "$PRESET" -DTESERRA_BUILD_TESTS=OFF -DTESERRA_WARNINGS_AS_ERRORS=ON
 
       - name: Build
-        run: cmake --build --preset "$PRESET"
+        # -k 0: keep going after a failure, so one run shows every error of the Release build.
+        run: cmake --build --preset "$PRESET" -- -k 0
 
       - name: Package
         run: |
