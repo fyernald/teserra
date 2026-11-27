@@ -3,6 +3,11 @@ if(TARGET teserra_renderer)
     set(scene_render_tests render_extraction_test.cpp sprite_sheet_sprites_test.cpp tilemap_render_test.cpp tiled_scene_test.cpp tileset_test.cpp)
 endif()
 
+set(scene_audio_tests "")
+if(TARGET teserra_audio)
+    set(scene_audio_tests audio_components_test.cpp)
+endif()
+
 teserra_add_test(scene
     SOURCES
         collision_test.cpp
@@ -13,6 +18,7 @@ teserra_add_test(scene
         tilemap_test.cpp
         transform_test.cpp
         ${scene_render_tests}
+        ${scene_audio_tests}
     # The null backend gives the sprite sheet tests a device for their texture assets.
     DEPENDS scene rhi_null
 )

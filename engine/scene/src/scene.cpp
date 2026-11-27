@@ -6,6 +6,9 @@
 #include <teserra/scene/collision.hpp>
 #include <teserra/scene/scene_manager.hpp>
 #include <teserra/scene/transform.hpp>
+#if TESERRA_HAS_AUDIO
+#include <teserra/scene/audio_components.hpp>
+#endif
 #if TESERRA_HAS_RENDERER
 #include <teserra/scene/collision_debug.hpp>
 #include <teserra/scene/render_extraction.hpp>
@@ -36,6 +39,17 @@ Scene::Scene(std::string name)
         .sendsEvents<CollisionStarted>()
         .sendsEvents<CollisionEnded>()
         .after(kTransformSystemName);
+#if TESERRA_HAS_AUDIO
+    m_world.insertResource<AudioSourceVoices>();
+    m_schedule.add(ecs::Phase::PostUpdate, std::string(kAudioSystemName), audioSystem)
+        .reads<AudioSource>()
+        .reads<AudioListener>()
+        .reads<GlobalTransform>()
+        .reads<Transform>()
+        .writesResource<AudioSourceVoices>()
+        .writesResource<audio::Audio>()
+        .after(kTransformSystemName);
+#endif
 #if TESERRA_HAS_RENDERER
     m_world.insertResource<RenderExtraction>();
     m_world.insertResource<renderer::DebugDrawList>();
@@ -74,6 +88,9 @@ void Scene::run(ecs::Phase phase) {
 }
 
 void Scene::reset() {
+#if TESERRA_HAS_AUDIO
+    stopAudioSources(m_world);
+#endif
     m_world.destroyAll();
     m_world.resource<Time>() = Time{};
     m_world.resource<CollisionState>() = CollisionState{};
@@ -91,6 +108,9 @@ void Scene::enter() {
 }
 
 void Scene::exit() {
+#if TESERRA_HAS_AUDIO
+    stopAudioSources(m_world);
+#endif
     if (m_onExit) {
         m_onExit(*this);
     }

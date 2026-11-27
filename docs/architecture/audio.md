@@ -9,7 +9,7 @@ Related: [assets](assets.md), [ADR-0020 handles](../adr/0020-generational-handle
 | v0.2 | Future |
 |---|---|
 | Clips made in code (`AudioClip::create`) | Effects (reverb, filters), recording |
-| Voices with volume, pitch, pan and looping | Doppler, cones, occlusion |
+| Voices with volume, pitch, pan, looping and positional 2D sound (#313) | Doppler, cones, occlusion |
 | Device or offline output | Choosing a device, hot-plugging |
 | WAV and OGG Vorbis files, decoded or streamed (#311) | FLAC and MP3; streaming from disk |
 | Volume buses: Master, Music, Effects; the App owns the engine and runs without a device (#312) | User-defined buses |
@@ -69,6 +69,32 @@ engine->setBusMuted(audio::Bus::Master, true);   // everything off
 - A voice plays into a bus (`PlayParams::bus`, default `Effects`): `Music` and `Effects` feed `Master`, which applies to everything, including voices played on `Master` directly.
 - `setBusVolume()` (linear, default 1) multiplies with the voices' own volumes and with Master's: a voice at 0.8 on Music at 0.5 with Master at 0.5 plays at 0.2. `setBusMuted()` silences a bus and keeps its volume; its voices go on playing silently.
 - The buses are miniaudio sound groups (Master is the engine's own volume). User-defined buses are future work.
+
+## Positional sound
+
+```cpp
+engine->play(buzz, {.loop = true, .spatial = true, .position = {12.0F, 3.0F, 0.0F}, .maxDistance = 15.0F});
+engine->setListenerPosition({10.0F, 2.0F, 0.0F});   // the camera
+```
+
+- A voice with `PlayParams::spatial` is panned and attenuated by its `position` relative to the listener, through miniaudio's spatializer. The listener faces -Z with +Y up, so in 2D (z = 0) a voice at a greater x is on the right ([ADR-0024](../adr/0024-coordinate-conventions.md)).
+- Attenuation is linear: full volume up to `minDistance` (default 1 world unit), silent from `maxDistance` (default 20). There is no Doppler: a fast 2D source would change pitch.
+- `setPosition()`, `setSpatial()`, `setDistances()` and `setListenerPosition()` change them while voices play. Positions are 3D already, so a 3D game sets z and the spatializer works unchanged.
+
+## Scene components
+
+```cpp
+level.add<scene::AudioSource>(waterfall, {.clip = app.assets().load<audio::AudioClip>("assets://water.ogg"),
+                                          .loop = true, .spatial = true, .maxDistance = 12.0F});
+level.add<scene::AudioListener>(camera);
+```
+
+- `scene::AudioSource` (`<teserra/scene/audio_components.hpp>`, with the audio module) plays its `clip` while the entity has it and `playing` is true, on its `bus`, at its `volume` and `pitch`, `loop`ing or not. It holds the clip's `Asset`, so the clip stays loaded while the entity has it ([#264](https://github.com/fyernald/teserra/issues/264) finding 1). A clip made in code goes through `assets.load<audio::AudioClip>(path, create)`.
+- `scene::AudioListener`, a tag, marks the entity the player hears from, usually the camera; the first one found is used. Without one, the listener stays where it last was (the origin at first).
+- The audio system (`scene.audio`, PostUpdate, after the transforms) starts a source's voice, applies `volume`, `pitch` and the distances each frame, and moves spatial voices to their entity's world position. It stops a voice when the component or the entity goes away or `playing` turns false. A voice that ended (a clip it does not loop) stays ended until `playing` turns false and true again.
+- A scene stops its sources' voices when it exits (a scene switch) or resets; sources still playing start over when it runs again.
+- The system uses the `audio::Audio` resource the App inserts; a scene the App has not run plays nothing. The voices of a scene's sources are its `scene::AudioSourceVoices` resource.
+- One-shot sounds (a coin, a hit) are `play()` calls in systems; components are for sounds with a lifetime.
 
 ## In the App
 
