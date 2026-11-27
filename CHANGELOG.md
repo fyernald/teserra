@@ -24,6 +24,7 @@ All notable user-visible changes to Teserra are documented here. The format foll
 
 ### Fixed
 
+- Debug UI windows no longer open on top of each other (#308): a window first shows in a free spot below the menu bar, beside the open ones, and then stays where it is or where you move it.
 - The sprite pass no longer allocates every frame on Linux (#282): it sorted tilemap chunks by layer with `std::stable_sort`, which allocates a buffer in libstdc++. It now uses an allocation-free sort that keeps the same order.
 
 ## [0.1.0] - 2026-11-26

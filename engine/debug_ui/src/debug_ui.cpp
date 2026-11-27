@@ -3,7 +3,9 @@
 #include <teserra/core/assert.hpp>
 
 #include <algorithm>
+#include <cstddef>
 #include <utility>
+#include <vector>
 
 namespace teserra::debugui {
 
@@ -76,6 +78,7 @@ void DebugUi::addWindow(std::string name, std::function<void()> draw, bool open)
         std::ranges::none_of(m_windows, [&](const DebugWindow& window) { return window.name == name; }),
         "The debug UI already has a window named '{}'", name);
     m_windows.push_back({.name = std::move(name), .draw = std::move(draw), .open = open});
+    m_placements.emplace_back();
 }
 
 bool DebugUi::setWindowOpen(std::string_view name, bool open) {
@@ -89,7 +92,9 @@ bool DebugUi::setWindowOpen(std::string_view name, bool open) {
 
 void DebugUi::drawWindows() {
     TESERRA_ASSERT(m_inFrame, "DebugUi::drawWindows() outside a frame");
+    f32 menuBarHeight = 0.0F;
     if (ImGui::BeginMainMenuBar()) {
+        menuBarHeight = ImGui::GetWindowSize().y;
         if (ImGui::BeginMenu("View")) {
             for (DebugWindow& window : m_windows) {
                 ImGui::MenuItem(window.name.c_str(), nullptr, &window.open);
@@ -98,16 +103,74 @@ void DebugUi::drawWindows() {
         }
         ImGui::EndMainMenuBar();
     }
-    for (DebugWindow& window : m_windows) {
+    // A window first shows at its own free place below the menu bar (#308). ImGui sizes a new window to its
+    // contents on its first frame, which it does not show, so the window is placed on its second: in the
+    // first free spot, top to bottom and left to right, where its size fits next to the other open windows.
+    // Once placed, a window stays where it is, or where the user moves it. The viewport's work area only
+    // leaves out the menu bar from the next frame on, so the bar's height is used.
+    const ImGuiViewport* viewport = ImGui::GetMainViewport();
+    const Vec2 area{viewport->Pos.x + viewport->Size.x, viewport->Pos.y + viewport->Size.y};
+    const f32 gap = ImGui::GetStyle().WindowPadding.x;
+    const Vec2 origin{viewport->Pos.x + gap, viewport->Pos.y + menuBarHeight + gap};
+    for (std::size_t index = 0; index < m_windows.size(); ++index) {
+        DebugWindow& window = m_windows[index];
+        WindowPlacement& placement = m_placements[index];
         if (!window.open) {
             continue;
         }
+        if (!placement.placed) {
+            ImGui::SetNextWindowPos({origin.x, origin.y}, ImGuiCond_FirstUseEver);
+        }
         // ImGui::End() goes with every Begin(), also when the window is collapsed and draws nothing.
-        if (ImGui::Begin(window.name.c_str(), &window.open) && window.draw) {
+        const bool expanded = ImGui::Begin(window.name.c_str(), &window.open);
+        if (!placement.placed && !ImGui::IsWindowAppearing()) {
+            const ImVec2 size = ImGui::GetWindowSize();
+            const Vec2 spot = freeSpot(index, {size.x, size.y}, origin, area, gap);
+            ImGui::SetWindowPos({spot.x, spot.y});
+            placement.placed = true;
+        }
+        const ImVec2 position = ImGui::GetWindowPos();
+        const ImVec2 size = ImGui::GetWindowSize();
+        placement.min = {position.x, position.y};
+        placement.max = {position.x + size.x, position.y + size.y};
+        if (expanded && window.draw) {
             window.draw();
         }
         ImGui::End();
     }
+}
+
+Vec2 DebugUi::freeSpot(std::size_t index, Vec2 size, Vec2 origin, Vec2 area, f32 gap) const {
+    // The other open windows that have a place; those after `index` have last frame's.
+    const auto isObstacle = [&](std::size_t other) {
+        return other != index && m_windows[other].open && m_placements[other].placed;
+    };
+    const auto isFree = [&](Vec2 spot) {
+        if (spot.x + size.x > area.x || spot.y + size.y > area.y) {
+            return false;
+        }
+        for (std::size_t other = 0; other < m_windows.size(); ++other) {
+            const WindowPlacement& placed = m_placements[other];
+            if (isObstacle(other) && spot.x < placed.max.x + gap && placed.min.x < spot.x + size.x + gap &&
+                spot.y < placed.max.y + gap && placed.min.y < spot.y + size.y + gap) {
+                return false;
+            }
+        }
+        return true;
+    };
+    // Candidates: the origin, and right of and below every other window.
+    std::vector<Vec2> spots{origin};
+    for (std::size_t other = 0; other < m_windows.size(); ++other) {
+        if (isObstacle(other)) {
+            const WindowPlacement& placed = m_placements[other];
+            spots.push_back({placed.max.x + gap, std::max(placed.min.y, origin.y)});
+            spots.push_back({std::max(placed.min.x, origin.x), placed.max.y + gap});
+        }
+    }
+    std::ranges::sort(spots, [](Vec2 a, Vec2 b) { return a.y != b.y ? a.y < b.y : a.x < b.x; });
+    const auto spot = std::ranges::find_if(spots, isFree);
+    // No room left: the origin, on top of other windows.
+    return spot != spots.end() ? *spot : origin;
 }
 
 ImTextureID textureId(rhi::TextureHandle texture) noexcept {
