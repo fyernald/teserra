@@ -114,6 +114,28 @@ class CheckGlLeaksTest(TreeTestCase):
         self.assertEqual(len(self.violations()), 1)
         self.assertTrue(self.violations()[0].startswith("engine/core/src/log.cpp:1:11:"))
 
+    def test_miniaudio_only_in_the_audio_sources(self) -> None:
+        self.write("engine/audio/src/audio_engine.cpp", """
+            #include <miniaudio.h>
+            void f(ma_engine* e) { ma_engine_uninit(e); int ok = MA_SUCCESS; }
+            """)
+        self.write("engine/audio/include/teserra/audio/audio_engine.hpp", """
+            #include <miniaudio.h>
+            struct ma_sound;
+            """)
+        self.write("engine/scene/src/audio_system.cpp", """
+            // A gamma_correction or MAX_VOICES is not miniaudio's.
+            int gamma_correction = 0; int MAX_VOICES = 2; int x = MA_SOUND_FLAG_LOOPING;
+            """)
+        self.assertEqual(self.violations(), [
+            "engine/audio/include/teserra/audio/audio_engine.hpp:1:11: error: miniaudio header <miniaudio.h> "
+            "outside engine/audio/src/ (use <teserra/audio/...>, ADR-0027) [miniaudio-leak]",
+            "engine/audio/include/teserra/audio/audio_engine.hpp:2:8: error: miniaudio name 'ma_sound' outside "
+            "engine/audio/src/ (use <teserra/audio/...>, ADR-0027) [miniaudio-leak]",
+            "engine/scene/src/audio_system.cpp:2:55: error: miniaudio name 'MA_SOUND_FLAG_LOOPING' outside "
+            "engine/audio/src/ (use <teserra/audio/...>, ADR-0027) [miniaudio-leak]",
+        ])
+
     def test_glm_only_in_core(self) -> None:
         self.write("engine/core/include/teserra/core/math.hpp", """
             #include <glm/vec3.hpp>

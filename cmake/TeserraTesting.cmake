@@ -139,6 +139,9 @@ function(teserra_add_header_check module)
 #if defined(YYJSON_VERSION_HEX)
 #error "<@include_path@> exposes yyjson, which is private to teserra_assets (ADR-0025)"
 #endif
+#if defined(MA_VERSION_MAJOR)
+#error "<@include_path@> exposes miniaudio, which is private to teserra_audio (ADR-0027)"
+#endif
 ]])
         list(APPEND sources "${source}")
     endforeach()

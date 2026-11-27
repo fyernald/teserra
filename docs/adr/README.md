@@ -48,3 +48,4 @@ Small, reversible decisions belong in the issue's design note instead. A larger 
 | [0024](0024-coordinate-conventions.md) | Coordinate system and clip-space conventions | Accepted |
 | [0025](0025-json-yyjson.md) | yyjson for JSON parsing, behind an engine JSON view | Proposed |
 | [0026](0026-linux-support-targets.md) | Linux support targets: Ubuntu 24.04 and 26.04 LTS, GCC 14.3+ or Clang 18+, X11 and Wayland | Accepted |
+| [0027](0027-audio-miniaudio.md) | Audio with miniaudio, decoded or streamed clips | Accepted |

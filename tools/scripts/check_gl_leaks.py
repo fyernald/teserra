@@ -120,6 +120,14 @@ RULES = (
         re.compile(r"^yyjson\.h$"),
     ),
     Rule(
+        "miniaudio-leak",
+        "miniaudio",
+        "engine/audio/src/ (use <teserra/audio/...>, ADR-0027)",
+        _under("engine/audio/src/"),
+        re.compile(r"\b(?:ma_[a-z]\w*|MA_[A-Z]\w*)"),
+        re.compile(r"^miniaudio\.h$"),
+    ),
+    Rule(
         "glm-leak",
         "glm",
         "engine/core/ (use the aliases of <teserra/core/math.hpp>, ADR-0008)",

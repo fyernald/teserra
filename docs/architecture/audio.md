@@ -1,0 +1,59 @@
+# Audio
+
+The audio module (`teserra_audio`, layer 3) plays sound: clips mixed into voices by miniaudio, into the sound device or offline ([ADR-0027](../adr/0027-audio-miniaudio.md)). It depends on core and assets; miniaudio is private to it.
+
+Related: [assets](assets.md), [ADR-0020 handles](../adr/0020-generational-handles.md), [memory and performance](memory-and-performance.md).
+
+## Scope
+
+| v0.2 | Future |
+|---|---|
+| Clips made in code (`AudioClip::create`) | Effects (reverb, filters), recording |
+| Voices with volume, pitch, pan and looping | Doppler, cones, occlusion |
+| Device or offline output | Choosing a device, hot-plugging |
+| WAV and OGG Vorbis files, decoded or streamed (#311) | FLAC and MP3; streaming from disk |
+| Volume buses: Master, Music, Effects; the App owns the engine (#312) | User-defined buses |
+| `AudioSource` and `AudioListener` components, positional 2D sound (#313) | 3D listeners and cones |
+
+## Clips
+
+```cpp
+std::vector<f32> beep(4800);
+for (usize i = 0; i < beep.size(); ++i) beep[i] = 0.5F * std::sin(f32(i) * 0.06F);
+audio::AudioClip clip = *audio::AudioClip::create(48000, 1, beep);
+```
+
+- An `AudioClip` holds interleaved `f32` samples, mono or stereo, at any sample rate from 8 kHz to 384 kHz; the mix resamples it. Bad formats and partial frames are `InvalidArgument`.
+- Copies share the samples, and so do the voices that play the clip: a clip released while a voice plays it stays in memory until the voice ends. A clip is immutable.
+- An empty clip (`AudioClip{}`) plays nothing.
+
+## Voices
+
+```cpp
+auto engine = audio::AudioEngine::create({});   // the default device
+audio::VoiceHandle voice = engine->play(clip, {.volume = 0.5F, .pan = -0.3F, .loop = true});
+engine->setPitch(voice, 1.5F);
+engine->update();                               // once per frame: reclaims voices that ended
+engine->stop(voice);
+```
+
+- `play(clip, PlayParams)` starts a voice and returns its `VoiceHandle`: `volume` (linear gain), `pitch` (speed and pitch together, greater than 0), `pan` (-1 left to 1 right, balance) and `loop`.
+- A voice ends at the end of a clip it does not loop. `isPlaying()` is false from then on; `update()` reclaims the voice, which makes its handle stale. `stop()` ends a voice at once. Setters, `stop()` and `isPlaying()` ignore stale and null handles.
+- `AudioEngineConfig::maxVoices` (default 32) voices play at once. When every voice is busy, `play()` returns a null handle and logs a warning once until a voice is free again.
+- **Threading:** miniaudio mixes on its own audio thread. Every `AudioEngine` function is for the main thread.
+- **Allocation:** starting a voice allocates a little (miniaudio's node for it); a playing voice does not, and neither do `update()` and the setters. miniaudio allocates through `operator new`.
+
+## Outputs
+
+| Output | Use |
+|---|---|
+| `Output::Device` | The system's default sound device (WASAPI on Windows; PulseAudio, PipeWire or ALSA on Linux, opened at run time). `create()` fails with `DeviceFailure` without one. The mix is converted to the device's format if it differs. |
+| `Output::Offline` | No device. `render(frames)` mixes the next frames on demand, interleaved. Tests check exact samples this way; a game on a machine without sound uses it too (#312). |
+
+The mix format is `AudioEngineConfig::sampleRate` (default 48 kHz) and `channels` (1 or 2, default 2). A mono clip plays on both channels.
+
+## Testing
+
+- Offline-output tests play clips of constant values, which every resampler keeps, and check the mixed samples: volumes, panning, looping, ends, stopping, pitch, resampling and released clips (`engine/audio/tests/`).
+- A device test opens the default device and skips when there is none (CI machines).
+- The leak check keeps miniaudio's names (`ma_*`, `MA_*`) and `<miniaudio.h>` inside `engine/audio/src/`.
