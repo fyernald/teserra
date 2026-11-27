@@ -49,9 +49,9 @@ How Teserra versions, tags, packages and announces builds. Related: [development
 | Source archive | Automatic GitHub archive | Tag |
 | `teserra-<version>-windows-x64-examples.zip` | One folder per example with a window (executable, DLLs, assets, the Visual C++ runtime), and `README.txt`, `LICENSE`, `THIRD_PARTY_NOTICES.md` | `release.yml`, every version tag |
 | `teserra-<version>-linux-x64-examples.tar.gz` (since v0.2) | One folder per example with a window (executable with mode 755, assets), and `README.txt`, `LICENSE`, `THIRD_PARTY_NOTICES.md`. Built on Ubuntu 24.04 with Clang (`linux-clang-release`); the executables link only the C and C++ runtimes, so no libraries are bundled | `release.yml`, every version tag; unpacked and run on Ubuntu 24.04 and 26.04 by the same workflow |
-| `teserra-<version>-windows-x64-sdk.zip` (later, with #143) | CMake install tree: headers, static libraries (Debug + Release), `TeserraConfig.cmake`, shader tool | `release.yml` |
+| `teserra-<version>-windows-x64-sdk.zip` (later) | The CMake install tree of #143 (headers, static libraries for Debug and Release, `TeserraConfig.cmake`), and the shader tool once it is installed | `release.yml` |
 
-Until the SDK package exists, games build Teserra from source with FetchContent or `add_subdirectory()`.
+Until the SDK archive exists, games build Teserra from source with FetchContent or `add_subdirectory()`, or install it from a build of their own ([installing Teserra](../guides/build-and-ci.md#installing-teserra)).
 
 Executables are not code-signed in v0.x; Windows SmartScreen may warn. The README of each zip explains this.
 

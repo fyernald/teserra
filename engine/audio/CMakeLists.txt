@@ -24,11 +24,14 @@ find_path(TESERRA_STB_VORBIS_INCLUDE_DIR NAMES stb_vorbis.c PATH_SUFFIXES stb RE
 mark_as_advanced(TESERRA_STB_VORBIS_INCLUDE_DIR)
 set_target_properties(teserra_miniaudio PROPERTIES
     INTERFACE_INCLUDE_DIRECTORIES "${TESERRA_MINIAUDIO_INCLUDE_DIR};${TESERRA_STB_VORBIS_INCLUDE_DIR}")
+# Build interface only: miniaudio is compiled into teserra_audio, so the installed package does not need it. Its
+# system libraries are linked on their own, so that they reach games that link the installed library.
+teserra_link_third_party(audio PRIVATE $<BUILD_INTERFACE:teserra_miniaudio>)
 if(UNIX)
     find_package(Threads REQUIRED)
-    set_target_properties(teserra_miniaudio PROPERTIES INTERFACE_LINK_LIBRARIES "Threads::Threads;${CMAKE_DL_LIBS};m")
+    teserra_link_third_party(audio PRIVATE Threads::Threads)
+    target_link_libraries(teserra_audio PRIVATE ${CMAKE_DL_LIBS} m)
 endif()
-teserra_link_third_party(audio PRIVATE teserra_miniaudio)
 
 if(TESERRA_BUILD_TESTS)
     add_subdirectory(tests)

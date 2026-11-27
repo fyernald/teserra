@@ -18,7 +18,9 @@
 #   teserra_link_third_party(<name> <PUBLIC|PRIVATE|INTERFACE> <target>...)
 #
 # Links third-party targets to module <name>. The visibility keyword is mandatory so that every
-# dependency that leaks into a module's public interface is an explicit, reviewed choice.
+# dependency that leaks into a module's public interface is an explicit, reviewed choice. A target may be
+# given as $<BUILD_INTERFACE:target>: a header-only target of this build that the installed package does not
+# need (stb, miniaudio), because the module's code compiles it in (cmake/TeserraInstall.cmake).
 
 include_guard(GLOBAL)
 
@@ -138,6 +140,7 @@ function(teserra_link_third_party name visibility)
     endif()
 
     foreach(library IN LISTS ARGN)
+        string(REGEX REPLACE "^\\$<BUILD_INTERFACE:(.+)>$" "\\1" library "${library}")
         if(NOT TARGET ${library})
             message(FATAL_ERROR
                 "teserra_link_third_party(${name}): '${library}' is not a target. "

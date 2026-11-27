@@ -80,6 +80,7 @@ tools/shaderc/                 # teserra_shaderc, the build-time shader compiler
 | `TESERRA_BUILD_TESTS` | `ON` (top-level project) | Unit, integration and GPU test executables |
 | `TESERRA_BUILD_EXAMPLES` | `ON` (top-level project) | `examples/*` |
 | `TESERRA_BUILD_BENCHMARKS` | `OFF` | `benchmarks/*` |
+| `TESERRA_INSTALL` | `ON` (top-level project) | Install rules and the CMake package, `find_package(Teserra)` ([installing Teserra](#installing-teserra)) |
 | `TESERRA_WARNINGS_AS_ERRORS` | `OFF` locally, `ON` in CI presets | `/WX` / `-Werror` |
 | `TESERRA_WINDOW_BACKEND` | `GLFW` | Window backend of `teserra_platform` (GLFW is the only one in v1) |
 | `TESERRA_ENABLE_ASSERTS` | `DEFAULT` (on for Debug/RelWithDebInfo) | `TESERRA_ASSERT` active; `ON` / `OFF` force it for every configuration |
@@ -221,6 +222,29 @@ teserra_copy_assets(<target> [SOURCE_DIR <dir>] [DESTINATION <dir>])
 ```
 
 Copies the files under `SOURCE_DIR` (default `assets`) into `DESTINATION` (default `assets`) in the target's output directory, before every build of the target and only where they changed, so an edited asset needs no reconfigure. Files deleted from `SOURCE_DIR` stay in the output until it is cleaned. The examples with assets use it too.
+
+## Installing Teserra
+
+A build installs the engine as a CMake package (#143), so a game can use it without building Teserra itself:
+
+```sh
+cmake --workflow --preset windows-msvc-release           # or linux-clang-release: configure and build
+cmake --install build/windows-msvc-release --prefix C:/sdk/teserra
+```
+
+```cmake
+find_package(Teserra 0.2 REQUIRED)                       # CMAKE_PREFIX_PATH holds C:/sdk/teserra
+target_link_libraries(game PRIVATE Teserra::Engine)
+```
+
+- **What is installed** (GNUInstallDirs layout): the static libraries of every module and of the vendored OpenGL loader in `lib/`, the public headers (and the generated `<teserra/core/version.hpp>`) in `include/`, `lib/cmake/Teserra/` with `TeserraConfig.cmake`, `TeserraConfigVersion.cmake` and `TeserraTargets.cmake`, and `LICENSE` and `THIRD_PARTY_NOTICES.md` in `share/doc/teserra/`. The targets have the build tree's names: `Teserra::Core`, ..., `Teserra::Engine`.
+- **Versions.** Before 1.0 a minor version may break the API, so `find_package(Teserra 0.2)` accepts 0.2.x only (`SameMinorVersion`).
+- **Dependencies.** The libraries are static, so the game links what they link: `TeserraConfig.cmake` finds the packages this build used (glm, tl-expected, spdlog, glfw3, yyjson, imgui with the debug UI, Tracy with profiling, Threads on Linux). They must be where the game looks for packages: the same vcpkg triplet and baseline Teserra was built with (the game's `vcpkg.json` lists them, as [the template](#using-teserra-in-your-game) does), or the system's. stb and miniaudio are compiled into the libraries.
+- **Same configuration.** Install the configuration the game builds: MSVC does not mix Debug and Release libraries. On Windows, vcpkg's GLFW, spdlog, fmt and yyjson are DLLs; copy them next to the game, for example with `$<TARGET_RUNTIME_DLLS:game>` in a post-build step.
+- `Teserra_WITH_DEBUG_UI` tells whether the installed engine has the debug UI; `TESERRA_WITH_DEBUG_UI` is a compile definition of `Teserra::Engine` as in the build tree.
+- **Not installed yet:** the shader compiler and the CMake helpers (`teserra_add_shaders()`, `teserra_copy_assets()`), for games with shaders of their own: until then, build Teserra with the game (above).
+- `cmake.install.find_package` installs the build into a scratch prefix, checks that no private header is installed, refuses another minor version, then builds and runs a program against the package (`tests/cmake/install_consumer`). It runs in every CI build with tests, on Windows and Linux.
+- `TESERRA_INSTALL` is off when Teserra is a subproject, so a game's own `cmake --install` does not install the engine.
 
 ## Shader compiler
 

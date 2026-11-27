@@ -25,7 +25,8 @@ find_path(TESERRA_STB_INCLUDE_DIR NAMES stb_image.h PATH_SUFFIXES stb REQUIRED)
 mark_as_advanced(TESERRA_STB_INCLUDE_DIR)
 add_library(teserra_stb_image INTERFACE IMPORTED)
 set_target_properties(teserra_stb_image PROPERTIES INTERFACE_INCLUDE_DIRECTORIES "${TESERRA_STB_INCLUDE_DIR}")
-teserra_link_third_party(assets PRIVATE teserra_stb_image)
+# Build interface only: stb_image is compiled into teserra_assets, so the installed package does not need it.
+teserra_link_third_party(assets PRIVATE $<BUILD_INTERFACE:teserra_stb_image>)
 
 # yyjson parses JSON (ADR-0025). It is PRIVATE: src/json.cpp is the one translation unit that includes it, and
 # the rest of the engine reads JSON through <teserra/assets/json.hpp>.
