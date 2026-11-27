@@ -3,11 +3,12 @@
 // Engine events (docs/architecture/platform-abstraction.md#interfaces). Platform::pollEvents() translates
 // what the window system reports into these values and appends them to an EventQueue; nothing is
 // delivered through callbacks from inside the window system, except the one that draws while a window is
-// resized (Platform::setLiveResizeHandler()). Input turns the keyboard, mouse and text events into
+// resized (Platform::setLiveResizeHandler()). Input turns the keyboard, mouse, text and gamepad events into
 // per-frame state.
 
 #include <teserra/core/math.hpp>
 #include <teserra/core/types.hpp>
+#include <teserra/platform/gamepad.hpp>
 #include <teserra/platform/key.hpp>
 #include <teserra/platform/mouse_button.hpp>
 
@@ -81,9 +82,38 @@ struct TextEntered {
     friend bool operator==(const TextEntered&, const TextEntered&) = default;
 };
 
+/// A gamepad was connected or disconnected. A connected gamepad then reports its buttons that are down and
+/// its axes away from rest; a disconnected one reports nothing more (Input releases its buttons).
+struct GamepadConnectionChanged {
+    u32 gamepad; ///< Index, below kMaxGamepads.
+    bool connected;
+
+    friend bool operator==(const GamepadConnectionChanged&, const GamepadConnectionChanged&) = default;
+};
+
+/// A gamepad button went down or came up. Gamepads are polled, so a press and release between two polls is
+/// not seen.
+struct GamepadButtonChanged {
+    u32 gamepad;
+    GamepadButton button;
+    bool down; ///< True if the button is now down.
+
+    friend bool operator==(const GamepadButtonChanged&, const GamepadButtonChanged&) = default;
+};
+
+/// A gamepad axis changed. The value is raw, without a deadzone (see Input::stick()).
+struct GamepadAxisMoved {
+    u32 gamepad;
+    GamepadAxis axis;
+    f32 value; ///< -1 to 1 for stick axes (+Y up), 0 to 1 for triggers.
+
+    friend bool operator==(const GamepadAxisMoved&, const GamepadAxisMoved&) = default;
+};
+
 /// Anything the platform reports during a frame.
 using Event = std::variant<WindowResized, WindowCloseRequested, FocusChanged, KeyChanged, MouseButtonChanged,
-                           MouseMoved, MouseScrolled, TextEntered>;
+                           MouseMoved, MouseScrolled, TextEntered, GamepadConnectionChanged,
+                           GamepadButtonChanged, GamepadAxisMoved>;
 
 /// Events collected by Platform::pollEvents(), in the order they happened. Reused across frames: clear()
 /// keeps the capacity, so steady-state polling does not allocate. Main thread only.

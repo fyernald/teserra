@@ -6,6 +6,7 @@ teserra_add_module(platform LAYER 1
         include/teserra/platform/file_system.hpp
         include/teserra/platform/fixed_step_accumulator.hpp
         include/teserra/platform/frame_timer.hpp
+        include/teserra/platform/gamepad.hpp
         include/teserra/platform/input.hpp
         include/teserra/platform/key.hpp
         include/teserra/platform/mouse_button.hpp
@@ -19,6 +20,8 @@ target_sources(teserra_platform PRIVATE
     src/common/clock.cpp
     src/common/fixed_step_accumulator.cpp
     src/common/frame_timer.cpp
+    src/common/gamepad.cpp
+    src/common/gamepad_tracker.cpp
     src/common/input.cpp
     src/common/key.cpp
     src/common/mouse_button.cpp

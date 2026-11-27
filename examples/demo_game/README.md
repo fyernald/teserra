@@ -6,10 +6,10 @@ Collect every coin in the cave, then reach the door. Spikes and slimes send you 
 
 | Key | Action |
 |---|---|
-| Enter | Start, or play again from the win screen |
-| WASD / arrows | Move |
+| Enter (gamepad: A or Start) | Start, or play again from the win screen |
+| WASD / arrows (gamepad: left stick or d-pad) | Move |
 | F1 | Show the colliders |
-| Esc | Back to the menu; quit from the menu |
+| Esc (gamepad: B) | Back to the menu; Esc quits from the menu |
 
 ## Feature list (frozen for #104)
 

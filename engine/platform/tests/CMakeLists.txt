@@ -2,6 +2,7 @@ set(platform_test_sources
     event_queue_test.cpp
     fixed_step_accumulator_test.cpp
     frame_timer_test.cpp
+    gamepad_tracker_test.cpp
     input_test.cpp
     key_test.cpp
 )
@@ -27,7 +28,8 @@ teserra_add_test(platform
     SOURCES ${platform_test_sources}
     DEPENDS platform
 )
-target_include_directories(teserra_platform_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+# ../src: the gamepad tracker's test reaches the portable backend code in src/common.
+target_include_directories(teserra_platform_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}" ../src)
 # The file system test looks for its own executable in executableDirectory().
 target_compile_definitions(teserra_platform_tests PRIVATE
     TESERRA_TEST_EXECUTABLE_NAME="$<TARGET_FILE_NAME:teserra_platform_tests>")

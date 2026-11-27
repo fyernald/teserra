@@ -4,6 +4,7 @@
 #include <teserra/core/log.hpp>
 #include <teserra/ecs/schedule.hpp>
 #include <teserra/ecs/system_context.hpp>
+#include <teserra/platform/gamepad.hpp>
 #include <teserra/platform/input.hpp>
 #include <teserra/platform/key.hpp>
 #include <teserra/scene/audio_components.hpp>
@@ -15,6 +16,7 @@
 #include "font.hpp"
 
 #include <format>
+#include <optional>
 #include <string>
 #include <utility>
 
@@ -35,24 +37,41 @@ constexpr Color kTextColor{.r = 0.9F, .g = 0.9F, .b = 1.0F, .a = 1.0F};
 constexpr Color kHintColor{.r = 0.55F, .g = 0.5F, .b = 0.7F, .a = 1.0F};
 constexpr Color kBackground{.r = 0.09F, .g = 0.08F, .b = 0.13F, .a = 1.0F};
 
-// The menu and the win screen: keys request the next screen.
+// Whether `button` was pressed on the first gamepad, if one is connected.
+bool padPressed(const platform::Input& input, platform::GamepadButton button) {
+    const std::optional<u32> pad = input.firstGamepad();
+    return pad.has_value() && input.wasPressed(*pad, button);
+}
+
+// Enter, or A (South) / Start on a gamepad.
+bool confirmPressed(const platform::Input& input) {
+    return input.wasPressed(platform::Key::Enter) || padPressed(input, platform::GamepadButton::South) ||
+           padPressed(input, platform::GamepadButton::Start);
+}
+
+// Escape, or B (East) on a gamepad.
+bool backPressed(const platform::Input& input) {
+    return input.wasPressed(platform::Key::Escape) || padPressed(input, platform::GamepadButton::East);
+}
+
+// The menu and the win screen: keys and gamepad buttons request the next screen.
 void menuInput(ecs::SystemContext& ctx) {
-    if (ctx.resource<const platform::Input>().wasPressed(platform::Key::Enter)) {
+    if (confirmPressed(ctx.resource<const platform::Input>())) {
         ctx.resource<ScreenRequest>().next = Screen::Level;
     }
 }
 
 void winInput(ecs::SystemContext& ctx) {
     const auto& input = ctx.resource<const platform::Input>();
-    if (input.wasPressed(platform::Key::Enter)) {
+    if (confirmPressed(input)) {
         ctx.resource<ScreenRequest>().next = Screen::Level;
-    } else if (input.wasPressed(platform::Key::Escape)) {
+    } else if (backPressed(input)) {
         ctx.resource<ScreenRequest>().next = Screen::Menu;
     }
 }
 
 void levelInput(ecs::SystemContext& ctx) {
-    if (ctx.resource<const platform::Input>().wasPressed(platform::Key::Escape)) {
+    if (backPressed(ctx.resource<const platform::Input>())) {
         ctx.resource<ScreenRequest>().next = Screen::Menu;
     }
 }

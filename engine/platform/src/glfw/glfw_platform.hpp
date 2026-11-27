@@ -3,6 +3,7 @@
 #include <teserra/core/types.hpp>
 #include <teserra/platform/platform.hpp>
 
+#include "common/gamepad_tracker.hpp"
 #include "common/main_thread.hpp"
 
 #include <chrono>
@@ -36,11 +37,14 @@ public:
 private:
     // Moves the pending events to `queue`.
     void handOver(EventQueue& queue);
+    // Reads every gamepad and appends what changed since the last poll to `queue`.
+    void pollGamepads(EventQueue& queue);
 
     MainThread m_mainThread;
     SteadyClock m_clock;
     NativeFileSystem m_fileSystem;
-    std::vector<Event> m_pending;    // events from GLFW callbacks since the last pollEvents()
+    std::vector<Event> m_pending; // events from GLFW callbacks since the last pollEvents()
+    GamepadTracker m_gamepads;
     EventQueue* m_polling = nullptr; // the queue of the poll underway, if any
     bool m_inLiveResize = false;
     u32 m_windowCount = 0;

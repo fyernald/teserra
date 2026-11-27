@@ -1,6 +1,6 @@
-// Window and input: the Iteration 3 demo (#17). Opens a resizable window, logs keyboard, mouse and text
-// input, shows FPS and a WASD-controlled position in the title, and quits on Escape or when the window is
-// closed.
+// Window and input: the Iteration 3 demo (#17). Opens a resizable window, logs keyboard, mouse, text and
+// gamepad input, shows FPS and a position moved with WASD or a gamepad's left stick in the title, and quits
+// on Escape or when the window is closed.
 //
 //   teserra_window_input                              runs until Escape or close
 //   teserra_window_input --frames 120 --hidden-window smoke run: 120 frames in a hidden window
@@ -9,12 +9,15 @@
 #include <teserra/core/math.hpp>
 #include <teserra/engine/app.hpp>
 #include <teserra/platform/event.hpp>
+#include <teserra/platform/gamepad.hpp>
 #include <teserra/platform/input.hpp>
 #include <teserra/platform/key.hpp>
 #include <teserra/platform/mouse_button.hpp>
 
 #include <chrono>
 #include <format>
+#include <optional>
+#include <string>
 #include <type_traits>
 #include <variant>
 
@@ -48,9 +51,15 @@ void logEvent(const Event& event) {
                 TESERRA_LOG_INFO(exampleCategory(), "Focus {}", e.focused ? "gained" : "lost");
             } else if constexpr (std::is_same_v<E, WindowCloseRequested>) {
                 TESERRA_LOG_INFO(exampleCategory(), "Close requested");
+            } else if constexpr (std::is_same_v<E, GamepadConnectionChanged>) {
+                TESERRA_LOG_INFO(exampleCategory(), "Gamepad {} {}", e.gamepad,
+                                 e.connected ? "connected" : "disconnected");
+            } else if constexpr (std::is_same_v<E, GamepadButtonChanged>) {
+                TESERRA_LOG_INFO(exampleCategory(), "Gamepad {} {} {}", e.gamepad,
+                                 gamepadButtonName(e.button), e.down ? "down" : "up");
             }
-            // MouseMoved is shown in the title instead: it would flood the log. TextEntered is logged
-            // per frame from Input::text(), already UTF-8.
+            // MouseMoved and the gamepads' axes are shown in the title instead: they would flood the log.
+            // TextEntered is logged per frame from Input::text(), already UTF-8.
         },
         event);
 }
@@ -76,7 +85,12 @@ int main(int argc, char** argv) { // NOLINT(bugprone-exception-escape)
             },
         .fixedUpdate =
             [&](engine::App& running, f32 stepSeconds) {
-                position += running.input().axis2D(Key::A, Key::D, Key::S, Key::W) * kSpeed * stepSeconds;
+                const Input& input = running.input();
+                Vec2 direction = input.axis2D(Key::A, Key::D, Key::S, Key::W);
+                if (const std::optional<u32> pad = input.firstGamepad()) {
+                    direction += input.stick(*pad, GamepadStick::Left);
+                }
+                position += direction * kSpeed * stepSeconds;
             },
         .update =
             [&](engine::App& running, f32 /*deltaSeconds*/) {
@@ -89,11 +103,20 @@ int main(int argc, char** argv) { // NOLINT(bugprone-exception-escape)
                 sinceTitle += running.frameTimer().delta();
                 if (sinceTitle >= std::chrono::milliseconds{250}) {
                     sinceTitle = std::chrono::nanoseconds{0};
-                    running.window().setTitle(
+                    std::string title =
                         std::format("Teserra: window and input | {:.0f} FPS | cursor ({:.0f}, {:.0f}) | "
-                                    "WASD position ({:.0f}, {:.0f})",
+                                    "position ({:.0f}, {:.0f})",
                                     running.frameTimer().fps(), input.mousePosition().x,
-                                    input.mousePosition().y, position.x, position.y));
+                                    input.mousePosition().y, position.x, position.y);
+                    if (const std::optional<u32> pad = input.firstGamepad()) {
+                        const Vec2 left = input.stick(*pad, GamepadStick::Left);
+                        const Vec2 right = input.stick(*pad, GamepadStick::Right);
+                        title += std::format(
+                            " | pad {}: L ({:.2f}, {:.2f}) R ({:.2f}, {:.2f}) LT {:.2f} RT {:.2f}", *pad,
+                            left.x, left.y, right.x, right.y, input.axis(*pad, GamepadAxis::LeftTrigger),
+                            input.axis(*pad, GamepadAxis::RightTrigger));
+                    }
+                    running.window().setTitle(title);
                 }
             },
     };
