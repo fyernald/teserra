@@ -90,6 +90,7 @@ flowchart TD
     App --> Input["platform::Input"]
     App --> Device["rhi::Device (OpenGL backend)"]
     App --> Assets["assets::AssetRegistry"]
+    App --> Audio["audio::AudioEngine"]
     App --> Renderer["renderer::Renderer"]
     App --> Scenes["scene::SceneManager"]
     Scenes --> Scene["scene::Scene"]

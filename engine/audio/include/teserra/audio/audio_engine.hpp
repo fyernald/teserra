@@ -9,6 +9,7 @@
 
 #include <memory>
 #include <span>
+#include <string_view>
 
 namespace teserra::audio {
 
@@ -34,6 +35,18 @@ struct AudioEngineConfig {
     u32 maxVoices = 32;
 };
 
+/// A volume group that voices play into: Music and Effects feed Master, so players can turn the music down
+/// without the effects (AudioEngine::setBusVolume()).
+enum class Bus : u8 {
+    /// Everything: Music, Effects and the voices played on Master directly.
+    Master,
+    Music,
+    Effects,
+};
+
+/// The number of buses.
+inline constexpr usize kBusCount = 3;
+
 /// How a voice plays its clip (AudioEngine::play()).
 struct PlayParams {
     /// Linear gain: 1 plays the clip as it is, 0.5 at half its amplitude.
@@ -44,6 +57,8 @@ struct PlayParams {
     f32 pan = 0.0F;
     /// Starts over at the end instead of ending.
     bool loop = false;
+    /// The bus the voice plays into.
+    Bus bus = Bus::Effects;
 };
 
 /// Mixes voices into the sound device, or offline for render(). miniaudio does the mixing, resampling and
@@ -93,6 +108,13 @@ public:
     void setPan(VoiceHandle voice, f32 pan);
     void setLooping(VoiceHandle voice, bool loop);
 
+    /// A bus's linear gain (default 1), applied to every voice of the bus; Master's applies to everything.
+    void setBusVolume(Bus bus, f32 volume);
+    [[nodiscard]] f32 busVolume(Bus bus) const noexcept;
+    /// Silences a bus without losing its volume.
+    void setBusMuted(Bus bus, bool muted);
+    [[nodiscard]] bool isBusMuted(Bus bus) const noexcept;
+
     /// Reclaims the voices that ended, which makes their handles stale. Call it once per frame.
     void update();
 
@@ -110,5 +132,17 @@ private:
     u32 m_sampleRate;
     u32 m_channels;
 };
+
+/// The App's audio engine for scene systems: the App puts it in every scene's world as a resource.
+///
+///     schedule.add(Phase::Update, "coins", [](ecs::SystemContext& ctx) {
+///         ctx.resource<audio::Audio>().engine->play(coinClip);
+///     }).writesResource<audio::Audio>();
+struct Audio {
+    AudioEngine* engine = nullptr;
+};
+
+/// The name of a bus: "Master", "Music" or "Effects".
+[[nodiscard]] std::string_view busName(Bus bus) noexcept;
 
 } // namespace teserra::audio

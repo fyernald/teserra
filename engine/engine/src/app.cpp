@@ -32,6 +32,25 @@ namespace teserra::engine {
 
 namespace {
 
+// The audio engine of `settings`: the default sound device, or offline output when audio is disabled or there
+// is no device (a warning: the game runs without sound).
+Result<std::unique_ptr<audio::AudioEngine>> createAudio(const AudioSettings& settings) {
+    audio::AudioEngineConfig config{.output = audio::Output::Device,
+                                    .sampleRate = settings.sampleRate,
+                                    .channels = settings.channels,
+                                    .maxVoices = settings.maxVoices};
+    if (settings.enabled) {
+        Result<std::unique_ptr<audio::AudioEngine>> device = audio::AudioEngine::create(config);
+        if (device || device.error().code != ErrorCode::DeviceFailure) {
+            return device;
+        }
+        TESERRA_LOG_WARN(LogCategory::Audio, "No sound: {}. The game runs without it.",
+                         device.error().message);
+    }
+    config.output = audio::Output::Offline;
+    return audio::AudioEngine::create(config);
+}
+
 // Applies the engine flags in config.args (see AppConfig) and leaves every other argument to the game.
 Result<void> applyCommandLine(AppConfig& config) {
     const CommandLine& args = config.args;
@@ -41,6 +60,8 @@ Result<void> applyCommandLine(AppConfig& config) {
             config.windowVisible = false;
         } else if (arg == "--debug-ui") {
             config.debugUi.startOpen = true;
+        } else if (arg == "--no-audio") {
+            config.audio.enabled = false;
         } else if (arg == "--frames") {
             if (i + 1 >= args.argc) {
                 return fail(ErrorCode::InvalidArgument, Module::App, "--frames needs a frame count");
@@ -143,6 +164,8 @@ Result<void> App::initialize(Result<std::unique_ptr<platform::Platform>> platfor
     if (m_device) {
         TESERRA_TRY(renderer::registerAssetLoaders(*m_assets, *m_device));
     }
+    audio::registerAssetLoaders(*m_assets);
+    TESERRA_TRY_ASSIGN(m_audio, createAudio(m_config.audio));
 
 #if TESERRA_WITH_DEBUG_UI
     if (m_config.debugUi.enabled) {
@@ -236,6 +259,7 @@ void App::finishFrame(const AppCallbacks& callbacks) {
     }
     m_frameOpen = false;
     updateAndRender(callbacks);
+    m_audio->update();
     // After the frame's work was submitted: the device keeps GPU objects past the frames in flight.
     {
         TESERRA_PROFILE_SCOPE("Assets end frame");
@@ -297,6 +321,9 @@ void App::updateAndRender(const AppCallbacks& callbacks) {
             *input = m_input; // keeps the capacity of its text
         } else {
             world.insertResource<platform::Input>(m_input);
+        }
+        if (world.tryResource<audio::Audio>() == nullptr) {
+            world.insertResource<audio::Audio>(audio::Audio{.engine = m_audio.get()});
         }
     }
     runPhase(ecs::Phase::PreUpdate);
@@ -463,6 +490,11 @@ assets::AssetRegistry& App::assets() {
     return *m_assets;
 }
 
+audio::AudioEngine& App::audio() {
+    TESERRA_ASSERT(isInitialized(), "The App failed to initialize: {}", *m_initError);
+    return *m_audio;
+}
+
 assets::MountTable& App::mounts() {
     TESERRA_ASSERT(isInitialized(), "The App failed to initialize: {}", *m_initError);
     return *m_mounts;
@@ -620,6 +652,10 @@ void App::drawStatsWindow() {
     const UVec2 framebufferSize = m_window->framebufferSize();
     ImGui::Text("Window %u x %u, framebuffer %u x %u", windowSize.x, windowSize.y, framebufferSize.x,
                 framebufferSize.y);
+    const char* output = m_audio->output() == audio::Output::Device ? "sound device"
+                         : m_config.audio.enabled                   ? "no sound device"
+                                                                    : "audio off";
+    ImGui::Text("Audio: %u of %u voices, %s", m_audio->voiceCount(), m_audio->maxVoices(), output);
 }
 
 void App::drawRendererWindow() {
