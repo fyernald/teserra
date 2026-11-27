@@ -62,6 +62,7 @@ struct Voice {
 
 struct AudioEngine::Impl {
     explicit Impl(u32 maxVoices)
+        // NOLINTNEXTLINE(modernize-avoid-c-arrays): see `voices`
         : voices(std::make_unique<Voice[]>(maxVoices)), voiceCapacity(maxVoices) {
         freeVoices.reserve(maxVoices);
         for (u32 index = maxVoices; index > 0; --index) {
@@ -171,7 +172,8 @@ struct AudioEngine::Impl {
     bool logReady = false;
     ma_engine engine{};
     bool engineReady = false;
-    std::unique_ptr<Voice[]> voices;
+    // An array of a size fixed at run time, which a std::vector would not guarantee: voices never move.
+    std::unique_ptr<Voice[]> voices; // NOLINT(modernize-avoid-c-arrays)
     u32 voiceCapacity;
     // Indices of free slots of `voices`, the next one last.
     std::vector<u32> freeVoices;
@@ -246,7 +248,8 @@ AudioEngine::AudioEngine(std::unique_ptr<Impl> impl, const AudioEngineConfig& co
       m_channels(config.channels) {
 }
 
-AudioEngine::~AudioEngine() {
+// stopAll() cannot allocate: the free list has room for every voice (Impl's constructor).
+AudioEngine::~AudioEngine() { // NOLINT(bugprone-exception-escape)
     stopAll();
 }
 

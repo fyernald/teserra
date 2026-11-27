@@ -36,6 +36,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <numbers>
 #include <vector>
 
 using namespace teserra;
@@ -141,7 +142,7 @@ int main(int argc, char** argv) { // NOLINT(bugprone-exception-escape)
             }
         }
         // The buzz circles the listener at the origin once every four seconds, 4 units away.
-        state.angle += deltaSeconds * (2.0F * 3.14159265F / 4.0F);
+        state.angle += deltaSeconds * (2.0F * std::numbers::pi_v<float> / 4.0F);
         engine.setPosition(state.buzz, {4.0F * std::cos(state.angle), 4.0F * std::sin(state.angle), 0.0F});
     };
 
