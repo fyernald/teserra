@@ -7,6 +7,7 @@
 #include <catch2/catch_test_macros.hpp>
 #include <imgui_internal.h>
 
+#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
@@ -70,6 +71,83 @@ TEST_CASE("DebugUi: drawWindows() shows the main menu bar with the View menu", "
     REQUIRE(stats != nullptr);
     CHECK(stats->Active);
     CHECK(debugUi->drawData()->CmdListsCount > 0);
+}
+
+namespace {
+
+const ImGuiWindow& findWindow(const DebugUi& debugUi, const char* name) {
+    ImGui::SetCurrentContext(debugUi.context());
+    const ImGuiWindow* window = ImGui::FindWindowByName(name);
+    REQUIRE(window != nullptr);
+    return *window;
+}
+
+bool overlaps(const ImGuiWindow& a, const ImGuiWindow& b) {
+    return a.Pos.x < b.Pos.x + b.Size.x && b.Pos.x < a.Pos.x + a.Size.x && a.Pos.y < b.Pos.y + b.Size.y &&
+           b.Pos.y < a.Pos.y + a.Size.y;
+}
+
+std::function<void()> lines(int count) {
+    return [count] {
+        for (int line = 0; line < count; ++line) {
+            ImGui::Text("Line %d of a debug window", line);
+        }
+    };
+}
+
+} // namespace
+
+TEST_CASE("DebugUi: windows first show below the menu bar without covering each other",
+          "[debug_ui][windows]") {
+    // #308: every window opened at ImGui's default position, on top of each other.
+    const std::unique_ptr<DebugUi> debugUi = *DebugUi::create();
+    debugUi->addWindow("Stats", lines(5));
+    debugUi->addWindow("Log", lines(3), /*open=*/false);
+    debugUi->addWindow("Game", lines(2));
+    // ImGui sizes a new window on its first frame and shows it from the second, where it is placed.
+    for (int i = 0; i < 3; ++i) {
+        frame(*debugUi);
+    }
+
+    const ImGuiWindow& menuBar = findWindow(*debugUi, "##MainMenuBar");
+    const ImGuiWindow& stats = findWindow(*debugUi, "Stats");
+    const ImGuiWindow& game = findWindow(*debugUi, "Game");
+    CHECK(stats.Pos.y >= menuBar.Pos.y + menuBar.Size.y);
+    CHECK(game.Pos.y >= menuBar.Pos.y + menuBar.Size.y);
+    CHECK_FALSE(overlaps(stats, game));
+
+    // Log opens later in a free spot too.
+    debugUi->setWindowOpen("Log", true);
+    for (int i = 0; i < 3; ++i) {
+        frame(*debugUi);
+    }
+    const ImGuiWindow& log = findWindow(*debugUi, "Log");
+    CHECK_FALSE(overlaps(log, stats));
+    CHECK_FALSE(overlaps(log, game));
+    CHECK(log.Pos.y >= menuBar.Pos.y + menuBar.Size.y);
+}
+
+TEST_CASE("DebugUi: a window the user moved stays there", "[debug_ui][windows]") {
+    const std::unique_ptr<DebugUi> debugUi = *DebugUi::create();
+    debugUi->addWindow("Stats", [] {});
+    frame(*debugUi);
+    frame(*debugUi);
+
+    ImGui::SetCurrentContext(debugUi->context());
+    ImGui::SetWindowPos("Stats", {150.0F, 120.0F});
+    frame(*debugUi);
+    frame(*debugUi);
+    const ImGuiWindow& stats = findWindow(*debugUi, "Stats");
+    CHECK(stats.Pos.x == 150.0F);
+    CHECK(stats.Pos.y == 120.0F);
+
+    // Closed and opened again, it is still there.
+    debugUi->setWindowOpen("Stats", false);
+    frame(*debugUi);
+    debugUi->setWindowOpen("Stats", true);
+    frame(*debugUi);
+    frame(*debugUi);
+    CHECK(findWindow(*debugUi, "Stats").Pos.x == 150.0F);
 }
 
 #if TESERRA_ENABLE_ASSERTS

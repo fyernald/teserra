@@ -92,18 +92,33 @@ public:
     [[nodiscard]] std::span<const DebugWindow> windows() const noexcept { return m_windows; }
     /// Opens or closes the window `name`; false if there is none.
     bool setWindowOpen(std::string_view name, bool open);
-    /// Draws the main menu bar with the View menu, then every open window. Inside a frame (asserted).
+    /// Draws the main menu bar with the View menu, then every open window. Inside a frame (asserted). A
+    /// window first shows in a free spot below the menu bar, beside the open windows, top to bottom and left
+    /// to right (on top of them only when none is left), and then stays where it is or where the user moves
+    /// it.
     void drawWindows();
 
 private:
     explicit DebugUi(ImGuiContext* context) noexcept
         : m_context(context) {}
 
+    // Where a window of m_windows (same index) is, as of its last Begin().
+    struct WindowPlacement {
+        bool placed = false;
+        Vec2 min{};
+        Vec2 max{};
+    };
+
+    // The first spot, from the top left, where a window of `size` keeps `gap` from the other placed and open
+    // windows and stays inside `area` (the display's bottom right); `origin` if there is none.
+    [[nodiscard]] Vec2 freeSpot(std::size_t index, Vec2 size, Vec2 origin, Vec2 area, f32 gap) const;
+
     ImGuiContext* m_context;
     bool m_inFrame = false;
     // Left and right Ctrl, Shift, Alt and Super held, for ImGui's modifier keys.
     std::array<bool, 8> m_modifiers{};
     std::vector<DebugWindow> m_windows;
+    std::vector<WindowPlacement> m_placements;
 };
 
 /// The ImGui key of an engine key; ImGuiKey_None for Key::Unknown and for keys ImGui has none for (World1).
