@@ -31,6 +31,7 @@ All notable user-visible changes to Teserra are documented here. The format foll
 
 ### Fixed
 
+- The game template builds with Clang on a clean Ubuntu 24.04 (#318): CMake scanned its C++20 sources for modules, which needs `clang-scan-deps`, not part of Ubuntu's `clang` package. The template turns the scan off, as Teserra does; games made from an older template add `set(CMAKE_CXX_SCAN_FOR_MODULES OFF)` after `project()`. The getting-started guide now sets Clang on Ubuntu 24.04 with `export CXX=clang++`, which also works with `cmake --workflow`.
 - A failing test no longer blocks a Windows Debug test run (#320): failures of the C runtime (a debug `assert()` in a library) are printed and end the test executable instead of opening a message box. A removed Python interpreter in the CMake cache no longer disables the check targets and the `tools.scripts` test without a word: CMake warns and finds another one.
 - Debug UI windows no longer open on top of each other (#308): a window first shows in a free spot below the menu bar, beside the open ones, and then stays where it is or where you move it.
 - The sprite pass no longer allocates every frame on Linux (#282): it sorted tilemap chunks by layer with `std::stable_sort`, which allocates a buffer in libstdc++. It now uses an allocation-free sort that keeps the same order.

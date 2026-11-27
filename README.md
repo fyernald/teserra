@@ -7,7 +7,7 @@
 [![Release: v0.1.0](https://img.shields.io/badge/release-v0.1.0-blue.svg)](https://github.com/fyernald/teserra/releases/tag/v0.1.0)
 ![Status: alpha](https://img.shields.io/badge/status-alpha-orange.svg)
 
-> **Status: [v0.1.0](https://github.com/fyernald/teserra/releases/tag/v0.1.0) is out, the first public release.** The 2D engine works on Windows: sprites, tilemaps, scenes with an ECS, assets, input and a pixel-perfect render path, shown by a [small demo game](examples/demo_game/main.cpp). Try the examples from the release's zip, or [make a game](docs/guides/getting-started.md) with it. The API can still change before 1.0. Follow progress on the **[GitHub Project](https://github.com/users/fyernald/projects/3)**.
+> **Status: [v0.2.0-rc.1](https://github.com/fyernald/teserra/releases/tag/v0.2.0-rc.1), the release candidate of v0.2, is out for testing:** it adds Linux, sound and in-game debug tools. Try it and tell us how it went in the [feedback request](https://github.com/fyernald/teserra/issues?q=is%3Aissue+is%3Aopen+label%3Afeedback). [v0.1.0](https://github.com/fyernald/teserra/releases/tag/v0.1.0) is the latest release. The 2D engine works on Windows and Linux: sprites, tilemaps, scenes with an ECS, assets, input and a pixel-perfect render path, shown by a [small demo game](examples/demo_game/main.cpp). Try the examples from the release's zip, or [make a game](docs/guides/getting-started.md) with it. The API can still change before 1.0. Follow progress on the **[GitHub Project](https://github.com/users/fyernald/projects/3)**.
 
 ## Vision
 
@@ -22,14 +22,14 @@ Teserra aims to be an engine you can **read, understand and ship games with**:
 | Version | Goals |
 |---|---|
 | **v0.1** (first public release) | OpenGL 4.5 backend behind an explicit RHI, build-time shader pipeline (GLSL → SPIR-V), sprites with batching, 2D camera, custom ECS with scenes and systems, asset system, tilemaps (Tiled import), debug draw, a demo game, Windows x64 |
-| v0.2 | Dear ImGui debug tools, Linux support, audio |
+| **v0.2** (release candidate) | Dear ImGui debug tools, Linux support, audio |
 | v0.3 → v1.0 | Editor, 2D physics integration, API stabilization |
 | v2.0 | Vulkan backend, 3D renderer |
 | v3.0+ | Scripting |
 
 ### Supported platforms
 
-| | Windows (v0.1) | Linux (v0.2, on `main` now) |
+| | Windows (since v0.1) | Linux (since v0.2) |
 |---|---|---|
 | Operating system | Windows 10 and 11, x64 | Ubuntu 24.04 and 26.04 LTS, x64, on X11 or Wayland; other distributions best-effort |
 | GPU | Any GPU with an OpenGL 4.5 core driver | Any GPU with an OpenGL 4.5 core driver (Mesa or vendor) |
@@ -53,7 +53,7 @@ cmake --workflow --preset debug
 build/debug/minimal_game
 ```
 
-On Linux the same steps work from a terminal once the packages are installed ([getting started](docs/guides/getting-started.md#1-install-the-tools)); until v0.2.0 is released, point the template's `GIT_TAG` at `main`.
+On Linux the same steps work from a terminal once the packages are installed ([getting started](docs/guides/getting-started.md#1-install-the-tools)), with `cp -r` for the copy.
 
 The template fetches Teserra with CMake's FetchContent, so the game is its own project. The **[getting-started guide](docs/guides/getting-started.md)** walks through it and grows it into a small game; the [examples](examples/README.md) show the rest of the engine.
 

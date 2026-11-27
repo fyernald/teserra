@@ -198,10 +198,12 @@ build/debug/minimal_game
 Its `CMakeLists.txt` is the whole recipe:
 
 ```cmake
+set(CMAKE_CXX_SCAN_FOR_MODULES OFF)  # no C++20 modules: Clang would need clang-scan-deps
+
 include(FetchContent)
 FetchContent_Declare(teserra
     GIT_REPOSITORY https://github.com/fyernald/teserra.git
-    GIT_TAG v0.1.0
+    GIT_TAG v0.2.0-rc.1
     GIT_SHALLOW TRUE
     SYSTEM)                          # Teserra's headers do not get the game's warning flags
 FetchContent_MakeAvailable(teserra)
@@ -215,6 +217,7 @@ teserra_copy_assets(minimal_game)    # assets/ next to the executable, where ass
 - **Dependencies.** vcpkg reads only the top-level project's manifest, so the game's `vcpkg.json` lists the libraries Teserra builds with: those of Teserra's `vcpkg.json` and its default feature `engine`. The game's `vcpkg-configuration.json` uses Teserra's baseline. The test `cmake.template.manifest_matches` keeps the template's two files in step with Teserra's.
 - **Nothing leaks.** As a subproject, Teserra builds no tests, examples or benchmarks and leaves the parent's flags alone: its warnings are `PRIVATE` to its targets, and `TESERRA_WARNINGS_AS_ERRORS` and `TESERRA_ENABLE_SANITIZERS` change only Teserra's directory. `cmake.subproject.options_do_not_leak` configures a parent project with both on and fails if a parent variable or directory property changed, or if an engine target passes compile or link options on.
 - **Helpers.** The root `CMakeLists.txt` includes Teserra's CMake helpers, so the game can call `teserra_copy_assets()`, [`teserra_add_shaders()`](#shaders-in-cmake) and `teserra_set_warnings()`.
+- **No module scanning.** Teserra does not use C++20 modules. Without `CMAKE_CXX_SCAN_FOR_MODULES OFF`, CMake 3.28+ scans the game's C++20 sources for them with the compiler's scanner, which Clang ships separately (`clang-scan-deps`, not in Ubuntu's `clang` package): the build fails with `CMAKE_CXX_COMPILER_CLANG_SCAN_DEPS-NOTFOUND`. Found by following the getting-started guide on a clean Ubuntu 24.04 (#318).
 - **A local clone.** `-DFETCHCONTENT_SOURCE_DIR_TESERRA=<clone>` builds against a clone instead of the tag; CI builds the template this way against the commit under test.
 
 ```cmake

@@ -24,7 +24,7 @@ if(TESERRA_PORTABLE_ONLY)
 endif()
 
 project(Teserra
-    VERSION 0.1.0
+    VERSION 0.2.0
     DESCRIPTION "A modern C++20 game engine for indie developers"
     HOMEPAGE_URL "https://github.com/fyernald/teserra"
     # C only for the vendored glad loader of the OpenGL backend (ADR-0009); engine code is C++.

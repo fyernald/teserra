@@ -9,7 +9,7 @@ upgrades a dependency.
 Software used only to build or test Teserra (CMake, vcpkg, Catch2, clang-format, clang-tidy, the glad
 generator, and glslang, SPIRV-Cross and SPIRV-Tools in the build-time shader compiler `teserra_shaderc` and its
 tests) is not part of the packages and is not listed. glslang and SPIRV-Cross are added here when a package
-ships the shader compiler (an SDK package, with the installable CMake package #143).
+ships the shader compiler (an SDK package; the installable CMake package of #143 does not install it yet).
 
 | Component | Version | License | Copyright | License text |
 |---|---|---|---|---|
@@ -32,5 +32,9 @@ ships the shader compiler (an SDK package, with the installable CMake package #1
 - GLFW, spdlog, {fmt} and yyjson are shipped as DLLs next to the executables in Windows packages; GLM,
   expected, stb_image, miniaudio, stb_vorbis and the glad loader are compiled into them. The packaging script refuses a DLL that
   is not listed here (`NOTICED_DLLS` in `tools/scripts/package_example.py`).
+- In the Linux archive every component above is compiled into the executables. They link only the C and C++
+  runtimes of the system (glibc, libstdc++, libgcc_s), which are part of the distribution and not shipped, and
+  open the system's OpenGL, X11 or Wayland, and sound libraries at run time; the packaging script checks this
+  with `ldd` (`LINUX_SYSTEM_LIBRARIES`).
 - The MIT, zlib and Khronos licenses require their copyright and permission notices to be kept with copies of
   the software: this file and the linked license texts are those notices.
