@@ -1,0 +1,18 @@
+# The CMake package of Teserra @PROJECT_VERSION@ (docs/guides/build-and-ci.md#installing-teserra):
+#
+#   find_package(Teserra 0.2 REQUIRED)
+#   target_link_libraries(game PRIVATE Teserra::Engine)
+#
+# The engine's libraries are static, so the packages they link are found here too; they must be where the game
+# looks for packages (the same vcpkg tree Teserra was built with, or the system's).
+
+@PACKAGE_INIT@
+
+include(CMakeFindDependencyMacro)
+@TESERRA_PACKAGE_DEPENDENCIES@
+include("${CMAKE_CURRENT_LIST_DIR}/TeserraTargets.cmake")
+
+# What this build of Teserra contains, for games that adapt to it.
+set(Teserra_WITH_DEBUG_UI @TESERRA_WITH_DEBUG_UI@)
+
+check_required_components(Teserra)

@@ -70,6 +70,27 @@ add_test(NAME cmake.subproject.options_do_not_leak
 )
 set_tests_properties(cmake.subproject.options_do_not_leak PROPERTIES LABELS "cmake")
 
+# The installed package (#143): cmake --install into a scratch prefix, then a game built against it with
+# find_package(Teserra <major>.<minor>); another minor version is refused.
+if(TESERRA_INSTALL AND TARGET teserra_engine)
+    math(EXPR _teserra_other_minor "${PROJECT_VERSION_MINOR} + 1")
+    add_test(NAME cmake.install.find_package
+        COMMAND "${CMAKE_COMMAND}"
+            "-DTESERRA_SOURCE_DIR=${PROJECT_SOURCE_DIR}"
+            "-DTESERRA_BUILD_DIR=${PROJECT_BINARY_DIR}"
+            "-DTESERRA_WORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/install"
+            "-DTESERRA_VERSION=${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}"
+            "-DTESERRA_OTHER_VERSION=${PROJECT_VERSION_MAJOR}.${_teserra_other_minor}"
+            "-DTESERRA_GENERATOR=${CMAKE_GENERATOR}"
+            "-DTESERRA_MAKE_PROGRAM=${CMAKE_MAKE_PROGRAM}"
+            "-DTESERRA_CXX_COMPILER=${CMAKE_CXX_COMPILER}"
+            "-DTESERRA_PREFIX_PATH=${_teserra_fixture_prefix_path}"
+            "-DTESERRA_BUILD_TYPE=$<CONFIG>"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/install/TestInstall.cmake"
+    )
+    set_tests_properties(cmake.install.find_package PROPERTIES LABELS "cmake" TIMEOUT 600)
+endif()
+
 # templates/minimal_game lists the libraries Teserra builds with and uses its vcpkg baseline (#120).
 add_test(NAME cmake.template.manifest_matches
     COMMAND "${CMAKE_COMMAND}" "-DTESERRA_SOURCE_DIR=${PROJECT_SOURCE_DIR}"

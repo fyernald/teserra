@@ -64,6 +64,9 @@ set(TESERRA_ENABLE_ASSERTS "DEFAULT" CACHE STRING
     "Check TESERRA_ASSERT: DEFAULT (Debug and RelWithDebInfo builds), ON or OFF")
 set_property(CACHE TESERRA_ENABLE_ASSERTS PROPERTY STRINGS DEFAULT ON OFF)
 option(TESERRA_RHI_OPENGL "Build the OpenGL 4.5 RHI backend (teserra_rhi_opengl)" ON)
+# Install rules and the CMake package, find_package(Teserra) (#143, cmake/TeserraInstall.cmake). Off by default
+# for a subproject, so that a game's own install does not install the engine.
+option(TESERRA_INSTALL "Generate install rules and the CMake package (find_package(Teserra))" ${PROJECT_IS_TOP_LEVEL})
 option(TESERRA_WITH_DEBUG_DRAW "Compile debug draw (renderer::DebugDrawList); OFF makes its calls empty" ON)
 # The in-game debug tools with Dear ImGui (teserra_debug_ui, ADR-0013). OFF builds the engine and games with no
 # ImGui code; a game that fetches Teserra with it ON lists imgui in its own vcpkg.json (the template does).
@@ -109,6 +112,10 @@ if(TESERRA_WITH_DEBUG_UI)
 endif()
 if(NOT TESERRA_PORTABLE_ONLY)
     add_subdirectory(engine/engine)
+endif()
+
+if(TESERRA_INSTALL)
+    include(TeserraInstall)
 endif()
 
 if(TESERRA_BUILD_BENCHMARKS)

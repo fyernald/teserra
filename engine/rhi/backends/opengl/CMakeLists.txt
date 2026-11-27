@@ -3,8 +3,9 @@
 
 # The vendored glad loader (third_party/glad/README.md), C code built without the Teserra warning set.
 add_library(teserra_glad STATIC third_party/glad/src/gl.c)
-target_include_directories(teserra_glad PUBLIC third_party/glad/include)
-set_target_properties(teserra_glad PROPERTIES FOLDER "third_party")
+# Build interface only: games never include glad; the installed library is a link dependency of the backend.
+target_include_directories(teserra_glad PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/third_party/glad/include>)
+set_target_properties(teserra_glad PROPERTIES FOLDER "third_party" EXPORT_NAME Glad)
 
 teserra_add_module(rhi_opengl LAYER 3
     DEPENDS core platform rhi
