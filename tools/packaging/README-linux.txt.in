@@ -1,0 +1,31 @@
+$title
+$underline
+
+Teserra is a C++20 game engine in development: https://github.com/fyernald/teserra
+
+$description
+
+Running it
+----------
+1. Unpack the archive anywhere, then open a terminal in its folder.
+2. Run ./$executable
+3. Press Escape or close the window to quit.
+
+If your archive tool dropped the executable bit, restore it with chmod +x $executable. The program does not
+install anything and only writes teserra.log into this folder.
+
+Requirements: 64-bit Ubuntu 24.04 or 26.04 LTS (other distributions from 2024 on should work too), an X11 or
+Wayland desktop, and a graphics driver with OpenGL 4.5 (Mesa 24 or newer, or a current NVIDIA or AMD
+driver). Sound plays through PulseAudio, PipeWire or ALSA; without a sound device it runs silently.
+
+Feedback
+--------
+Please tell us whether it worked, even if it did:
+$feedback_url
+
+Useful to include: what you saw, your distribution and desktop (X11 or Wayland), your GPU and driver version,
+and the teserra.log file from this folder (it lists the GPU and OpenGL version and any error).
+
+Licenses
+--------
+Teserra is MIT-licensed (LICENSE). Third-party software in this package is listed in THIRD_PARTY_NOTICES.md.

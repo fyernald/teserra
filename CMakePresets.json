@@ -178,6 +178,23 @@
       }
     },
     {
+      "name": "linux-gcc-release",
+      "displayName": "Linux GCC Release",
+      "inherits": "linux-gcc-debug",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    },
+    {
+      "name": "linux-clang-release",
+      "displayName": "Linux Clang Release",
+      "description": "Linux with Clang 18+, Ninja, Release: what the Linux examples archive is built with (#317)",
+      "inherits": "linux-clang-debug",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    },
+    {
       "name": "ci-linux-gcc",
       "displayName": "CI Linux (GCC)",
       "description": "GitHub Actions: GCC Debug with warnings as errors and SPIR-V validation",
@@ -231,6 +248,8 @@
     { "name": "ci-windows-asan", "configurePreset": "ci-windows-asan" },
     { "name": "linux-gcc-debug", "configurePreset": "linux-gcc-debug" },
     { "name": "linux-clang-debug", "configurePreset": "linux-clang-debug" },
+    { "name": "linux-gcc-release", "configurePreset": "linux-gcc-release" },
+    { "name": "linux-clang-release", "configurePreset": "linux-clang-release" },
     { "name": "ci-linux-gcc", "configurePreset": "ci-linux-gcc" },
     { "name": "ci-linux-clang", "configurePreset": "ci-linux-clang" },
     { "name": "linux-gcc-portable", "configurePreset": "linux-gcc-portable" },
