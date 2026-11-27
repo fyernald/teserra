@@ -4,6 +4,7 @@
 #include <teserra/core/log.hpp>
 #include <teserra/ecs/schedule.hpp>
 #include <teserra/ecs/system_context.hpp>
+#include <teserra/platform/gamepad.hpp>
 #include <teserra/platform/input.hpp>
 #include <teserra/platform/key.hpp>
 #include <teserra/scene/collision.hpp>
@@ -118,6 +119,14 @@ void movePlayer(ecs::SystemContext& ctx) {
     Vec2 direction =
         input.axis2D(platform::Key::A, platform::Key::D, platform::Key::S, platform::Key::W) +
         input.axis2D(platform::Key::Left, platform::Key::Right, platform::Key::Down, platform::Key::Up);
+    // The first gamepad: the left stick, or the d-pad.
+    if (const std::optional<u32> pad = input.firstGamepad()) {
+        using platform::GamepadButton;
+        const auto held = [&](GamepadButton button) { return input.isDown(*pad, button) ? 1.0F : 0.0F; };
+        direction += input.stick(*pad, platform::GamepadStick::Left) +
+                     Vec2{held(GamepadButton::DpadRight) - held(GamepadButton::DpadLeft),
+                          held(GamepadButton::DpadUp) - held(GamepadButton::DpadDown)};
+    }
     if (math::length(direction) > 1.0F) {
         direction = math::normalize(direction);
     }
