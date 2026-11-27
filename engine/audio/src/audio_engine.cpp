@@ -47,10 +47,13 @@ void logMessage(void* /*userData*/, ma_uint32 level, const char* message) {
 // A voice slot. Its miniaudio objects are linked into the engine's node graph by address, so slots live in
 // a fixed array and never move.
 struct Voice {
+    // The data source: the samples of a decoded clip, or a decoder of a streamed clip's file.
     ma_audio_buffer_ref buffer{};
+    ma_decoder decoder{};
+    bool streamed = false;
     ma_sound sound{};
-    // Keeps the samples alive while the audio thread reads them.
-    std::shared_ptr<const ClipSamples> samples;
+    // Keeps the clip's data alive while the audio thread reads it.
+    std::shared_ptr<const ClipData> data;
     VoiceHandle handle;
 };
 
@@ -88,16 +91,49 @@ struct AudioEngine::Impl {
     }
 
     // Uninitializes the voice's sound, which detaches it from the graph before the audio thread can read it
-    // again, then frees its slot and its hold on the samples.
+    // again, then frees its slot and its hold on the clip's data.
     void release(Voice& voice) {
         ma_sound_uninit(&voice.sound);
-        ma_audio_buffer_ref_uninit(&voice.buffer);
-        voice.samples.reset();
+        releaseSource(voice);
         const u32 index = handles.get(voice.handle);
         handles.destroy(voice.handle);
         voice.handle = {};
         freeVoices.push_back(index);
         warnedFull = false;
+    }
+
+    // Opens the voice's data source for `data`.
+    static Result<void> openSource(Voice& voice, const ClipData& data) {
+        voice.streamed = !data.encoded.empty();
+        if (!voice.streamed) {
+            ma_audio_buffer_ref_init(ma_format_f32, data.channels, data.samples.data(), data.frameCount,
+                                     &voice.buffer);
+            voice.buffer.sampleRate = data.sampleRate;
+            return {};
+        }
+        ma_decoder_config config = ma_decoder_config_init(ma_format_f32, data.channels, data.sampleRate);
+        config.allocationCallbacks = detail::allocationCallbacks();
+        const ma_result result =
+            ma_decoder_init_memory(data.encoded.data(), data.encoded.size(), &config, &voice.decoder);
+        if (result != MA_SUCCESS) {
+            return fail(ErrorCode::InvalidData, Module::Audio, "could not decode a streamed clip: {}",
+                        ma_result_description(result));
+        }
+        return {};
+    }
+
+    static void releaseSource(Voice& voice) {
+        if (voice.streamed) {
+            ma_decoder_uninit(&voice.decoder);
+        } else {
+            ma_audio_buffer_ref_uninit(&voice.buffer);
+        }
+        voice.data.reset();
+    }
+
+    [[nodiscard]] static ma_data_source* source(Voice& voice) {
+        return voice.streamed ? static_cast<ma_data_source*>(&voice.decoder)
+                              : static_cast<ma_data_source*>(&voice.buffer);
     }
 
     ma_log log{};
@@ -197,20 +233,21 @@ VoiceHandle AudioEngine::play(const AudioClip& clip, const PlayParams& params) {
     }
     const u32 index = impl.freeVoices.back();
     Voice& voice = impl.voices[index];
-    const std::shared_ptr<const ClipSamples>& samples = clip.shared();
-    ma_audio_buffer_ref_init(ma_format_f32, samples->channels, samples->samples.data(), clip.frameCount(),
-                             &voice.buffer);
-    voice.buffer.sampleRate = samples->sampleRate;
+    const std::shared_ptr<const ClipData>& data = clip.data();
+    if (const Result<void> opened = Impl::openSource(voice, *data); !opened) {
+        TESERRA_LOG_ERROR(LogCategory::Audio, "Could not start a voice: {}", opened.error().message);
+        return {};
+    }
     // Spatialization is off until positional sound comes (#313); panning still works.
     const ma_result result = ma_sound_init_from_data_source(
-        &impl.engine, &voice.buffer, MA_SOUND_FLAG_NO_SPATIALIZATION, nullptr, &voice.sound);
+        &impl.engine, Impl::source(voice), MA_SOUND_FLAG_NO_SPATIALIZATION, nullptr, &voice.sound);
     if (result != MA_SUCCESS) {
-        ma_audio_buffer_ref_uninit(&voice.buffer);
+        Impl::releaseSource(voice);
         TESERRA_LOG_ERROR(LogCategory::Audio, "Could not start a voice: {}", ma_result_description(result));
         return {};
     }
     impl.freeVoices.pop_back();
-    voice.samples = samples;
+    voice.data = data;
     voice.handle = impl.handles.create(index);
     ma_sound_set_volume(&voice.sound, std::max(params.volume, 0.0F));
     ma_sound_set_pitch(&voice.sound, params.pitch);

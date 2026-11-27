@@ -54,7 +54,8 @@ struct PlayParams {
 ///     engine->update();                                             // once per frame
 ///     engine->stop(voice);
 ///
-/// Starting a voice allocates a little (miniaudio's node for it); a playing voice does not.
+/// Starting a voice allocates a little (miniaudio's node for it, and a decoder for a streamed clip); a
+/// playing voice does not.
 class AudioEngine {
 public:
     /// Opens the default sound device, or prepares an offline mix. DeviceFailure when there is no device

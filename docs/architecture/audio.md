@@ -27,6 +27,21 @@ audio::AudioClip clip = *audio::AudioClip::create(48000, 1, beep);
 - Copies share the samples, and so do the voices that play the clip: a clip released while a voice plays it stays in memory until the voice ends. A clip is immutable.
 - An empty clip (`AudioClip{}`) plays nothing.
 
+## Clip files
+
+```cpp
+Asset<audio::AudioClip> coin = app.assets().load<audio::AudioClip>("assets://sounds/coin.wav");
+Asset<audio::AudioClip> music = app.assets().load<audio::AudioClip>("assets://music/cave.ogg"); // streamed, below
+```
+
+- `audio::AudioClipLoader` loads `Asset<AudioClip>` from **`.wav`** (PCM 8, 16, 24 or 32-bit, or float) and **`.ogg`** (Vorbis, through stb_vorbis) files, mono or stereo, at the file's own rate. `audio::registerAssetLoaders(registry)` registers it, with an empty clip as the fallback: a missing sound logs one error and plays nothing. In code, `decodeAudio(bytes)` and `AudioClip::stream(bytes)` do the same from bytes.
+- **Decoded** by default: the samples are decoded to `f32` when the clip loads. `AudioDecodeConfig::maxDecodedBytes` (default 256 MiB) refuses longer clips with `Unsupported`, before allocating when the file tells its length.
+- **Streamed** when the file's sidecar says `{"stream": true}` (`music/cave.ogg.asset.json`, [import settings](assets.md#import-settings)): the clip keeps the encoded file, and each voice decodes it while it plays. Loaders receive bytes, not paths, so a streamed clip reads from memory, not from disk: a 3-minute Vorbis track takes ~3 MB instead of ~66 MB decoded. Starting a voice of a streamed clip also creates its decoder (an allocation), and several voices of one streamed clip decode independently.
+- `isStreamed()` tells the kinds apart. A streamed OGG Vorbis clip's `frameCount()` is 0: the length is unknown until it is decoded.
+- **Errors** (logged once with the path by the registry): `InvalidData` for empty and malformed files, cut headers and other formats; `Unsupported` for more than two channels, sample rates outside 8 kHz to 384 kHz, and decoded clips over the limit. A WAV file cut inside its data plays the frames it has: miniaudio clamps the data chunk to the file, as WAV files from streaming tools often give wrong sizes.
+- FLAC and MP3 are off ([ADR-0027](../adr/0027-audio-miniaudio.md)); each would be one define and a test.
+- **Trust:** like images, sound files are trusted developer content; the decoders are not hardened against hostile files ([SECURITY.md](../../SECURITY.md)).
+
 ## Voices
 
 ```cpp
@@ -41,7 +56,7 @@ engine->stop(voice);
 - A voice ends at the end of a clip it does not loop. `isPlaying()` is false from then on; `update()` reclaims the voice, which makes its handle stale. `stop()` ends a voice at once. Setters, `stop()` and `isPlaying()` ignore stale and null handles.
 - `AudioEngineConfig::maxVoices` (default 32) voices play at once. When every voice is busy, `play()` returns a null handle and logs a warning once until a voice is free again.
 - **Threading:** miniaudio mixes on its own audio thread. Every `AudioEngine` function is for the main thread.
-- **Allocation:** starting a voice allocates a little (miniaudio's node for it); a playing voice does not, and neither do `update()` and the setters. miniaudio allocates through `operator new`.
+- **Allocation:** starting a voice allocates a little (miniaudio's node for it, and a decoder for a streamed clip); a playing voice does not, and neither do `update()` and the setters. miniaudio allocates through `operator new`.
 
 ## Outputs
 
@@ -55,5 +70,6 @@ The mix format is `AudioEngineConfig::sampleRate` (default 48 kHz) and `channels
 ## Testing
 
 - Offline-output tests play clips of constant values, which every resampler keeps, and check the mixed samples: volumes, panning, looping, ends, stopping, pitch, resampling and released clips (`engine/audio/tests/`).
+- Decoding tests write WAV files in code (`engine/audio/tests/wav.hpp`) and decode them to exact samples; `tone.ogg`, an original tone written by `tools/scripts/make_audio_fixtures.py`, decodes close to its sine, and streamed clips mix the same samples as decoded ones.
 - A device test opens the default device and skips when there is none (CI machines).
 - The leak check keeps miniaudio's names (`ma_*`, `MA_*`) and `<miniaudio.h>` inside `engine/audio/src/`.

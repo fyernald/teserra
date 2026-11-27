@@ -223,6 +223,8 @@ Result<AssetImportSettings> parseImportSettings(std::span<const std::byte> bytes
             flag = &settings.srgb;
         } else if (key == "mipmaps") {
             flag = &settings.mipmaps;
+        } else if (key == "stream") {
+            flag = &settings.stream;
         } else {
             unknown += unknown.empty() ? "" : ", ";
             unknown += key;

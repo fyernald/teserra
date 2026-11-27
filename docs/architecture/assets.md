@@ -13,7 +13,7 @@ Related: [ADR-0010 stb_image](../adr/0010-stb-image-decoding.md), [ADR-0020 hand
 | Loader registry by asset type and file extension | Dependency graph (material → textures) with batched loading |
 | Virtual mount points (`assets://`, `engine://`) | Packed archives for shipping, mod mount points |
 | Fallback assets for missing/failed loads | Hot reload via file watching |
-| Asset types: `ImageData` (CPU), `Texture`, `Shader`, `Material`, `SpriteSheet`, `Tileset`, `TilemapData` | Meshes, audio clips, fonts, animations, prefabs |
+| Asset types: `ImageData` (CPU), `Texture`, `Shader`, `Material`, `SpriteSheet`, `Tileset`, `TilemapData`; `AudioClip` (v0.2) | Meshes, fonts, animations, prefabs |
 | Source formats loaded directly (PNG, `.tshader`, Tiled `.tmj` JSON) | Offline importer/cooker to runtime formats (KTX2/BasisU textures, binary maps) |
 
 ## Handles and IDs
@@ -113,7 +113,8 @@ An asset file may have a sidecar next to it, `<file>.asset.json`, with its impor
 
 - `AssetImportSettings`:
   - `srgb` (default `true`): `TextureLoader` makes `Rgba8Srgb` textures, or `Rgba8Unorm` for data such as normal maps and masks;
-  - `mipmaps` (default `false`): `TextureLoader` creates the full mip chain and generates it on the GPU.
+  - `mipmaps` (default `false`): `TextureLoader` creates the full mip chain and generates it on the GPU;
+  - `stream` (default `false`): `audio::AudioClipLoader` streams the clip, decoding it while it plays instead of when it loads ([audio](audio.md#clip-files)).
 - Without a sidecar (the file is not found), the defaults apply. A sidecar that cannot be read, holds malformed JSON or has a setting of the wrong type fails the load with the sidecar's path, logged once like any load failure.
 - Keys the engine does not know are one warning that names them, so a misspelled setting does not go unnoticed. Filtering and `pixelsPerUnit` are not import settings yet: the sprite pass chooses its sampler, and sprite sheets carry their own `pixelsPerUnit`.
 - Assets made in code (`load<T>(path, create)`) have no sidecar.
