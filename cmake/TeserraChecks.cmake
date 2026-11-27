@@ -12,7 +12,8 @@
 
 include_guard(GLOBAL)
 
-find_package(Python3 COMPONENTS Interpreter)
+include(TeserraPython)
+teserra_find_python()
 if(NOT Python3_Interpreter_FOUND)
     message(STATUS "Teserra: check targets disabled (need Python 3)")
     return()

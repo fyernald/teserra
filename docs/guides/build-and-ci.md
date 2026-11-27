@@ -274,7 +274,7 @@ teserra_add_shaders(<target>
 
 ## Layer and leak checks
 
-Run locally with `cmake --build --preset <preset> --target check` (or one of `layer-check`, `leak-check`, `format-check`), or run the scripts directly with Python 3; CI runs the scripts in the `checks` job. They print `path:line:col: error: message [rule]`, which CI turns into annotations on the pull request.
+Run locally with `cmake --build --preset <preset> --target check` (or one of `layer-check`, `leak-check`, `format-check`), or run the scripts directly with Python 3; CI runs the scripts in the `checks` job. CMake looks for Python when it configures; if the interpreter in its cache was removed (a deleted virtual environment), it warns and finds another one, so the check targets and the `tools.scripts` test do not silently disappear. They print `path:line:col: error: message [rule]`, which CI turns into annotations on the pull request.
 
 | Check | Tool | Fails when |
 |---|---|---|
