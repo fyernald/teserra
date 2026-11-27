@@ -8,6 +8,8 @@
 // - OGG Vorbis through stb_vorbis: miniaudio decodes Vorbis when stb_vorbis's declarations come before it.
 //   miniaudio.cpp compiles stb_vorbis's implementation after miniaudio's.
 
+// The libraries' configuration macros have their names.
+// NOLINTBEGIN(readability-identifier-naming)
 #define MA_NO_RESOURCE_MANAGER
 #define MA_NO_ENCODING
 #define MA_NO_GENERATION
@@ -17,6 +19,7 @@
 // The order matters (stb_vorbis first), so clang-format must not sort these includes.
 // clang-format off
 #define STB_VORBIS_HEADER_ONLY
+// NOLINTEND(readability-identifier-naming)
 #include <stb_vorbis.c> // NOLINT(bugprone-suspicious-include): stb_vorbis is one .c file, included as its header
 #include <miniaudio.h>
 // clang-format on

@@ -52,7 +52,7 @@ void audioSystem(ecs::SystemContext& ctx) {
         }
     }
 
-    for (auto [entity, source] : ctx.view<const AudioSource>()) {
+    for (const auto& [entity, source] : ctx.view<const AudioSource>()) {
         if (!source.playing || !source.clip.isReady()) {
             continue;
         }
