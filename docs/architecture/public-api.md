@@ -129,3 +129,15 @@ stateDiagram-v2
 ## Advanced use
 
 Developers who want lower layers can use them directly: create a `platform::Platform`, a window and an `rhi::Device`, and record command lists themselves (the `rhi_*` examples show this). The layering guarantees that these lower layers work without the ECS or the renderer.
+
+## Decisions of the v0.2 review
+
+The findings of the v0.1 API review that needed a decision (#264) are decided in [ADR-0028](../adr/0028-public-api-conventions-v0-3.md); the changes land in v0.3, as breaking changes with migration notes:
+
+| Finding | Decision | Until v0.3 |
+|---|---|---|
+| Components reference assets by raw handle or pointer | Components hold `assets::Asset<T>` (`scene::AudioSource` already does), if `sprite_stress` keeps 95 % of its frame rate | The game keeps textures, tilesets and material instances alive while components use them |
+| Backend headers are public | `<teserra/rhi/commands.hpp>` and `validation.hpp` move to `teserra/rhi/backend/`, the documented backend API that games do not include | Games do not include them |
+| `App::renderer()` returns a pointer | A reference; the renderer is created at initialization | Check for `nullptr` |
+| `Material::Desc` is nested, other descriptors are top-level | Top-level `XxxDesc`: `renderer::MaterialDesc`; services keep `XxxConfig` | - |
+| Qualified names are verbose in small games | `teserra::prelude` in `<teserra/teserra.hpp>` | Qualified names |
