@@ -5,6 +5,8 @@
 // Teserra::Engine. Lower-level headers (<teserra/rhi/...>, <teserra/renderer/...>) stay available for
 // advanced use. Names keep their namespaces: engine::App, scene::Transform, ecs::SystemContext.
 
+#include <teserra/audio/audio_clip.hpp>
+#include <teserra/audio/audio_engine.hpp>
 #include <teserra/core/log.hpp>
 #include <teserra/core/math.hpp>
 #include <teserra/core/result.hpp>

@@ -7,6 +7,7 @@
 #include "miniaudio_config.hpp"
 
 #include <algorithm>
+#include <array>
 #include <memory>
 #include <string_view>
 #include <utility>
@@ -20,19 +21,21 @@ constexpr u32 kMinSampleRate = 8'000;
 constexpr u32 kMaxSampleRate = 384'000;
 constexpr u32 kMaxVoiceLimit = 4'096;
 
-// miniaudio's log, in the engine's: errors and warnings as they are, its information (the backend and
-// device it opened) as debug messages. Called on the main thread and on the audio thread.
+// miniaudio's log, in the engine's; its information (the backend and device it opened) as debug messages.
+// Called on the main thread and on the audio thread.
 void logMessage(void* /*userData*/, ma_uint32 level, const char* message) {
     std::string_view text{message};
     while (!text.empty() && (text.back() == '\n' || text.back() == '\r')) {
         text.remove_suffix(1);
     }
     switch (level) {
+        // Its errors are warnings: those that matter come back as results, which the engine reports itself,
+        // and a machine without a sound device logs several while miniaudio tries its backends.
         case MA_LOG_LEVEL_ERROR:
-            TESERRA_LOG_ERROR(LogCategory::Audio, "miniaudio: {}", text);
+            TESERRA_LOG_WARN(LogCategory::Audio, "miniaudio: {}", text);
             break;
         case MA_LOG_LEVEL_WARNING:
-            TESERRA_LOG_WARN(LogCategory::Audio, "miniaudio: {}", text);
+            TESERRA_LOG_DEBUG(LogCategory::Audio, "miniaudio: {}", text);
             break;
         case MA_LOG_LEVEL_INFO:
             TESERRA_LOG_DEBUG(LogCategory::Audio, "miniaudio: {}", text);
@@ -72,6 +75,11 @@ struct AudioEngine::Impl {
     Impl& operator=(Impl&&) = delete;
 
     ~Impl() {
+        for (BusState& bus : buses) {
+            if (bus.groupReady) {
+                ma_sound_group_uninit(&bus.group);
+            }
+        }
         if (engineReady) {
             ma_engine_uninit(&engine);
         }
@@ -136,6 +144,29 @@ struct AudioEngine::Impl {
                               : static_cast<ma_data_source*>(&voice.buffer);
     }
 
+    // Applies a bus's volume and mute to miniaudio: the engine's master volume for Master, a group otherwise.
+    void applyBus(Bus bus) {
+        BusState& state = buses[static_cast<usize>(bus)];
+        const f32 gain = state.muted ? 0.0F : state.volume;
+        if (bus == Bus::Master) {
+            ma_engine_set_volume(&engine, gain);
+        } else {
+            ma_sound_group_set_volume(&state.group, gain);
+        }
+    }
+
+    // The group that voices of `bus` play into; nullptr for Master: the engine's endpoint.
+    [[nodiscard]] ma_sound_group* group(Bus bus) {
+        return bus == Bus::Master ? nullptr : &buses[static_cast<usize>(bus)].group;
+    }
+
+    struct BusState {
+        ma_sound_group group{};
+        bool groupReady = false;
+        f32 volume = 1.0F;
+        bool muted = false;
+    };
+
     ma_log log{};
     bool logReady = false;
     ma_engine engine{};
@@ -148,6 +179,8 @@ struct AudioEngine::Impl {
     HandlePool<u32, VoiceTag> handles;
     // Whether the "every voice is busy" warning was logged since a voice was last freed.
     bool warnedFull = false;
+    // Declared after the engine, so the groups are uninitialized first (~Impl does it explicitly).
+    std::array<BusState, kBusCount> buses{};
 };
 
 Result<std::unique_ptr<AudioEngine>> AudioEngine::create(const AudioEngineConfig& config) {
@@ -188,6 +221,15 @@ Result<std::unique_ptr<AudioEngine>> AudioEngine::create(const AudioEngineConfig
                     ma_result_description(result));
     }
     impl->engineReady = true;
+    for (const Bus bus : {Bus::Music, Bus::Effects}) {
+        Impl::BusState& state = impl->buses[static_cast<usize>(bus)];
+        const ma_result groupResult = ma_sound_group_init(&impl->engine, 0, nullptr, &state.group);
+        if (groupResult != MA_SUCCESS) {
+            return fail(ErrorCode::Internal, Module::Audio, "could not create the {} bus: {}", busName(bus),
+                        ma_result_description(groupResult));
+        }
+        state.groupReady = true;
+    }
     if (config.output == Output::Device) {
         const ma_device* device = ma_engine_get_device(&impl->engine);
         TESERRA_LOG_INFO(
@@ -239,8 +281,9 @@ VoiceHandle AudioEngine::play(const AudioClip& clip, const PlayParams& params) {
         return {};
     }
     // Spatialization is off until positional sound comes (#313); panning still works.
-    const ma_result result = ma_sound_init_from_data_source(
-        &impl.engine, Impl::source(voice), MA_SOUND_FLAG_NO_SPATIALIZATION, nullptr, &voice.sound);
+    const ma_result result =
+        ma_sound_init_from_data_source(&impl.engine, Impl::source(voice), MA_SOUND_FLAG_NO_SPATIALIZATION,
+                                       impl.group(params.bus), &voice.sound);
     if (result != MA_SUCCESS) {
         Impl::releaseSource(voice);
         TESERRA_LOG_ERROR(LogCategory::Audio, "Could not start a voice: {}", ma_result_description(result));
@@ -300,6 +343,36 @@ void AudioEngine::setLooping(VoiceHandle voice, bool loop) {
     if (Voice* found = m_impl->find(voice)) {
         ma_sound_set_looping(&found->sound, loop ? MA_TRUE : MA_FALSE);
     }
+}
+
+void AudioEngine::setBusVolume(Bus bus, f32 volume) {
+    m_impl->buses[static_cast<usize>(bus)].volume = std::max(volume, 0.0F);
+    m_impl->applyBus(bus);
+}
+
+f32 AudioEngine::busVolume(Bus bus) const noexcept {
+    return m_impl->buses[static_cast<usize>(bus)].volume;
+}
+
+void AudioEngine::setBusMuted(Bus bus, bool muted) {
+    m_impl->buses[static_cast<usize>(bus)].muted = muted;
+    m_impl->applyBus(bus);
+}
+
+bool AudioEngine::isBusMuted(Bus bus) const noexcept {
+    return m_impl->buses[static_cast<usize>(bus)].muted;
+}
+
+std::string_view busName(Bus bus) noexcept {
+    switch (bus) {
+        case Bus::Master:
+            return "Master";
+        case Bus::Music:
+            return "Music";
+        case Bus::Effects:
+            return "Effects";
+    }
+    return "Unknown";
 }
 
 void AudioEngine::update() {

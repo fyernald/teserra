@@ -12,7 +12,7 @@ Related: [assets](assets.md), [ADR-0020 handles](../adr/0020-generational-handle
 | Voices with volume, pitch, pan and looping | Doppler, cones, occlusion |
 | Device or offline output | Choosing a device, hot-plugging |
 | WAV and OGG Vorbis files, decoded or streamed (#311) | FLAC and MP3; streaming from disk |
-| Volume buses: Master, Music, Effects; the App owns the engine (#312) | User-defined buses |
+| Volume buses: Master, Music, Effects; the App owns the engine and runs without a device (#312) | User-defined buses |
 | `AudioSource` and `AudioListener` components, positional 2D sound (#313) | 3D listeners and cones |
 
 ## Clips
@@ -58,12 +58,32 @@ engine->stop(voice);
 - **Threading:** miniaudio mixes on its own audio thread. Every `AudioEngine` function is for the main thread.
 - **Allocation:** starting a voice allocates a little (miniaudio's node for it, and a decoder for a streamed clip); a playing voice does not, and neither do `update()` and the setters. miniaudio allocates through `operator new`.
 
+## Buses
+
+```cpp
+engine->play(theme, {.loop = true, .bus = audio::Bus::Music});
+engine->setBusVolume(audio::Bus::Music, 0.5F);   // the player's music slider
+engine->setBusMuted(audio::Bus::Master, true);   // everything off
+```
+
+- A voice plays into a bus (`PlayParams::bus`, default `Effects`): `Music` and `Effects` feed `Master`, which applies to everything, including voices played on `Master` directly.
+- `setBusVolume()` (linear, default 1) multiplies with the voices' own volumes and with Master's: a voice at 0.8 on Music at 0.5 with Master at 0.5 plays at 0.2. `setBusMuted()` silences a bus and keeps its volume; its voices go on playing silently.
+- The buses are miniaudio sound groups (Master is the engine's own volume). User-defined buses are future work.
+
+## In the App
+
+- The App owns an `AudioEngine` (`app.audio()`), configured by `AppConfig::audio` (`AudioSettings`: `enabled`, `sampleRate`, `channels`, `maxVoices`), and calls its `update()` after each frame. It registers `AudioClipLoader` with its asset registry, so `app.assets().load<audio::AudioClip>(path)` works in every game.
+- It opens the default sound device. **Without one** (CI machines, a computer without a sound card, a failed open), it logs one warning, "No sound: ...", and uses the offline output, so the game runs the same, silently. Initialization fails only for invalid settings. `AppConfig::audio.enabled = false`, or `--no-audio` on the command line, uses the offline output without a warning.
+- Every scene's world has the engine as the `audio::Audio` resource (`{AudioEngine* engine}`), so systems play sounds: `ctx.resource<audio::Audio>().engine->play(coin)`, with `writesResource<audio::Audio>()`.
+- The debug UI's Stats window shows the voices in use and whether a sound device is open.
+- miniaudio's own errors go to the log as warnings: a machine without a sound device logs several while miniaudio tries its backends, and the failures that matter come back as results the engine reports.
+
 ## Outputs
 
 | Output | Use |
 |---|---|
 | `Output::Device` | The system's default sound device (WASAPI on Windows; PulseAudio, PipeWire or ALSA on Linux, opened at run time). `create()` fails with `DeviceFailure` without one. The mix is converted to the device's format if it differs. |
-| `Output::Offline` | No device. `render(frames)` mixes the next frames on demand, interleaved. Tests check exact samples this way; a game on a machine without sound uses it too (#312). |
+| `Output::Offline` | No device. `render(frames)` mixes the next frames on demand, interleaved. Tests check exact samples this way; the App uses it on a machine without sound. |
 
 The mix format is `AudioEngineConfig::sampleRate` (default 48 kHz) and `channels` (1 or 2, default 2). A mono clip plays on both channels.
 

@@ -2,7 +2,7 @@ teserra_add_module(engine LAYER 7
     # The RHI backends the build includes; App passes them to rhi::createDevice(). The null backend is
     # always built. The renderer draws the active scene; assets provides the mount points. The debug UI
     # exists with TESERRA_WITH_DEBUG_UI.
-    DEPENDS core platform rhi rhi_null assets renderer ecs scene
+    DEPENDS core platform rhi rhi_null assets audio renderer ecs scene
     OPTIONAL_DEPENDS rhi_opengl debug_ui
     PUBLIC_HEADERS
         include/teserra/engine/app.hpp

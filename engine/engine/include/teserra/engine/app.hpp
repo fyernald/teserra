@@ -5,6 +5,7 @@
 
 #include <teserra/assets/asset_registry.hpp>
 #include <teserra/assets/mount_table.hpp>
+#include <teserra/audio/audio_engine.hpp>
 #include <teserra/core/math.hpp>
 #include <teserra/core/result.hpp>
 #include <teserra/core/types.hpp>
@@ -66,6 +67,17 @@ struct DebugUiSettings {
     bool startOpen = false;
 };
 
+/// The App's audio engine (App::audio()).
+struct AudioSettings {
+    /// false: the engine mixes offline and nothing is heard, as without a sound device, but silently.
+    bool enabled = true;
+    /// The mix's sample rate and channels (audio::AudioEngineConfig).
+    u32 sampleRate = 48'000;
+    u32 channels = 2;
+    /// Voices that can play at once.
+    u32 maxVoices = 32;
+};
+
 /// A mount point of App::mounts(): virtual paths "<scheme>://..." refer to files under `directory`.
 struct AssetMount {
     std::string scheme;
@@ -77,6 +89,7 @@ struct AssetMount {
 ///   --frames N        maxFrames = N (exit after N frames, e.g. for smoke runs)
 ///   --hidden-window   windowVisible = false
 ///   --debug-ui        debugUi.startOpen = true
+///   --no-audio        audio.enabled = false
 /// Other arguments are left to the game.
 struct AppConfig {
     std::string title = "Teserra";
@@ -109,6 +122,7 @@ struct AppConfig {
     /// The frame after it gets an image back resumes with at most this much time to catch up.
     std::chrono::nanoseconds minimizedEventWait = std::chrono::milliseconds{100};
     DebugUiSettings debugUi{};
+    AudioSettings audio{};
     /// Mount points of App::mounts() (docs/architecture/assets.md#mount-points-and-files). Unless listed
     /// here, "assets" is mounted to `<executable dir>/assets` and "engine" to `<executable dir>/engine`;
     /// those defaults may be missing. Initialization fails if a listed directory does not exist, or a scheme
@@ -202,6 +216,10 @@ public:
     /// renderer's (renderer::Texture, renderer::Shader). Assets nothing refers to are unloaded at the end of
     /// each frame. Every Asset<T> must be gone before the App is destroyed (asserted).
     [[nodiscard]] assets::AssetRegistry& assets();
+    /// The audio engine: the default sound device, or offline output without one (logged once as a warning)
+    /// or with AppConfig::audio.enabled false, so a game runs the same on a machine without sound. Every
+    /// scene's world has it as the audio::Audio resource, for systems. The App calls its update() each frame.
+    [[nodiscard]] audio::AudioEngine& audio();
     /// The GPU device; AppConfig::backend must not be std::nullopt (asserted).
     [[nodiscard]] rhi::Device& device();
     /// The renderer that draws scenes when there is no render callback, created on first use with
@@ -285,6 +303,9 @@ private:
     std::unique_ptr<rhi::Device> m_device;
     // After the device: assets hold GPU objects of it. Before the scenes, whose components hold assets.
     std::optional<assets::AssetRegistry> m_assets;
+    // After the assets, so it is destroyed first: no voice plays once the frame loop is gone. Voices share
+    // their clips' samples, so the order is not needed for memory safety.
+    std::unique_ptr<audio::AudioEngine> m_audio;
     // After the device, so it is destroyed before it.
     std::unique_ptr<renderer::Renderer> m_renderer;
     bool m_rendererFailed = false;

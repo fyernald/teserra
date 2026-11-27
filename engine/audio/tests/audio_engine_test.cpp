@@ -267,3 +267,39 @@ TEST_CASE("AudioEngine: misuse asserts", "[audio][engine]") {
     REQUIRE_ASSERTS(engine->render(odd));
 }
 #endif
+
+TEST_CASE("AudioEngine: bus volumes multiply with Master's", "[audio][engine][bus]") {
+    const auto engine = offlineEngine();
+    CHECK(engine->busVolume(Bus::Music) == 1.0F);
+    engine->play(constantClip(0.8F, 48'000), {.bus = Bus::Music});
+    engine->setBusVolume(Bus::Music, 0.5F);
+    engine->setBusVolume(Bus::Master, 0.5F);
+    CHECK(engine->busVolume(Bus::Music) == 0.5F);
+    CHECK(left(render(*engine, 512), 256) == Approx(0.2F));
+}
+
+TEST_CASE("AudioEngine: a muted bus silences its voices only", "[audio][engine][bus]") {
+    const auto engine = offlineEngine();
+    engine->play(constantClip(0.25F, 48'000), {.bus = Bus::Music});
+    const VoiceHandle effect = engine->play(constantClip(0.5F, 48'000)); // Effects by default
+    engine->setBusMuted(Bus::Effects, true);
+    CHECK(engine->isBusMuted(Bus::Effects));
+    CHECK(left(render(*engine, 512), 256) == Approx(0.25F));
+    // Muted voices keep playing, and come back with the bus's volume.
+    CHECK(engine->isPlaying(effect));
+    engine->setBusVolume(Bus::Effects, 0.5F);
+    engine->setBusMuted(Bus::Effects, false);
+    CHECK(left(render(*engine, 512), 256) == Approx(0.5F));
+
+    engine->setBusMuted(Bus::Master, true);
+    CHECK(isSilent(render(*engine, 512)));
+}
+
+TEST_CASE("AudioEngine: voices on Master skip the other buses", "[audio][engine][bus]") {
+    const auto engine = offlineEngine();
+    engine->play(constantClip(0.5F, 48'000), {.bus = Bus::Master});
+    engine->setBusMuted(Bus::Music, true);
+    engine->setBusMuted(Bus::Effects, true);
+    CHECK(left(render(*engine, 512), 256) == Approx(0.5F));
+    CHECK(busName(Bus::Effects) == "Effects");
+}
