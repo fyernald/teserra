@@ -22,6 +22,7 @@ Most tests are at the bottom: fast, deterministic, no GPU, run on every build. T
 - Naming: `TEST_CASE("HandlePool: stale handle is rejected", "[core][handle]")`.
 - Must run in milliseconds, without files outside the test's own data, without a window or GPU, and without sleeping. Time is injected via a manual `Clock`.
 - Assertions: every test executable installs a throwing handler with `setAssertHandler`, so a triggered `TESERRA_ASSERT` fails the current test with its message instead of aborting the run. Expected failures are tested with `REQUIRE_ASSERTS(expr)`, or `teserra::test::requireAssert([&] { ... })` to inspect the failure (kind, expression, message, location); see `<teserra/test/assert.hpp>`. Tests that need a failing assertion are wrapped in `#if TESERRA_ENABLE_ASSERTS`.
+- Failures of the C runtime on Windows (a debug `assert()` in a library, such as `tl::expected::error()` on a value, or an iterator check) are printed on stderr and abort the test executable, which CTest reports as failed. Without that, the Debug CRT would open a message box and an unattended run would wait for its timeout.
 - **Randomized model tests** for data structures: the ECS and `HandlePool` are tested by applying random operation sequences to both the real implementation and a naive reference (e.g. `std::map`) and comparing state after every step. Seeds are printed on failure.
 
 ### Adding a test executable
@@ -35,7 +36,7 @@ teserra_add_test(core
 )
 ```
 
-It creates `teserra_core_tests` linked to `Catch2::Catch2WithMain` and to `teserra_test_support` (`tests/support/`: the `<teserra/test/...>` helpers, a listener that turns off console logging and installs the throwing assert handler, and allocation-counting `operator new` / `delete` for `AllocationCounter`), applies the warning set, and registers every `TEST_CASE` as its own CTest test labeled with the module name (discovery runs when CTest starts, not at build time). Useful commands:
+It creates `teserra_core_tests` linked to `Catch2::Catch2WithMain` and to `teserra_test_support` (`tests/support/`: the `<teserra/test/...>` helpers, a listener that turns off console logging, installs the throwing assert handler and sends the C runtime's failure reports to stderr, and allocation-counting `operator new` / `delete` for `AllocationCounter`), applies the warning set, and registers every `TEST_CASE` as its own CTest test labeled with the module name (discovery runs when CTest starts, not at build time). Useful commands:
 
 ```bash
 ctest --preset windows-msvc-debug -N          # list test cases

@@ -36,8 +36,11 @@ endif()
 
 # Unit tests of the source checks in tools/scripts (check_layers, check_gl_leaks); CI's checks job runs
 # them on Linux, this runs them with the build's platform.
-find_package(Python3 COMPONENTS Interpreter)
-if(Python3_Interpreter_FOUND)
+include(TeserraPython)
+teserra_find_python()
+if(NOT Python3_Interpreter_FOUND)
+    message(STATUS "Teserra: tools.scripts test disabled (need Python 3)")
+else()
     add_test(NAME tools.scripts
         COMMAND "${Python3_EXECUTABLE}" -m unittest discover -s "${PROJECT_SOURCE_DIR}/tools/scripts/tests"
     )

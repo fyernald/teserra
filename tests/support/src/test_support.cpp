@@ -8,6 +8,11 @@
 #include <catch2/reporters/catch_reporter_event_listener.hpp>
 #include <catch2/reporters/catch_reporter_registrars.hpp>
 
+#if defined(_WIN32)
+#include <crtdbg.h>
+#include <stdlib.h>
+#endif
+
 namespace teserra::test {
 
 AssertionFailure::AssertionFailure(const AssertInfo& info)
@@ -25,6 +30,22 @@ void throwingAssertHandler(const AssertInfo& info) {
 
 namespace {
 
+// A failed assert() or iterator check of the Debug CRT (tl::expected::error() on a value, a vector index out
+// of range) opens a message box by default, and an unattended test run then waits for its timeout. Tests
+// report them on stderr instead, and abort() without a dialog, so Catch2 and CTest see a crash.
+void reportCrtFailuresOnStderr() {
+#if defined(_WIN32)
+#if defined(_DEBUG) // the report functions are empty macros in a release CRT
+    for (const int type : {_CRT_WARN, _CRT_ERROR, _CRT_ASSERT}) {
+        _CrtSetReportMode(type, _CRTDBG_MODE_FILE | _CRTDBG_MODE_DEBUG);
+        _CrtSetReportFile(type, _CRTDBG_FILE_STDERR);
+    }
+#endif
+    _set_error_mode(_OUT_TO_STDERR);
+    _set_abort_behavior(0, _WRITE_ABORT_MSG | _CALL_REPORTFAULT);
+#endif
+}
+
 class TestRunListener final : public Catch::EventListenerBase {
 public:
     using Catch::EventListenerBase::EventListenerBase;
@@ -36,6 +57,7 @@ public:
         static_cast<void>(log::configure(config));
 
         setAssertHandler(&throwingAssertHandler);
+        reportCrtFailuresOnStderr();
     }
 };
 
