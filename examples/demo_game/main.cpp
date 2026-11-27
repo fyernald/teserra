@@ -5,6 +5,7 @@
 //   Enter           start / play again
 //   WASD / arrows   move
 //   F1              show the colliders
+//   M               mute or unmute the music
 //   Esc             back to the menu; quit from the menu
 //   `               the debug UI, with the engine's stats and the game's own window
 //
@@ -13,8 +14,8 @@
 //   teserra_demo_game --debug-ui                       with the debug UI open
 //
 // The game renders at 320x180 and is scaled by whole factors to the window. Its art is drawn in code
-// (art.cpp, font.cpp); its rules are components and systems (gameplay.cpp); its screens are scenes
-// (flow.cpp).
+// (art.cpp, font.cpp), and so are its sounds (sound.cpp); its rules are components and systems
+// (gameplay.cpp); its screens are scenes (flow.cpp).
 
 #include <teserra/assets/asset_registry.hpp>
 #include <teserra/core/log.hpp>

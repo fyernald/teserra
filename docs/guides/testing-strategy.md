@@ -108,7 +108,7 @@ The `ci-windows` test preset also writes a JUnit report to `build/ci-windows/jun
 
 ## Example smoke runs
 
-Every example accepts `--frames N --hidden-window`; CI (GPU job) runs each for 120 frames and fails on non-zero exit, assertion or `Error`-level log. This keeps examples from rotting. `teserra_add_smoke_run(<name> TARGET <target> FRAMES <n>)` (`cmake/TeserraTesting.cmake`) adds `examples.<name>`, and with `TESERRA_WITH_DEBUG_UI` also `examples.<name>.debug_ui`, the same run with `--debug-ui`, so the debug UI is drawn over every example (#298).
+Every example accepts `--frames N --hidden-window`; CI (GPU job) runs each for 120 frames and fails on non-zero exit, assertion or `Error`-level log. This keeps examples from rotting. `teserra_add_smoke_run(<name> TARGET <target> FRAMES <n>)` (`cmake/TeserraTesting.cmake`) adds `examples.<name>`, and with `TESERRA_WITH_DEBUG_UI` also `examples.<name>.debug_ui`, the same run with `--debug-ui`, so the debug UI is drawn over every example (#298). Smoke runs pass `--no-audio` (#314): the audio engine mixes offline, so running the tests plays no sound.
 
 ## Benchmarks
 

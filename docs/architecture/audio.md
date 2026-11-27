@@ -113,9 +113,14 @@ level.add<scene::AudioListener>(camera);
 
 The mix format is `AudioEngineConfig::sampleRate` (default 48 kHz) and `channels` (1 or 2, default 2). A mono clip plays on both channels.
 
+## Examples
+
+- `examples/demo_game` synthesizes its sounds in code (`sound.cpp`): effects played from its systems, and a tune that loops as an `AudioSource` on the Music bus in the menu and the level. M mutes the music.
+- `examples/sound` uses files: `blip.wav` decoded, `tune.ogg` streamed by its sidecar, and a spatial voice that circles the listener. Its files come from `tools/scripts/make_audio_fixtures.py`.
+
 ## Testing
 
 - Offline-output tests play clips of constant values, which every resampler keeps, and check the mixed samples: volumes, panning, looping, ends, stopping, pitch, resampling and released clips (`engine/audio/tests/`).
 - Decoding tests write WAV files in code (`engine/audio/tests/wav.hpp`) and decode them to exact samples; `tone.ogg`, an original tone written by `tools/scripts/make_audio_fixtures.py`, decodes close to its sine, and streamed clips mix the same samples as decoded ones.
-- A device test opens the default device and skips when there is none (CI machines).
+- A device test opens the default device and skips when there is none (CI machines). Example smoke runs pass `--no-audio`, so a test run plays no sound.
 - The leak check keeps miniaudio's names (`ma_*`, `MA_*`) and `<miniaudio.h>` inside `engine/audio/src/`.

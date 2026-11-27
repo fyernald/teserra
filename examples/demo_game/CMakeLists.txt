@@ -1,4 +1,4 @@
-add_executable(teserra_demo_game main.cpp art.cpp art.hpp flow.cpp flow.hpp font.cpp font.hpp gameplay.cpp gameplay.hpp)
+add_executable(teserra_demo_game main.cpp art.cpp art.hpp flow.cpp flow.hpp font.cpp font.hpp gameplay.cpp gameplay.hpp sound.cpp sound.hpp)
 target_link_libraries(teserra_demo_game PRIVATE Teserra::Engine)
 teserra_set_warnings(teserra_demo_game)
 # The game is dogfooding: it may use only the public API.
