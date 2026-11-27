@@ -19,7 +19,11 @@ teserra_add_module(audio LAYER 3
 find_path(TESERRA_MINIAUDIO_INCLUDE_DIR NAMES miniaudio.h PATH_SUFFIXES miniaudio REQUIRED)
 mark_as_advanced(TESERRA_MINIAUDIO_INCLUDE_DIR)
 add_library(teserra_miniaudio INTERFACE IMPORTED)
-set_target_properties(teserra_miniaudio PROPERTIES INTERFACE_INCLUDE_DIRECTORIES "${TESERRA_MINIAUDIO_INCLUDE_DIR}")
+# stb_vorbis decodes OGG Vorbis for miniaudio's decoder; it comes with the stb port that images use.
+find_path(TESERRA_STB_VORBIS_INCLUDE_DIR NAMES stb_vorbis.c PATH_SUFFIXES stb REQUIRED)
+mark_as_advanced(TESERRA_STB_VORBIS_INCLUDE_DIR)
+set_target_properties(teserra_miniaudio PROPERTIES
+    INTERFACE_INCLUDE_DIRECTORIES "${TESERRA_MINIAUDIO_INCLUDE_DIR};${TESERRA_STB_VORBIS_INCLUDE_DIR}")
 if(UNIX)
     find_package(Threads REQUIRED)
     set_target_properties(teserra_miniaudio PROPERTIES INTERFACE_LINK_LIBRARIES "Threads::Threads;${CMAKE_DL_LIBS};m")

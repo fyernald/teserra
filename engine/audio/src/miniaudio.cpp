@@ -11,6 +11,23 @@
 #define MINIAUDIO_IMPLEMENTATION
 #include "miniaudio_config.hpp"
 
+#if !defined(MA_HAS_VORBIS)
+#error "miniaudio was compiled without stb_vorbis's declarations before it: it would not decode OGG Vorbis"
+#endif
+
+// stb_vorbis's implementation, after miniaudio's, as miniaudio documents.
+#undef STB_VORBIS_HEADER_ONLY
+// MSVC reports possibly uninitialized locals in stb_vorbis when it generates code, which /external:W0 does
+// not cover; stb_vorbis initializes them on every path that reads them.
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(push)
+#pragma warning(disable : 4701 4703)
+#endif
+#include <stb_vorbis.c> // NOLINT(bugprone-suspicious-include)
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(pop)
+#endif
+
 namespace teserra::audio::detail {
 
 namespace {

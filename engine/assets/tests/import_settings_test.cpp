@@ -63,16 +63,18 @@ TEST_CASE("Import settings: without a sidecar the loader sees the defaults", "[a
     CHECK(probe.get().settings == AssetImportSettings{});
     CHECK(probe.get().settings.srgb);
     CHECK_FALSE(probe.get().settings.mipmaps);
+    CHECK_FALSE(probe.get().settings.stream);
     CHECK(importSettingsPath("assets://a.probe") == "assets://a.probe.asset.json");
 }
 
 TEST_CASE("Import settings: a sidecar's settings reach the loader", "[assets][import]") {
     Fixture fixture;
-    fixture.files.addTextFile("/game/assets/a.probe.asset.json", R"({"srgb": false, "mipmaps": true})");
+    fixture.files.addTextFile("/game/assets/a.probe.asset.json",
+                              R"({"srgb": false, "mipmaps": true, "stream": true})");
     const test::LogCapture logs;
     const Asset<SettingsProbe> probe = fixture.registry.load<SettingsProbe>("assets://a.probe");
     REQUIRE(probe.isLoaded());
-    CHECK(probe.get().settings == AssetImportSettings{.srgb = false, .mipmaps = true});
+    CHECK(probe.get().settings == AssetImportSettings{.srgb = false, .mipmaps = true, .stream = true});
     CHECK(logsMentioning(logs, LogLevel::Warn, "") == 0);
 }
 

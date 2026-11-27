@@ -24,7 +24,7 @@ TEST_CASE("AudioClip::create() keeps the samples and their format", "[audio][cli
 TEST_CASE("AudioClip: copies share the samples", "[audio][clip]") {
     const AudioClip clip = *AudioClip::create(48'000, 1, std::vector<f32>{0.5F, 0.25F});
     const AudioClip copy = clip; // NOLINT(performance-unnecessary-copy-initialization): the copy is the test
-    CHECK(copy.shared() == clip.shared());
+    CHECK(copy.data() == clip.data());
     CHECK(copy.samples().data() == clip.samples().data());
 }
 
@@ -34,7 +34,7 @@ TEST_CASE("AudioClip: empty clips", "[audio][clip]") {
     CHECK(none.frameCount() == 0);
     CHECK(none.sampleRate() == 0);
     CHECK(none.samples().empty());
-    CHECK(none.shared() == nullptr);
+    CHECK(none.data() == nullptr);
 
     const AudioClip made = *AudioClip::create(48'000, 2, {});
     CHECK(made.isEmpty());

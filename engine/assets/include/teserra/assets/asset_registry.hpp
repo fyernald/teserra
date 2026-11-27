@@ -137,6 +137,8 @@ struct AssetImportSettings {
     bool srgb = true;
     /// Textures get a full mip chain, generated on the GPU.
     bool mipmaps = false;
+    /// Audio clips are streamed: decoded while they play instead of when they load (music).
+    bool stream = false;
 
     friend bool operator==(const AssetImportSettings&, const AssetImportSettings&) = default;
 };
