@@ -4,6 +4,7 @@
 
 #include <teserra/audio/audio_clip.hpp>
 #include <teserra/core/handle.hpp>
+#include <teserra/core/math.hpp>
 #include <teserra/core/result.hpp>
 #include <teserra/core/types.hpp>
 
@@ -59,6 +60,15 @@ struct PlayParams {
     bool loop = false;
     /// The bus the voice plays into.
     Bus bus = Bus::Effects;
+    /// Positional: panned and attenuated by `position` relative to the listener (setListenerPosition()),
+    /// on top of `pan`. Off, the voice plays as it is wherever the listener is.
+    bool spatial = false;
+    /// A spatial voice's position in world units (Y up, listener facing -Z: +X is to the right).
+    Vec3 position{};
+    /// A spatial voice plays at full volume up to minDistance from the listener, fades linearly, and is
+    /// silent from maxDistance on.
+    f32 minDistance = 1.0F;
+    f32 maxDistance = 20.0F;
 };
 
 /// Mixes voices into the sound device, or offline for render(). miniaudio does the mixing, resampling and
@@ -107,6 +117,15 @@ public:
     void setPitch(VoiceHandle voice, f32 pitch);
     void setPan(VoiceHandle voice, f32 pan);
     void setLooping(VoiceHandle voice, bool loop);
+    /// A voice's spatial settings, as in PlayParams; nothing for a stale or null handle.
+    void setSpatial(VoiceHandle voice, bool spatial);
+    void setPosition(VoiceHandle voice, Vec3 position);
+    void setDistances(VoiceHandle voice, f32 minDistance, f32 maxDistance);
+
+    /// Where spatial voices are heard from (default the origin). The listener faces -Z with +Y up, so in 2D
+    /// a voice at a greater x than the listener is on the right.
+    void setListenerPosition(Vec3 position);
+    [[nodiscard]] Vec3 listenerPosition() const noexcept { return m_listener; }
 
     /// A bus's linear gain (default 1), applied to every voice of the bus; Master's applies to everything.
     void setBusVolume(Bus bus, f32 volume);
@@ -131,6 +150,7 @@ private:
     Output m_output;
     u32 m_sampleRate;
     u32 m_channels;
+    Vec3 m_listener{};
 };
 
 /// The App's audio engine for scene systems: the App puts it in every scene's world as a resource.

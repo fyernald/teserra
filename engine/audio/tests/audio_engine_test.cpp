@@ -303,3 +303,44 @@ TEST_CASE("AudioEngine: voices on Master skip the other buses", "[audio][engine]
     CHECK(left(render(*engine, 512), 256) == Approx(0.5F));
     CHECK(busName(Bus::Effects) == "Effects");
 }
+
+TEST_CASE("AudioEngine: spatial voices are panned and attenuated around the listener",
+          "[audio][engine][spatial]") {
+    const auto engine = offlineEngine();
+    const AudioClip clip = constantClip(0.5F, 96'000);
+    // Gains are smoothed over a few milliseconds: the checks look at the end of a long render.
+    const auto settle = [&] { return render(*engine, 4'800); };
+
+    SECTION("a voice right of the listener is louder on the right") {
+        engine->play(
+            clip,
+            {.spatial = true, .position = {5.0F, 0.0F, 0.0F}, .minDistance = 1.0F, .maxDistance = 20.0F});
+        const std::vector<f32> mix = settle();
+        CHECK(right(mix, 4'799) > left(mix, 4'799) + 0.05F);
+    }
+    SECTION("beyond maxDistance it is silent") {
+        engine->play(clip, {.spatial = true, .position = {-30.0F, 0.0F, 0.0F}, .maxDistance = 20.0F});
+        const std::vector<f32> mix = settle();
+        CHECK(left(mix, 4'799) == Approx(0.0F).margin(1e-4));
+        CHECK(right(mix, 4'799) == Approx(0.0F).margin(1e-4));
+    }
+    SECTION("at the listener it plays at full volume, centered") {
+        engine->setListenerPosition({3.0F, 2.0F, 0.0F});
+        CHECK(engine->listenerPosition() == Vec3{3.0F, 2.0F, 0.0F});
+        engine->play(clip, {.spatial = true, .position = {3.0F, 2.0F, 0.0F}});
+        const std::vector<f32> mix = settle();
+        CHECK(left(mix, 4'799) == Approx(0.5F).margin(1e-3));
+        CHECK(right(mix, 4'799) == Approx(0.5F).margin(1e-3));
+    }
+    SECTION("moving the voice and the listener changes the side") {
+        const VoiceHandle voice = engine->play(clip, {.spatial = true, .position = {4.0F, 0.0F, 0.0F}});
+        settle();
+        engine->setListenerPosition({8.0F, 0.0F, 0.0F}); // now the voice is on the left
+        std::vector<f32> mix = settle();
+        CHECK(left(mix, 4'799) > right(mix, 4'799) + 0.05F);
+        engine->setSpatial(voice, false); // back to plain playback
+        mix = settle();
+        CHECK(left(mix, 4'799) == Approx(0.5F).margin(1e-3));
+        CHECK(right(mix, 4'799) == Approx(0.5F).margin(1e-3));
+    }
+}

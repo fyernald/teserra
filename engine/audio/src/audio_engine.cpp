@@ -280,10 +280,8 @@ VoiceHandle AudioEngine::play(const AudioClip& clip, const PlayParams& params) {
         TESERRA_LOG_ERROR(LogCategory::Audio, "Could not start a voice: {}", opened.error().message);
         return {};
     }
-    // Spatialization is off until positional sound comes (#313); panning still works.
-    const ma_result result =
-        ma_sound_init_from_data_source(&impl.engine, Impl::source(voice), MA_SOUND_FLAG_NO_SPATIALIZATION,
-                                       impl.group(params.bus), &voice.sound);
+    const ma_result result = ma_sound_init_from_data_source(&impl.engine, Impl::source(voice), 0,
+                                                            impl.group(params.bus), &voice.sound);
     if (result != MA_SUCCESS) {
         Impl::releaseSource(voice);
         TESERRA_LOG_ERROR(LogCategory::Audio, "Could not start a voice: {}", ma_result_description(result));
@@ -296,6 +294,13 @@ VoiceHandle AudioEngine::play(const AudioClip& clip, const PlayParams& params) {
     ma_sound_set_pitch(&voice.sound, params.pitch);
     ma_sound_set_pan(&voice.sound, std::clamp(params.pan, -1.0F, 1.0F));
     ma_sound_set_looping(&voice.sound, params.loop ? MA_TRUE : MA_FALSE);
+    // Positional sound: linear distance attenuation, no Doppler (a moving 2D source would change pitch).
+    ma_sound_set_attenuation_model(&voice.sound, ma_attenuation_model_linear);
+    ma_sound_set_rolloff(&voice.sound, 1.0F);
+    ma_sound_set_doppler_factor(&voice.sound, 0.0F);
+    setDistances(voice.handle, params.minDistance, params.maxDistance);
+    ma_sound_set_position(&voice.sound, params.position.x, params.position.y, params.position.z);
+    ma_sound_set_spatialization_enabled(&voice.sound, params.spatial ? MA_TRUE : MA_FALSE);
     ma_sound_start(&voice.sound);
     return voice.handle;
 }
@@ -343,6 +348,31 @@ void AudioEngine::setLooping(VoiceHandle voice, bool loop) {
     if (Voice* found = m_impl->find(voice)) {
         ma_sound_set_looping(&found->sound, loop ? MA_TRUE : MA_FALSE);
     }
+}
+
+void AudioEngine::setSpatial(VoiceHandle voice, bool spatial) {
+    if (Voice* found = m_impl->find(voice)) {
+        ma_sound_set_spatialization_enabled(&found->sound, spatial ? MA_TRUE : MA_FALSE);
+    }
+}
+
+void AudioEngine::setPosition(VoiceHandle voice, Vec3 position) {
+    if (Voice* found = m_impl->find(voice)) {
+        ma_sound_set_position(&found->sound, position.x, position.y, position.z);
+    }
+}
+
+void AudioEngine::setDistances(VoiceHandle voice, f32 minDistance, f32 maxDistance) {
+    if (Voice* found = m_impl->find(voice)) {
+        const f32 nearest = std::max(minDistance, 0.0F);
+        ma_sound_set_min_distance(&found->sound, nearest);
+        ma_sound_set_max_distance(&found->sound, std::max(maxDistance, nearest + 1e-3F));
+    }
+}
+
+void AudioEngine::setListenerPosition(Vec3 position) {
+    m_listener = position;
+    ma_engine_listener_set_position(&m_impl->engine, 0, position.x, position.y, position.z);
 }
 
 void AudioEngine::setBusVolume(Bus bus, f32 volume) {
