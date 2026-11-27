@@ -24,8 +24,8 @@ namespace teserra::log {
 
 namespace {
 
-constexpr std::array<std::string_view, 9> kEngineCategoryNames = {
-    "Core", "Platform", "Rhi", "Renderer", "Assets", "Ecs", "Scene", "App", "Game",
+constexpr std::array<std::string_view, 10> kEngineCategoryNames = {
+    "Core", "Platform", "Rhi", "Renderer", "Assets", "Ecs", "Scene", "Audio", "App", "Game",
 };
 static_assert(kEngineCategoryNames.size() == static_cast<usize>(LogCategory::Game) + 1,
               "every engine LogCategory needs a name");

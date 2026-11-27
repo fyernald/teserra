@@ -50,6 +50,7 @@ enum class Module : u8 {
     Assets,
     Ecs,
     Scene,
+    Audio,
     App,
     Game,
 };
@@ -100,6 +101,8 @@ enum class Module : u8 {
             return "Ecs";
         case Module::Scene:
             return "Scene";
+        case Module::Audio:
+            return "Audio";
         case Module::App:
             return "App";
         case Module::Game:

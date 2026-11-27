@@ -62,6 +62,7 @@ enum class LogCategory : u8 {
     Assets,
     Ecs,
     Scene,
+    Audio,
     App,
     Game,
 };

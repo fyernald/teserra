@@ -60,7 +60,6 @@ None of the fixed decisions is considered a serious mistake. The following deser
 
 | Topic | Deferred to | Why |
 |---|---|---|
-| Audio library (miniaudio is the leading candidate) | v0.2 epic, ADR then | Not needed for v0.1 headline features |
 | Physics (Box2D v3 is the leading candidate) | v0.3 epic | Demo game uses simple AABB collision |
 | JSON library for Tiled import (nlohmann/json vs simdjson vs yyjson) | Tilemap iteration, ADR in the import issue | Only needed there |
 | Text rendering approach (stb_truetype bitmap fonts vs MSDF) | Backlog spike | Debug text in v0.2 |

@@ -3,7 +3,7 @@
 Teserra is a layered C++20 engine. v1 ships a 2D engine; every layer is designed so that 3D rendering, a Vulkan backend and a Linux port are **additions**, not rewrites.
 
 This page is the map. Each layer has its own document:
-[RHI](rhi.md) · [renderer](renderer.md) · [platform](platform-abstraction.md) · [ECS](ecs.md) · [assets](assets.md) · [memory and performance](memory-and-performance.md) · [editor and scripting (future)](editor-and-scripting-future.md).
+[RHI](rhi.md) · [renderer](renderer.md) · [platform](platform-abstraction.md) · [ECS](ecs.md) · [assets](assets.md) · [audio](audio.md) · [memory and performance](memory-and-performance.md) · [editor and scripting (future)](editor-and-scripting-future.md).
 
 ## Design goals
 
@@ -13,7 +13,7 @@ This page is the map. Each layer has its own document:
 4. **Explicit over implicit.** Services are passed as parameters or reachable from an explicit context object; no hidden singletons.
 5. **Simple and correct first, fast second, measured always.**
 
-Non-goals for v1: multithreaded rendering, 3D rendering, Vulkan, Linux/macOS support, scripting, an editor, audio. Each has a documented future path.
+Non-goals for v1: multithreaded rendering, 3D rendering, Vulkan, Linux/macOS support, scripting, an editor, audio (v0.2 adds it, [audio](audio.md)). Each has a documented future path.
 
 ## Layers
 
@@ -24,6 +24,7 @@ flowchart BT
     rhi["<b>rhi</b> (L2)<br/>Device, CommandList, Pipeline,<br/>Buffer, Texture, BindGroup"]
     assets["<b>assets</b> (L2)<br/>AssetId, AssetRegistry,<br/>loaders, ImageData"]
     renderer["<b>renderer</b> (L3)<br/>frames, passes, cameras,<br/>sprite batcher, materials"]
+    audio["<b>audio</b> (L3)<br/>AudioEngine, clips,<br/>voices (miniaudio)"]
     ecs["<b>ecs</b> (L4)<br/>World, Entity, pools,<br/>views, events"]
     scene["<b>scene</b> (L5)<br/>Scene, Transform, systems,<br/>render extraction, tilemaps"]
     engine["<b>engine</b> (L6)<br/>App, main loop, services"]
@@ -34,6 +35,7 @@ flowchart BT
     assets --> platform
     renderer --> rhi
     renderer --> assets
+    audio --> assets
     ecs --> core
     scene --> ecs
     scene --> renderer
@@ -51,6 +53,7 @@ Arrows point from a module to what it depends on. A module may depend on any mod
 | 2 | `teserra_assets` | Asset IDs, handles, registry, loader interfaces, CPU-side decoding | core, platform | stb_image (PRIVATE) |
 | 3 | `teserra_rhi_opengl` | OpenGL 4.5 backend (separate target, linked by `engine`) | core, platform, rhi | glad (vendored as `teserra_glad`, PRIVATE) |
 | 3 | `teserra_rhi_null` | Recording/validating backend for headless tests and runs; always built | core, platform, rhi | - |
+| 3 | `teserra_audio` | Sound: clips, voices mixed into the sound device or offline ([ADR-0027](../adr/0027-audio-miniaudio.md), [audio](audio.md)) | core, assets | miniaudio (PRIVATE) |
 | 3 | `teserra_renderer` | Frame structure, render passes, cameras, materials, sprite batching, debug draw | rhi, assets | - |
 | 4 | `teserra_ecs` | Entities, component storage, views, events, deferred commands | core | - |
 | 5 | `teserra_scene` | Scenes owning worlds, transforms, system scheduling, ECS-to-renderer extraction, tilemaps | ecs, renderer, assets | - |
@@ -76,7 +79,7 @@ Rules that rely on discipline erode. Teserra enforces layering mechanically at t
 
    The helper (in `cmake/TeserraModule.cmake`) creates `teserra_renderer` + alias `Teserra::Renderer`, sets include directories, links `DEPENDS` as `PUBLIC` engine dependencies, and **fails configuration** if any dependency has a layer number ≥ the module's own. Third-party libraries are linked separately with `teserra_link_third_party(<module> PRIVATE spdlog::spdlog)`, which makes visibility a reviewed, explicit choice.
 2. **Include check (CI).** `tools/scripts/check_layers.py` scans `#include <teserra/<module>/...>` in each module and fails if a module includes headers of a module it does not depend on. This catches include-path leakage through transitive `PUBLIC` dependencies.
-3. **Leak checks (CI).** `tools/scripts/check_gl_leaks.py` fails if GL identifiers (`GL_*`, `gl[A-Z][a-z]*`, `GLuint`, `<glad/`) appear outside `engine/rhi/backends/opengl/` (Vulkan ones outside `engine/rhi/backends/vulkan/`), if GLFW names or headers appear outside `engine/platform/src/glfw/`, and if Win32 headers appear outside Windows-only files of `engine/platform/`. `glm::` outside `engine/core/` is flagged by the same script ([ADR-0008](../adr/0008-glm-math-behind-aliases.md)). The exact rules are in [build-and-ci](../guides/build-and-ci.md#layer-and-leak-checks).
+3. **Leak checks (CI).** `tools/scripts/check_gl_leaks.py` fails if GL identifiers (`GL_*`, `gl[A-Z][a-z]*`, `GLuint`, `<glad/`) appear outside `engine/rhi/backends/opengl/` (Vulkan ones outside `engine/rhi/backends/vulkan/`), if GLFW names or headers appear outside `engine/platform/src/glfw/`, if Win32 headers appear outside Windows-only files of `engine/platform/`, and if miniaudio names appear outside `engine/audio/src/`. `glm::` outside `engine/core/` is flagged by the same script ([ADR-0008](../adr/0008-glm-math-behind-aliases.md)). The exact rules are in [build-and-ci](../guides/build-and-ci.md#layer-and-leak-checks).
 
 ## Runtime structure
 

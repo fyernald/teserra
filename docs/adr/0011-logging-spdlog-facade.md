@@ -20,7 +20,7 @@ Every subsystem logs. Logging must be fast when disabled, structured by category
 - Formatting uses **`std::format`** with compile-time checked format strings (`std::format_string`). The facade formats into a stack buffer and passes a `std::string_view` plus `std::source_location` to a non-template `log::detail::emit(...)` implemented in a `.cpp` file.
 - **spdlog is a `PRIVATE` dependency** of `teserra_core`; no spdlog header appears in any engine header.
 - Levels: `Trace, Debug, Info, Warn, Error, Critical`. A compile-time floor `TESERRA_LOG_LEVEL_MIN` removes lower-level calls entirely (default: `Trace` in Debug, `Info` in Release). A runtime per-category level filters the rest.
-- Categories are an engine enum (`Core, Platform, Rhi, Renderer, Assets, Ecs, Scene, App, Game`), plus user-defined string categories for games.
+- Categories are an engine enum (`Core, Platform, Rhi, Renderer, Assets, Ecs, Scene, Audio, App, Game`; `Audio` since #310), plus user-defined string categories for games.
 - Sinks: colored console and rotating file by default; a callback sink lets tests and the future ImGui console capture output.
 - Logging is **not** an error-handling mechanism ([ADR-0016](0016-error-handling-policy.md)): errors are returned or asserted, and *also* logged where they are handled.
 
