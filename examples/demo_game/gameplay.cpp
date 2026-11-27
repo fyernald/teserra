@@ -1,5 +1,6 @@
 #include "gameplay.hpp"
 
+#include <teserra/audio/audio_engine.hpp>
 #include <teserra/core/log.hpp>
 #include <teserra/ecs/schedule.hpp>
 #include <teserra/ecs/system_context.hpp>
@@ -14,6 +15,7 @@
 #include <teserra/scene/transform.hpp>
 
 #include "art.hpp"
+#include "sound.hpp"
 
 #include <algorithm>
 #include <array>
@@ -146,6 +148,8 @@ void patrol(ecs::SystemContext& ctx) {
 // What the hero touched this frame: coins, hazards and the door.
 void react(ecs::SystemContext& ctx) {
     GameState& state = ctx.resource<GameState>();
+    teserra::audio::AudioEngine& audio = *ctx.resource<teserra::audio::Audio>().engine;
+    const Sounds& sounds = ctx.resource<const Sounds>();
     bool collected = false;
     ctx.readEvents<scene::CollisionStarted>([&](const scene::CollisionStarted& touch) {
         const std::optional<ecs::Entity> other = touch.other(state.player);
@@ -160,8 +164,10 @@ void react(ecs::SystemContext& ctx) {
             ctx.commands().destroy(*other);
             ++state.coins;
             collected = true;
+            audio.play(sounds.coin.get());
         } else if (touched->kind == TouchKind::Hazard) {
             ++state.deaths;
+            audio.play(sounds.hurt.get());
             if (Player* player = ctx.tryGet<Player>(state.player)) {
                 player->position = state.start;
             }
@@ -170,6 +176,8 @@ void react(ecs::SystemContext& ctx) {
             }
         } else if (touched->kind == TouchKind::Goal && state.coins == state.totalCoins) {
             state.won = true;
+            // Not a scene's source, so it goes on over the win screen.
+            audio.play(sounds.win.get());
             TESERRA_LOG_INFO(LogCategory::App, "You win! {} coins in {:.1f} s, {} restarts", state.coins,
                              state.seconds, state.deaths);
         }
@@ -189,6 +197,7 @@ void react(ecs::SystemContext& ctx) {
             }
         }
         TESERRA_LOG_INFO(LogCategory::App, "Every coin collected: the door is open");
+        audio.play(sounds.door.get());
     }
 }
 
@@ -336,6 +345,8 @@ void addGameplaySystems(scene::Scene& level) {
         .writes<scene::Transform>()
         .writes<scene::SpriteRenderer>()
         .writesResource<GameState>()
+        .readsResource<Sounds>()
+        .writesResource<teserra::audio::Audio>()
         .readsEvents<scene::CollisionStarted>()
         .after(scene::kCollisionSystemName);
 }

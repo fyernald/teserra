@@ -239,19 +239,20 @@ set(TESERRA_SMOKE_SKIP_REGEX "OpenGL 4[.]5 core context|Cannot initialize GLFW")
 # runs <target> for <count> frames in a hidden window from its build directory; it must exit with 0 and log
 # nothing at Error or above, which includes OpenGL debug errors and RHI validation. With
 # TESERRA_WITH_DEBUG_UI, examples.<name>.debug_ui does the same with the debug UI open (--debug-ui). Machines
-# without a window system or an OpenGL 4.5 driver report them skipped (TESERRA_SMOKE_SKIP_REGEX).
+# without a window system or an OpenGL 4.5 driver report them skipped (TESERRA_SMOKE_SKIP_REGEX). They run
+# with --no-audio, so a test run plays no sound on a developer's machine; the mix runs offline all the same.
 function(teserra_add_smoke_run name)
     cmake_parse_arguments(PARSE_ARGV 1 arg "" "TARGET;FRAMES" "")
     if(NOT arg_TARGET OR NOT arg_FRAMES)
         message(FATAL_ERROR "teserra_add_smoke_run(${name}): TARGET and FRAMES are required")
     endif()
     add_test(NAME examples.${name}
-             COMMAND ${arg_TARGET} --frames ${arg_FRAMES} --hidden-window
+             COMMAND ${arg_TARGET} --frames ${arg_FRAMES} --hidden-window --no-audio
              WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
     set(runs examples.${name})
     if(TESERRA_WITH_DEBUG_UI)
         add_test(NAME examples.${name}.debug_ui
-                 COMMAND ${arg_TARGET} --frames ${arg_FRAMES} --hidden-window --debug-ui
+                 COMMAND ${arg_TARGET} --frames ${arg_FRAMES} --hidden-window --no-audio --debug-ui
                  WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
         list(APPEND runs examples.${name}.debug_ui)
     endif()

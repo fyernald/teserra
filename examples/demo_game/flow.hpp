@@ -12,6 +12,7 @@
 #include <teserra/scene/tileset.hpp>
 
 #include "gameplay.hpp"
+#include "sound.hpp"
 
 #include <optional>
 
@@ -50,7 +51,7 @@ public:
     /// The scene to run first: the menu, which its enter hook builds when the App runs it.
     [[nodiscard]] scene::Scene& start();
     /// Called once per frame, outside the scenes' systems: acts on the active screen's request. Escape on
-    /// the menu quits.
+    /// the menu quits; M mutes and unmutes the music on every screen.
     void update();
 
 private:
@@ -68,6 +69,8 @@ private:
     scene::Scene& m_menu;
     scene::Scene& m_level;
     scene::Scene& m_win;
+    // After the scenes: they hold copies of the clips' handles.
+    Sounds m_sounds;
     Screen m_active = Screen::Menu;
     Results m_results;
     u32 m_plays = 0;
