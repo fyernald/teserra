@@ -3,6 +3,8 @@ from __future__ import annotations
 import contextlib
 import io
 import os
+import subprocess
+import tarfile
 import unittest
 import zipfile
 from pathlib import Path
@@ -197,6 +199,118 @@ class PackageExampleTest(TreeTestCase):
 
         with self.assertRaises(SystemExit), contextlib.redirect_stderr(io.StringIO()):
             package_example.main(arguments + ["--example", "rhi_triangle"])  # one or the other
+
+
+class LinuxPackageTest(TreeTestCase):
+    """--platform linux-x64 (#317): a .tar.gz with mode 755 executables, no libraries, and the ldd check."""
+
+    SYSTEM = ["linux-vdso.so.1", "libstdc++.so.6", "libm.so.6", "libgcc_s.so.1", "libc.so.6",
+              "ld-linux-x86-64.so.2"]
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.write("LICENSE", "MIT License\n")
+        self.write("THIRD_PARTY_NOTICES.md", "| [GLFW](https://www.glfw.org/) |\n")
+        self.write("tools/packaging/README-linux.txt.in", """
+            $title
+            $underline
+            $description
+            Run ./$executable ($example $version).
+            Feedback: $feedback_url
+            """)
+        self.write("tools/packaging/README-examples-linux.txt.in", """
+            $title
+            $underline
+            $examples
+            Feedback: $feedback_url
+            """)
+        self.write("build/CMakeCache.txt", "CMAKE_BUILD_TYPE:STRING=Release\n")
+        for example in ("rhi_triangle", "rhi_clear"):
+            self.write(f"build/examples/{example}/teserra_{example}", "elf")
+            self.write(f"build/examples/{example}/teserra.log", "a smoke run's log")
+        self.write("build/examples/rhi_clear/assets/clear.png", "png")
+
+    def arguments(self, **overrides: object) -> dict[str, object]:
+        arguments: dict[str, object] = {
+            "root": self.root,
+            "build_dir": self.root / "build",
+            "version": "0.2.0",
+            "out_dir": self.root / "dist",
+            "feedback_url": "https://example.com/feedback",
+            "platform": package_example.LINUX,
+            "ldd": lambda executable: self.SYSTEM,
+        }
+        arguments.update(overrides)
+        return arguments
+
+    def test_the_examples_archive_keeps_the_executable_bit_and_needs_no_runtime(self) -> None:
+        made = package_example.package_examples(
+            **self.arguments(examples=("rhi_triangle", "rhi_clear")))  # type: ignore[arg-type]
+
+        self.assertEqual(made.path, self.root / "dist/teserra-0.2.0-linux-x64-examples.tar.gz")
+        prefix = "teserra-0.2.0-linux-x64-examples"
+        with tarfile.open(made.path) as archive:
+            members = {member.name: member for member in archive.getmembers()}
+            self.assertEqual(list(members), [f"{prefix}/{name}" for name in [
+                "README.txt", "LICENSE", "THIRD_PARTY_NOTICES.md", "rhi_triangle/teserra_rhi_triangle",
+                "rhi_clear/teserra_rhi_clear", "rhi_clear/assets/clear.png",
+            ]])
+            self.assertEqual(members[f"{prefix}/rhi_triangle/teserra_rhi_triangle"].mode, 0o755)
+            self.assertEqual(members[f"{prefix}/rhi_clear/assets/clear.png"].mode, 0o644)
+            self.assertEqual(members[f"{prefix}/README.txt"].mode, 0o644)
+            self.assertEqual(members[f"{prefix}/LICENSE"].uid, 0)
+            readme_file = archive.extractfile(f"{prefix}/README.txt")
+            assert readme_file is not None
+            readme = readme_file.read().decode("utf-8")
+            clear = archive.extractfile(f"{prefix}/rhi_clear/assets/clear.png")
+            assert clear is not None
+            self.assertEqual(clear.read(), b"png")
+        self.assertIn("rhi_triangle/teserra_rhi_triangle\n", readme)
+        self.assertNotIn("\r", readme)
+
+    def test_one_example_in_its_own_archive(self) -> None:
+        made = package_example.package(**self.arguments(example="rhi_triangle"))  # type: ignore[arg-type]
+
+        self.assertEqual(made.path, self.root / "dist/teserra-0.2.0-linux-x64-rhi_triangle.tar.gz")
+        self.assertEqual(made.files, ("teserra_rhi_triangle", "LICENSE", "THIRD_PARTY_NOTICES.md", "README.txt"))
+        with tarfile.open(made.path) as archive:
+            readme_file = archive.extractfile("teserra-0.2.0-linux-x64-rhi_triangle/README.txt")
+            assert readme_file is not None
+            self.assertIn("Run ./teserra_rhi_triangle (rhi_triangle 0.2.0).", readme_file.read().decode("utf-8"))
+
+    def test_a_library_outside_the_system_is_an_error(self) -> None:
+        with self.assertRaisesRegex(package_example.PackageError, "links libX11.so.6, which a Linux desktop"):
+            package_example.package(**self.arguments(  # type: ignore[arg-type]
+                example="rhi_triangle", ldd=lambda executable: [*self.SYSTEM, "libX11.so.6"]))
+
+    def test_a_shared_library_next_to_an_example_is_an_error(self) -> None:
+        self.write("build/examples/rhi_triangle/libglfw.so.3", "so")
+        with self.assertRaisesRegex(package_example.PackageError, "libglfw.so.3"):
+            package_example.package(**self.arguments(example="rhi_triangle"))  # type: ignore[arg-type]
+
+    def test_linked_libraries_reads_ldd(self) -> None:
+        output = ("\tlinux-vdso.so.1 (0x00007ffd)\n"
+                  "\tlibstdc++.so.6 => /lib/x86_64-linux-gnu/libstdc++.so.6 (0x00007f12)\n"
+                  "\t/lib64/ld-linux-x86-64.so.2 (0x00007f34)\n")
+        completed = subprocess.CompletedProcess(["ldd"], 0, stdout=output, stderr="")
+        with mock.patch.object(package_example.subprocess, "run", return_value=completed):
+            self.assertEqual(package_example.linked_libraries(Path("teserra_hello")),
+                             ["linux-vdso.so.1", "libstdc++.so.6", "ld-linux-x86-64.so.2"])
+        with mock.patch.object(package_example.subprocess, "run", side_effect=OSError("no ldd")):
+            with self.assertRaisesRegex(package_example.PackageError, "ldd"):
+                package_example.linked_libraries(Path("teserra_hello"))
+
+    def test_main_packages_for_linux(self) -> None:
+        stdout = io.StringIO()
+        for example in package_example.PACKAGED_EXAMPLES:
+            self.write(f"build/examples/{example}/teserra_{example}", "elf")
+        with mock.patch.object(package_example, "linked_libraries", return_value=self.SYSTEM), \
+                contextlib.redirect_stdout(stdout):
+            status = package_example.main([
+                "--platform", "linux-x64", "--build-dir", str(self.root / "build"), "--all-examples",
+                "--version", "0.2.0", "--out", str(self.root / "dist"), "--root", str(self.root)])
+        self.assertEqual(status, 0, stdout.getvalue())
+        self.assertTrue((self.root / "dist/teserra-0.2.0-linux-x64-examples.tar.gz").is_file())
 
 
 class PackagedExamplesTest(unittest.TestCase):
