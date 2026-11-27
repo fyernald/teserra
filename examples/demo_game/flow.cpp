@@ -1,10 +1,12 @@
 #include "flow.hpp"
 
+#include <teserra/audio/audio_engine.hpp>
 #include <teserra/core/log.hpp>
 #include <teserra/ecs/schedule.hpp>
 #include <teserra/ecs/system_context.hpp>
 #include <teserra/platform/input.hpp>
 #include <teserra/platform/key.hpp>
+#include <teserra/scene/audio_components.hpp>
 #include <teserra/scene/collision_debug.hpp>
 #include <teserra/scene/render_components.hpp>
 #include <teserra/scene/transform.hpp>
@@ -63,6 +65,14 @@ void spawnCamera(scene::Scene& scene) {
                                                    .clearColor = kBackground});
 }
 
+// The tune, looping on the Music bus while the screen lasts.
+void spawnMusic(scene::Scene& scene, const assets::Asset<teserra::audio::AudioClip>& tune) {
+    const ecs::Entity music = scene.spawn();
+    scene.add<scene::AudioSource>(
+        music,
+        scene::AudioSource{.clip = tune, .bus = teserra::audio::Bus::Music, .volume = 0.6F, .loop = true});
+}
+
 void spawnArt(scene::Scene& scene, const scene::Tileset& tileset, Cell cell, Vec2 position) {
     const ecs::Entity entity = scene.spawn();
     scene.add<scene::Transform>(entity, scene::Transform{.position = {position, 0.0F}});
@@ -76,7 +86,10 @@ Flow::Flow(engine::App& app, const scene::Tileset& tileset)
       m_tileset(tileset),
       m_menu(app.scenes().create("menu")),
       m_level(app.scenes().create("level")),
-      m_win(app.scenes().create("win")) {
+      m_win(app.scenes().create("win")),
+      m_sounds(makeSounds(app.assets())) {
+    // The level's systems play the effects.
+    m_level.world().insertResource<Sounds>(m_sounds);
     for (const Screen screen : {Screen::Menu, Screen::Level, Screen::Win}) {
         scene::Scene& target = sceneOf(screen);
         target.world().insertResource<ScreenRequest>();
@@ -131,6 +144,10 @@ void Flow::update() {
     }
 
     const platform::Input& input = m_app.input();
+    if (input.wasPressed(platform::Key::M)) {
+        teserra::audio::AudioEngine& audio = m_app.audio();
+        audio.setBusMuted(teserra::audio::Bus::Music, !audio.isBusMuted(teserra::audio::Bus::Music));
+    }
     if (m_active == Screen::Menu && input.wasPressed(platform::Key::Escape)) {
         m_app.quit();
         return;
@@ -178,6 +195,9 @@ Result<renderer::SpriteSheet> Flow::font() {
 
 void Flow::build(Screen screen) {
     scene::Scene& target = sceneOf(screen);
+    if (screen != Screen::Win) {
+        spawnMusic(target, m_sounds.tune);
+    }
     if (screen == Screen::Level) {
         buildLevel(target, m_tileset);
         ++m_plays;

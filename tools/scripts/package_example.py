@@ -62,6 +62,7 @@ _EXAMPLE = re.compile(r"^[a-z][a-z0-9_]*$")
 # examples (CONSOLE_EXAMPLES) only print, which a double-click shows as a flashing console window.
 PACKAGED_EXAMPLES = (
     "demo_game",
+    "sound",
     "pixel_perfect",
     "tilemap",
     "scene_sprites",
@@ -78,7 +79,14 @@ DESCRIPTIONS = {
     "demo_game": (
         "What you should see: a small top-down cave game. Press Enter on the menu, collect every coin, then\n"
         "reach the door; spikes and slimes send you back to the start. WASD or the arrows move, F1 shows the\n"
-        "colliders, Escape goes back to the menu and quits from there."
+        "colliders, M mutes the music, Escape goes back to the menu and quits from there. You should hear a\n"
+        "tune, and a sound for each coin, each restart, the door opening and the win."
+    ),
+    "sound": (
+        "What you should hear: a looping tune from the start. Space plays a blip; Left and Right move it\n"
+        "between your ears, Up and Down raise or lower it. T stops or starts the tune, 1 and 2 turn the music\n"
+        "down or up, B starts a buzz that circles around you, M mutes everything. The window stays black;\n"
+        "the backtick key opens a window with the state."
     ),
     "pixel_perfect": (
         "What you should see: a pixel-art field with a hero, scaled up in sharp square pixels with black bars\n"
