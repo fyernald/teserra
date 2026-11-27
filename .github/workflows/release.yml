@@ -1,11 +1,11 @@
 # Drafts a GitHub Release when a version tag is pushed (docs/process/release-process.md#tags), then builds
-# Release on Windows and attaches the examples zip (#122). The tag must be a SemVer version (vMAJOR.MINOR.PATCH,
+# Release on Windows and on Linux and attaches the examples zip (#122) and the Linux examples archive (#317). The tag must be a SemVer version (vMAJOR.MINOR.PATCH,
 # optionally -alpha.N or -rc.N), annotated, on main, with green CI, and match the version in the root
 # CMakeLists.txt. A tag with a pre-release part becomes a pre-release. The release stays a draft so its notes
 # can be edited before publishing.
 #
-# Pull requests that change the packaging run the package job as a dry run: the zip becomes a workflow
-# artifact, and no release is touched.
+# Pull requests that change the packaging run the package jobs as a dry run: the archives become workflow
+# artifacts, and no release is touched.
 name: Release
 
 on:
@@ -15,6 +15,7 @@ on:
     paths:
       - .github/workflows/release.yml
       - tools/scripts/package_example.py
+      - tools/scripts/smoke_linux_archive.sh
       - tools/packaging/**
       - THIRD_PARTY_NOTICES.md
 
@@ -196,3 +197,142 @@ jobs:
         run: |
           gh release upload "$TAG" dist/*.zip --clobber
           echo "Attached $(basename dist/*.zip) to the draft release for $TAG." >> "$GITHUB_STEP_SUMMARY"
+
+  # The Linux examples archive (#317, release-process.md#release-artifacts): every example with a window and its
+  # assets, LICENSE, THIRD_PARTY_NOTICES.md and a README, as a .tar.gz that keeps the executable bit. Built on
+  # Ubuntu 24.04, the oldest supported LTS, so its glibc and libstdc++ run on 26.04 too. vcpkg links statically
+  # and GLFW, the OpenGL loader and miniaudio open the system libraries at run time; the packaging script checks
+  # with ldd that the executables link only the C and C++ runtimes.
+  package-linux:
+    name: package (linux-x64)
+    needs: draft
+    if: always() && (needs.draft.result == 'success' || (github.event_name == 'pull_request' && needs.draft.result == 'skipped'))
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions:
+      contents: write # upload to the draft release
+      issues: read # find the feedback request
+    env:
+      VCPKG_TRIPLET: x64-linux
+      PRESET: linux-clang-release
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+
+      # As in ci.yml: the X11 and Wayland development files vcpkg's glfw3 builds on; Xvfb and Mesa run the
+      # unpacked archive's smoke test.
+      - name: Install packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ninja-build pkg-config \
+            libxinerama-dev libxcursor-dev xorg-dev libglu1-mesa-dev \
+            libwayland-dev libxkbcommon-dev wayland-protocols extra-cmake-modules \
+            xvfb xauth libgl1-mesa-dri libegl-mesa0
+
+      - name: Configure vcpkg
+        run: |
+          cache="$RUNNER_TEMP/vcpkg-binary-cache"
+          mkdir -p "$cache"
+          {
+            echo "VCPKG_ROOT=$VCPKG_INSTALLATION_ROOT"
+            echo "VCPKG_BINARY_CACHE=$cache"
+            echo "VCPKG_BINARY_SOURCES=clear;files,$cache,readwrite"
+            echo "RUNNER_IMAGE=$ImageOS-$ImageVersion"
+          } >> "$GITHUB_ENV"
+
+      # CI's binary cache of the same job (linux, clang, ubuntu-24.04); restored only, CI keeps it current.
+      - name: Restore vcpkg binary cache
+        uses: actions/cache/restore@v6
+        with:
+          path: ${{ env.VCPKG_BINARY_CACHE }}
+          key: vcpkg-${{ env.VCPKG_TRIPLET }}-clang++-${{ env.RUNNER_IMAGE }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
+          restore-keys: |
+            vcpkg-${{ env.VCPKG_TRIPLET }}-clang++-${{ env.RUNNER_IMAGE }}-
+
+      # As in the Windows job.
+      - name: Version and feedback link
+        id: meta
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          if [[ "$GITHUB_EVENT_NAME" == push ]]; then
+            version="${TAG#v}"
+            release_url="https://github.com/$GITHUB_REPOSITORY/releases/tag/$TAG"
+            feedback="$(gh issue list --repo "$GITHUB_REPOSITORY" --label feedback --state open \
+              --search "\"$release_url\" in:body" --json url --jq '.[0].url // empty')"
+          else
+            cmake_version="$(sed -n '/^project(Teserra/,/)/s/^[[:space:]]*VERSION[[:space:]]\+\([0-9.]\+\).*/\1/p' CMakeLists.txt)"
+            version="$cmake_version-pr.$PR"
+            feedback=""
+          fi
+          feedback="${feedback:-https://github.com/$GITHUB_REPOSITORY/issues/new/choose}"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "feedback=$feedback" >> "$GITHUB_OUTPUT"
+          echo "Packaging $version; the README links to $feedback"
+
+      - name: Configure
+        run: cmake --preset "$PRESET" -DTESERRA_BUILD_TESTS=OFF -DTESERRA_WARNINGS_AS_ERRORS=ON
+
+      - name: Build
+        # -k 0: keep going after a failure, so one run shows every error of the Release build.
+        run: cmake --build --preset "$PRESET" -- -k 0
+
+      - name: Package
+        run: |
+          python3 tools/scripts/package_example.py --platform linux-x64 --build-dir "build/$PRESET" \
+            --all-examples --version "${{ steps.meta.outputs.version }}" \
+            --feedback-url "${{ steps.meta.outputs.feedback }}" --out dist
+
+      - name: Run the unpacked archive (Ubuntu 24.04)
+        env:
+          GALLIUM_DRIVER: llvmpipe
+        run: xvfb-run -a -s "-screen 0 1280x720x24" tools/scripts/smoke_linux_archive.sh dist/*.tar.gz
+
+      - name: Upload the archive as a workflow artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: teserra-${{ steps.meta.outputs.version }}-linux-x64-examples
+          path: dist/*.tar.gz
+          if-no-files-found: error
+
+      - name: Attach the archive to the draft release
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          gh release upload "$TAG" dist/*.tar.gz --clobber
+          echo "Attached $(basename dist/*.tar.gz) to the draft release for $TAG." >> "$GITHUB_STEP_SUMMARY"
+
+  # The archive on the newest supported LTS, on a machine that did not build it: only the runtime libraries a
+  # desktop has (X11, Wayland, Mesa), no development packages.
+  smoke-linux:
+    name: smoke (linux-x64, ubuntu-26.04)
+    needs: package-linux
+    if: always() && needs.package-linux.result == 'success'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: tools/scripts
+
+      - name: Install runtime packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends xvfb xauth libgl1-mesa-dri libegl-mesa0 libgl1 \
+            libx11-6 libx11-xcb1 libxrandr2 libxinerama1 libxcursor1 libxi6 libxkbcommon0 \
+            libwayland-client0 libwayland-cursor0 libwayland-egl1
+
+      - uses: actions/download-artifact@v7
+        with:
+          name: teserra-${{ needs.package-linux.outputs.version }}-linux-x64-examples
+          path: dist
+
+      - name: Run the unpacked archive (Ubuntu 26.04)
+        env:
+          GALLIUM_DRIVER: llvmpipe
+        run: xvfb-run -a -s "-screen 0 1280x720x24" tools/scripts/smoke_linux_archive.sh dist/*.tar.gz
