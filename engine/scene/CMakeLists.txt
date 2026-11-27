@@ -13,11 +13,20 @@ if(TARGET teserra_renderer)
     set(scene_render_sources src/collision_debug.cpp src/render_components.cpp src/render_extraction.cpp src/tiled.cpp src/tileset.cpp)
 endif()
 
+# AudioSource and AudioListener need the audio module, which the portable build leaves out too.
+set(scene_audio_headers "")
+set(scene_audio_sources "")
+if(TARGET teserra_audio)
+    set(scene_audio_headers include/teserra/scene/audio_components.hpp)
+    set(scene_audio_sources src/audio_system.cpp)
+endif()
+
 teserra_add_module(scene LAYER 5
     # Scenes own worlds (docs/architecture/ecs.md#scenes-own-worlds). No platform or GPU code, so the portable
-    # Linux build includes it; with the renderer, scenes also extract render data (TESERRA_HAS_RENDERER).
+    # Linux build includes it; with the renderer, scenes also extract render data (TESERRA_HAS_RENDERER), and
+    # with audio they play AudioSources (TESERRA_HAS_AUDIO).
     DEPENDS core rhi ecs
-    OPTIONAL_DEPENDS renderer assets
+    OPTIONAL_DEPENDS renderer assets audio
     PUBLIC_HEADERS
         include/teserra/scene/collision.hpp
         include/teserra/scene/hierarchy.hpp
@@ -28,6 +37,7 @@ teserra_add_module(scene LAYER 5
         include/teserra/scene/time.hpp
         include/teserra/scene/transform.hpp
         ${scene_render_headers}
+        ${scene_audio_headers}
     SOURCES
         src/collision.cpp
         src/hierarchy.cpp
@@ -36,6 +46,7 @@ teserra_add_module(scene LAYER 5
         src/tilemap.cpp
         src/transform.cpp
         ${scene_render_sources}
+        ${scene_audio_sources}
 )
 
 if(TESERRA_BUILD_TESTS)
