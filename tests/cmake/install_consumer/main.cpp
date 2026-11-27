@@ -1,6 +1,6 @@
-// A program built only from an installed Teserra (#143). It uses modules without a window, and references the App
-// so that the link needs every library of the package and every dependency they link (GLFW, the OpenGL loader,
-// ImGui); the App itself runs only when asked, since test machines may have no display.
+// A program built only from an installed Teserra (#143). It uses modules without a window, and references the
+// App so that the link needs every library of the package and every dependency they link (GLFW, the OpenGL
+// loader, ImGui); the App itself runs only when asked, since test machines may have no display.
 
 #include <teserra/audio/audio_engine.hpp>
 #include <teserra/core/version.hpp>
