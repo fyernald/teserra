@@ -2,7 +2,7 @@
 
 From nothing to your own game on screen: set up the tools, create a project from the template, then grow it into a tiny coin collector while meeting the parts of the engine a game uses every day: the App, scenes, entities and components, systems, input and assets.
 
-Teserra runs on Windows 10 and 11 (x64) and, from v0.2 (on `main` now), on Ubuntu 24.04 and 26.04 LTS ([ADR-0026](../adr/0026-linux-support-targets.md)), with an OpenGL 4.5 driver. The commands below are for Windows; **on Linux**, follow the notes marked *Linux*.
+Teserra runs on Windows 10 and 11 (x64) and, from v0.2, on Ubuntu 24.04 and 26.04 LTS ([ADR-0026](../adr/0026-linux-support-targets.md)), with an OpenGL 4.5 driver. The commands below are for Windows; **on Linux**, follow the notes marked *Linux*.
 
 ## 1. Install the tools
 
@@ -29,7 +29,7 @@ git clone https://github.com/microsoft/vcpkg ~/vcpkg && ~/vcpkg/bootstrap-vcpkg.
 echo 'export VCPKG_ROOT=~/vcpkg' >> ~/.bashrc && export VCPKG_ROOT=~/vcpkg
 ```
 
-Ubuntu 26.04's GCC works as it is. On **Ubuntu 24.04**, use Clang (`sudo apt install clang`, then add `-DCMAKE_CXX_COMPILER=clang++` to the first `cmake --preset` command): its GCCs are too old for Teserra (GCC 14.3 or newer is needed).
+Ubuntu 26.04's GCC works as it is. On **Ubuntu 24.04**, use Clang: `sudo apt install clang`, then `export CXX=clang++` in the terminal before the first `cmake` command of step 2 (`cmake --workflow` takes no `-D` options; CMake keeps the compiler it found first, so start again with `rm -rf build` if it already chose GCC). Its GCCs are too old for Teserra (GCC 14.3 or newer is needed).
 
 ## 2. Create a project from the template
 
@@ -47,7 +47,7 @@ A window opens with a small hero in the middle; WASD or the arrow keys move it a
 
 > **Building against `main` instead of a release?** The template downloads the release named by `GIT_TAG` in its `CMakeLists.txt`. To use a clone of Teserra (for example, before that release exists or to try unreleased changes), configure with `cmake --preset debug -DFETCHCONTENT_SOURCE_DIR_TESERRA=C:/path/to/teserra`, then build with `cmake --build build/debug`.
 
-*Linux:* copy with `cp -r teserra/templates/minimal_game my_game`; the other commands are the same. **Until v0.2.0 is released**, the release the template downloads (v0.1.0) has no Linux support: set `GIT_TAG` in its `CMakeLists.txt` to `main`, or use the `FETCHCONTENT_SOURCE_DIR_TESERRA` line above with the path of your clone.
+*Linux:* copy with `cp -r teserra/templates/minimal_game my_game`; the other commands are the same.
 
 Make it yours: rename the project in `project(MinimalGame ...)` and the executable in `add_executable(minimal_game ...)` (and in the two lines below it) in `CMakeLists.txt`. The clone of Teserra is no longer needed; you can delete it.
 
