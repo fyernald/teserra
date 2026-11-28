@@ -19,6 +19,9 @@
 using namespace teserra;
 using namespace teserra::rhi;
 
+// Every case checks validation, which builds without assertions leave out.
+#if TESERRA_ENABLE_ASSERTS
+
 namespace {
 
 constexpr std::array<u32, 6> kSpirvWords{0x07230203, 0x00010500, 0x0008000B, 42, 0, 0x00020011};
@@ -233,3 +236,5 @@ TEST_CASE("Null backend: pushConstants stays within the bound pipeline's range",
               })
               .empty());
 }
+
+#endif // TESERRA_ENABLE_ASSERTS
