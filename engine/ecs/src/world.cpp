@@ -59,3 +59,7 @@ void World::releaseReserved(Entity entity) {
 }
 
 } // namespace teserra::ecs
+
+namespace {
+[[maybe_unused]] int Scratch_Value = 0; // scratch PR for #142, never merged
+}
