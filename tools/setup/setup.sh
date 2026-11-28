@@ -33,7 +33,7 @@ readonly VS_INSTALL=(
     --add Microsoft.VisualStudio.Component.Windows11SDK.26100
 )
 # clang-format: the version CI pins (.github/workflows/ci.yml); other versions may format differently.
-# clang-tidy: the nearest 22.1 release on PyPI; CI does not run clang-tidy yet (#142).
+# clang-tidy: the nearest 22.1 release on PyPI, the version CI runs on pull requests (#142).
 readonly CLANG_FORMAT_VERSION="22.1.3"
 readonly CLANG_TIDY_VERSION="22.1.8"
 readonly MIN_FREE_GB=10

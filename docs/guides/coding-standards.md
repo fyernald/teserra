@@ -97,10 +97,11 @@ Follow [ADR-0016](../adr/0016-error-handling-policy.md):
 ## Static analysis
 
 - [`.clang-tidy`](../../.clang-tidy) enables `bugprone-*` (except `bugprone-easily-swappable-parameters`), `performance-*`, a selected list of `modernize-*` checks, and `readability-identifier-naming` configured with the rules of [ADR-0021](../adr/0021-naming-conventions.md) (the fixed-width integer aliases are the only exception).
-- Run it locally against a configured build, which exports `compile_commands.json`:
+- Run it locally against a configured build, which exports `compile_commands.json`. `check_tidy.py` analyzes what your branch changes and reports findings on the changed lines, as CI does on pull requests ([build-and-ci](build-and-ci.md#layer-and-leak-checks)):
 
   ```bash
-  clang-tidy -p build/windows-msvc-debug engine/core/src/*.cpp engine/core/tests/*.cpp
+  python tools/scripts/check_tidy.py -p build/windows-msvc-debug
+  clang-tidy -p build/windows-msvc-debug engine/core/src/*.cpp engine/core/tests/*.cpp   # whole files
   ```
 
-- Changed files must be clang-tidy clean. A justified suppression uses `// NOLINT(<check>): <reason>` on the line.
+- Changed lines must be clang-tidy clean. A justified suppression uses `// NOLINT(<check>): <reason>` on the line.
