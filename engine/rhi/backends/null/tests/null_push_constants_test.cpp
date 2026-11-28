@@ -39,8 +39,8 @@ std::string failureOf(Function&& function) {
 // A vertex shader that reads 32 bytes of push constants and a fragment shader that reads none, and pipelines
 // with a 32-byte range ("Tinted", "Other") and a 64-byte one ("Wide").
 struct PushScene {
-    explicit PushScene(Device& device)
-        : device(device) {
+    explicit PushScene(Device& sceneDevice)
+        : device(sceneDevice) {
         const std::vector<std::byte> vertexBlob = blob(ShaderStage::Vertex, 32);
         const std::vector<std::byte> fragmentBlob = blob(ShaderStage::Fragment, 0);
         vertexShader =
