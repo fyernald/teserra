@@ -1063,3 +1063,85 @@ void main() {
     device.destroy(fragment);
     checkNoWarnings(log);
 }
+
+TEST_CASE("OpenGL backend (GPU): push constants reach both stages, also after the ring wraps around",
+          "[rhi_opengl][gpu][push_constants]") {
+    const GpuWindow gpu = createGpuWindowOrSkip();
+    auto created =
+        createDevice({.backend = Backend::OpenGL, .enableValidation = true, .enableBackendDebug = true},
+                     gpu.window.get(), std::array{opengl::backendFactory()});
+    REQUIRE(created.has_value());
+    Device& device = **created;
+    const test::LogCapture log;
+    constexpr UVec2 kSize{128, 64};
+    constexpr Format kFormat = Format::Rgba8Unorm;
+
+    // The same blobs a Vulkan backend would take: the GLSL in them reads the block at kPushConstantBinding.
+    const ShaderModuleHandle vertex = *device.createShaderModule({.stage = ShaderStage::Vertex,
+                                                                  .blob = test::shaders::kPushConstantsVert,
+                                                                  .debugName = "Push constants vertex"});
+    const ShaderModuleHandle fragment = *device.createShaderModule({.stage = ShaderStage::Fragment,
+                                                                    .blob = test::shaders::kPushConstantsFrag,
+                                                                    .debugName = "Push constants fragment"});
+    const PipelineLayoutHandle layout =
+        *device.createPipelineLayout({.pushConstants = {.size = 32}, .debugName = "Push constants"});
+    const GraphicsPipelineHandle pipeline = *device.createGraphicsPipeline({
+        .vertexShader = vertex,
+        .fragmentShader = fragment,
+        .layout = layout,
+        .targets = {.colorFormats = {kFormat}},
+        .debugName = "Push constants",
+    });
+    const TextureHandle target =
+        *device.createTexture({.format = kFormat,
+                               .width = kSize.x,
+                               .height = kSize.y,
+                               .usage = TextureUsage::RenderTarget | TextureUsage::CopySrc});
+    const Readback readback(device, kSize);
+
+    // One draw per texel, each with its own color, through more slots than the backend's 64 KiB ring holds at
+    // the driver's offset alignment. The tint is written once and lasts for every draw; its zero blue proves
+    // that the fragment stage reads the block too.
+    const u32 draws =
+        std::min(kSize.x * kSize.y, (64 * 1024 / device.limits().uniformBufferOffsetAlignment) + 64);
+    const auto colorOf = [](u32 i) {
+        const u32 low = i % 256;
+        const u32 high = i / 256;
+        return std::array{static_cast<f32>(low) / 255.0F, static_cast<f32>(high) / 255.0F, 1.0F, 1.0F};
+    };
+    device.beginFrame();
+    CommandList& cmd = device.acquireCommandList();
+    cmd.beginRenderPass({.colorAttachments = {{.texture = target, .loadOp = LoadOp::Clear}}});
+    cmd.bindPipeline(pipeline);
+    cmd.pushConstants(std::array{1.0F, 1.0F, 0.0F, 1.0F}, 16);
+    for (u32 i = 0; i < draws; ++i) {
+        const u32 column = i % kSize.x;
+        const u32 row = i / kSize.x;
+        cmd.setViewport({.x = static_cast<f32>(column), .y = static_cast<f32>(row), .width = 1, .height = 1});
+        cmd.pushConstants(colorOf(i));
+        cmd.draw({.vertexCount = 3});
+    }
+    cmd.endRenderPass();
+    readback.record(cmd, target);
+    device.submit(cmd);
+    device.endFrame();
+    device.waitIdle();
+
+    u32 wrong = 0;
+    for (u32 i = 0; i < draws; ++i) {
+        const Rgba expected{static_cast<u8>(i % 256), static_cast<u8>(i / 256), 0, 255};
+        const Rgba texel = readback.texel(i % kSize.x, i / kSize.x);
+        if (texel != expected && wrong++ < 5) {
+            FAIL_CHECK(std::format("draw {}: ({}, {}, {}, {}) instead of ({}, {}, 0, 255)", i, texel[0],
+                                   texel[1], texel[2], texel[3], expected[0], expected[1]));
+        }
+    }
+    CHECK(wrong == 0);
+
+    device.destroy(target);
+    device.destroy(pipeline);
+    device.destroy(layout);
+    device.destroy(vertex);
+    device.destroy(fragment);
+    checkNoWarnings(log);
+}

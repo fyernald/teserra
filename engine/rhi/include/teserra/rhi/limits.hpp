@@ -21,6 +21,8 @@ inline constexpr u32 kMaxBindGroups = 4;
 inline constexpr u32 kMaxBindingsPerGroup = 8;
 /// Dynamic offsets passed when binding one bind group.
 inline constexpr u32 kMaxDynamicOffsets = 8;
+/// Bytes of a pipeline layout's push constants: Vulkan's guaranteed minimum, which every backend offers.
+inline constexpr u32 kMaxPushConstantSize = 128;
 /// Bytes of a debug group or marker label.
 inline constexpr u32 kMaxDebugLabelLength = 255;
 /// Frames the CPU may record ahead of the GPU; per-frame resources come in this many copies.

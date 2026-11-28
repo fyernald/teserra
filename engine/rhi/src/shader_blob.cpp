@@ -173,6 +173,11 @@ Result<ShaderReflection> readReflection(std::span<const std::byte> section) {
         return fail(ErrorCode::InvalidData, Module::Rhi,
                     "The reflection section of the shader blob is truncated");
     }
+    if (*pushConstantSize % 4 != 0 || *pushConstantSize > kMaxPushConstantSize) {
+        return fail(ErrorCode::InvalidData, Module::Rhi,
+                    "The shader blob reads {} bytes of push constants; the size is a multiple of 4 up to {}",
+                    *pushConstantSize, kMaxPushConstantSize);
+    }
     const u64 recordsSize = u64{*bindingCount} * kBindingRecordSize + u64{*inputCount} * kInputRecordSize;
     const std::optional<std::span<const std::byte>> records =
         reader.range(kReflectionHeaderSize, recordsSize);

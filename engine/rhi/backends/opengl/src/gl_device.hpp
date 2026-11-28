@@ -79,7 +79,7 @@ struct GlPipeline {
     u32 vertexBufferCount = 0;
     /// The descriptor without its views (vertex layouts, attributes, name), for validation; see desc().
     GraphicsPipelineDesc stored{};
-    // The groups of the layout the pipeline was created with, for validation.
+    // The layout the pipeline was created with: its groups for validation, its push-constant range for draws.
     StoredPipelineLayout layout;
     std::string debugName;
 
@@ -298,6 +298,9 @@ private:
     // Before a draw: gives the bound pipeline's program the draw's first instance where it emulates
     // gl_BaseInstanceARB with a uniform.
     void applyBaseInstance(u32 firstInstance);
+    // Before a draw: uploads the push constants to the next slot of the ring buffer and binds it at
+    // kPushConstantBinding, if they changed or the bound pipeline reads another size.
+    void flushPushConstants();
     // Replays the commands of a list (docs/architecture/rhi.md#opengl-backend-mapping).
     void replay(const CommandList& commands);
     void copyBuffer(const BufferCopy& copy);
@@ -364,6 +367,13 @@ private:
     IndexType m_passIndexType = IndexType::Uint16;
     bool m_vertexInputDirty = true;
     GLuint m_flushedVertexArray = 0;
+    // Push constants (docs/architecture/rhi.md#opengl-backend-mapping): the values the commands wrote, and
+    // the uniform buffer whose slots they are uploaded to, one aligned slot per change, wrapping around.
+    std::array<std::byte, kMaxPushConstantSize> m_pushConstants{};
+    bool m_pushConstantsDirty = false;
+    GLuint m_pushConstantBuffer = 0;
+    u64 m_pushConstantCursor = 0;
+    u64 m_pushConstantBoundSize = 0; // of the range bound at kPushConstantBinding; 0 before the first
 
     u64 m_frame = 0;
     bool m_inFrame = false;

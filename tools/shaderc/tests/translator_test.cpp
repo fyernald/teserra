@@ -171,6 +171,19 @@ TEST_CASE("shaderc translation: the GLSL uses flat bindings and no sets", "[shad
     CHECK_THAT(vs, ContainsSubstring("viewProjection"));
 }
 
+TEST_CASE("shaderc translation: push constants become a uniform block at kPushConstantBinding",
+          "[shaderc][translator]") {
+    const Translated result = translateFixture("push_constants.vert");
+    REQUIRE(result.translation.succeeded());
+
+    // A mat4 and a vec4: 80 bytes, the same in std430 (Vulkan) and std140 (the OpenGL block).
+    CHECK(result.translation.reflection.pushConstantSize == 80);
+    CHECK(result.translation.reflection.bindings.empty());
+    CHECK(rhi::kPushConstantBinding == 32);
+    CHECK_THAT(result.translation.glsl, ContainsSubstring("layout(binding = 32, std140) uniform Constants"));
+    CHECK_FALSE(result.translation.glsl.find("push_constant") != std::string::npos);
+}
+
 TEST_CASE("shaderc translation: the SPIR-V keeps its descriptor sets", "[shaderc][translator]") {
     const Translated result = translateFixture("sprite/sprite.frag");
     REQUIRE(result.translation.succeeded());
@@ -190,8 +203,14 @@ TEST_CASE("shaderc translation: resources the RHI cannot bind are errors", "[sha
           "'first' and 'second' are both at set 2, binding 0");
     CHECK(translationError("unsupported/texture_array.frag") ==
           "'layers' is an array of resources, which v1 cannot bind");
-    CHECK(translationError("unsupported/push_constants.vert") ==
-          "'Constants' is a push-constant block; push constants are not supported yet (#135)");
+    CHECK(translationError("unsupported/push_constant_too_large.vert") ==
+          "push-constant block 'Large' has 192 bytes; the limit is 128");
+    CHECK(translationError("unsupported/push_constant_array.frag") ==
+          "push-constant member 'weights' of 'Weights' is an array with 4-byte elements; OpenGL reads push "
+          "constants with 16-byte array elements, so use an array of vec4 (or of 16-byte structs)");
+    CHECK(translationError("unsupported/push_constant_struct.frag") ==
+          "push-constant member 'scale' of 'Scaled' is a struct of 4 bytes; OpenGL reads push constants with "
+          "structs padded to 16 bytes, so pad it to a multiple of 16");
     CHECK(translationError("unsupported/matrix_input.vert") ==
           "vertex input 'instanceTransform' is not a scalar or vector of 32-bit floats or integers, which v1 "
           "vertex layouts cannot feed");

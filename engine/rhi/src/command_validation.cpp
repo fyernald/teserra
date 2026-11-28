@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <optional>
 #include <span>
 #include <string_view>
@@ -72,6 +73,14 @@ void validateCommands(const CommandList& commands, const ResourceLookup& objects
     std::optional<PipelineLayoutInfo> passPipelineLayout;
     u32 boundVertexSlots = 0;
     std::array<std::optional<BindGroupInfo>, kMaxBindGroups> boundGroups{};
+    // Push constants written since the pass began or the range changed, a bit per 4-byte word.
+    static_assert(kMaxPushConstantSize / 4 <= 32);
+    u32 pushedWords = 0;
+    const auto wordsOf = [](u32 offset, u32 size) {
+        const u32 first = offset / 4;
+        const u32 count = size / 4;
+        return count >= 32 ? ~0U << first : ((1U << count) - 1U) << first;
+    };
 
     const auto liveBuffer = [&](BufferHandle handle, [[maybe_unused]] std::string_view use,
                                 BufferUsage usage) {
@@ -127,6 +136,7 @@ void validateCommands(const CommandList& commands, const ResourceLookup& objects
                 passPipelineLayout.reset();
                 boundVertexSlots = 0;
                 boundGroups.fill(std::nullopt);
+                pushedWords = 0;
                 for (u32 i = 0; i < kMaxColorAttachments && !pass.colorAttachments[i].texture.isNull(); ++i) {
                     if (const std::optional<TextureDesc> desc =
                             liveTexture(pass.colorAttachments[i].texture, "A color attachment",
@@ -147,8 +157,15 @@ void validateCommands(const CommandList& commands, const ResourceLookup& objects
                 const GraphicsPipelineHandle handle = command.as<BindPipelineCommand>().pipeline;
                 const std::optional<GraphicsPipelineDesc> desc = objects.graphicsPipeline(handle);
                 TESERRA_ASSERT(desc.has_value(), "bindPipeline uses pipeline {}, which is not alive", handle);
+                const std::optional<PipelineLayoutInfo> layout = objects.graphicsPipelineLayout(handle);
+                // Vulkan's rule: a pipeline whose layout has another push-constant range discards the values.
+                const PushConstantRange previous =
+                    passPipelineLayout ? passPipelineLayout->pushConstants : PushConstantRange{};
+                if (!layout || layout->pushConstants != previous) {
+                    pushedWords = 0;
+                }
                 passPipeline = desc;
-                passPipelineLayout = objects.graphicsPipelineLayout(handle);
+                passPipelineLayout = layout;
                 if (!desc) {
                     break;
                 }
@@ -209,6 +226,15 @@ void validateCommands(const CommandList& commands, const ResourceLookup& objects
                                        bound->debugName, set, passPipeline->debugName,
                                        passPipelineLayout->debugName);
                     }
+                    [[maybe_unused]] const u32 needed = wordsOf(0, passPipelineLayout->pushConstantsRead);
+                    TESERRA_ASSERT(
+                        (pushedWords & needed) == needed,
+                        "draw with pipeline '{}', whose shaders read {} bytes of push constants, but "
+                        "bytes {} to {} were not written by pushConstants since the render pass began "
+                        "or a pipeline with another push-constant range was bound",
+                        passPipeline->debugName, passPipelineLayout->pushConstantsRead,
+                        4 * std::countr_zero(needed & ~pushedWords),
+                        4 * std::countr_zero(needed & ~pushedWords) + 3);
                     // A short range would read zeros on OpenGL and is an error on Vulkan (#191).
                     for (const ShaderBinding& block : passPipelineLayout->uniformBlocks) {
                         const std::optional<BindGroupInfo>& bound =
@@ -291,6 +317,20 @@ void validateCommands(const CommandList& commands, const ResourceLookup& objects
                         group->debugName, bind.index, offset, range.size, group->entries[i].binding,
                         range.offset, buffer->debugName, buffer->sizeInBytes);
                 }
+                break;
+            }
+            case CommandType::PushConstants: {
+                const auto& push = command.as<PushConstantsCommand>();
+                TESERRA_ASSERT(passPipeline.has_value(),
+                               "pushConstants without a pipeline bound in this render pass");
+                [[maybe_unused]] const u32 range =
+                    passPipelineLayout ? passPipelineLayout->pushConstants.size : 0;
+                TESERRA_ASSERT(
+                    !passPipeline || push.offset + push.size <= range,
+                    "pushConstants writes bytes {} to {}, but the layout of pipeline '{}' has {} bytes of "
+                    "push constants",
+                    push.offset, push.offset + push.size, passPipeline->debugName, range);
+                pushedWords |= wordsOf(push.offset, push.size);
                 break;
             }
             case CommandType::BindIndexBuffer: {

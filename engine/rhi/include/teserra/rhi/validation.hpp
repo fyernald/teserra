@@ -60,6 +60,10 @@ struct PipelineLayoutInfo {
     /// shaders read, each with the smallest range that may be bound for it (ShaderBinding::size). Empty
     /// for a pipeline layout itself.
     std::span<const ShaderBinding> uniformBlocks{};
+    PushConstantRange pushConstants{};
+    /// For the layout of a pipeline: the bytes of push constants its shaders read (pushConstantsReadBy());
+    /// 0 for a pipeline layout itself.
+    u32 pushConstantsRead = 0;
 };
 
 /// A bind group as a device keeps it.
@@ -99,11 +103,15 @@ struct StoredPipelineLayout {
     std::string debugName;
     /// Kept by pipelines only: see PipelineLayoutInfo::uniformBlocks and uniformBlocksOf().
     std::vector<ShaderBinding> uniformBlocks{};
+    PushConstantRange pushConstants{};
+    /// Kept by pipelines only: see PipelineLayoutInfo::pushConstantsRead.
+    u32 pushConstantsRead = 0;
 
-    /// `layouts` holds the live layout of each set of the descriptor, or null for a null or stale handle,
-    /// which leaves that set empty (validation reports a stale one before).
+    /// `layouts` holds the live layout of each set of `desc`, or null for a null or stale handle, which
+    /// leaves that set empty (validation reports a stale one before).
     [[nodiscard]] static StoredPipelineLayout
-    from(std::string_view debugName, const std::array<const StoredBindGroupLayout*, kMaxBindGroups>& layouts);
+    from(const PipelineLayoutDesc& desc,
+         const std::array<const StoredBindGroupLayout*, kMaxBindGroups>& layouts);
     [[nodiscard]] PipelineLayoutInfo info() const noexcept;
 };
 
@@ -159,7 +167,9 @@ protected:
 /// layout a bind group with an equal layout, whose uniform buffer ranges are at least as large as the
 /// blocks the pipeline's shaders read there; bind groups get one dynamic offset per dynamic binding, each a
 /// multiple of the uniform buffer offset alignment that keeps the binding's window inside its buffer, and
-/// their resources are alive; copies stay inside their buffers and textures.
+/// their resources are alive; push constants are written within the bound pipeline's range, and draws find
+/// every byte their shaders read written since the pass began or a pipeline with another range was bound;
+/// copies stay inside their buffers and textures.
 void validateCommands(const CommandList& commands, const ResourceLookup& objects, const DeviceLimits& limits);
 
 /// A defined format, a size from 1 to the device's limits, mip levels that fit the size, DepthStencil usage
@@ -176,7 +186,8 @@ void validateShaderModuleDesc(const ShaderModuleDesc& desc);
 /// vertex and/or fragment stage, and dynamic offsets only on uniform buffers.
 void validateBindGroupLayoutDesc(const BindGroupLayoutDesc& desc);
 
-/// At most kMaxBindGroups groups, each null or a live layout.
+/// At most kMaxBindGroups groups, each null or a live layout, and a push-constant range whose size is a
+/// multiple of 4 up to kMaxPushConstantSize, visible to the vertex and/or fragment stage if it is not empty.
 void validatePipelineLayoutDesc(const PipelineLayoutDesc& desc, const ResourceLookup& objects);
 
 /// A live layout and exactly one entry per binding of it, each with a live resource of the binding's type:
@@ -199,9 +210,14 @@ void validateGraphicsPipelineDesc(const GraphicsPipelineDesc& desc);
 [[nodiscard]] std::vector<ShaderBinding> uniformBlocksOf(const GraphicsPipelineDesc& desc,
                                                          const ResourceLookup& objects);
 
+/// The bytes of push constants that the live shaders of `desc` read, the larger of the two stages. Backends
+/// keep it with the pipeline for validateCommands().
+[[nodiscard]] u32 pushConstantsReadBy(const GraphicsPipelineDesc& desc, const ResourceLookup& objects);
+
 /// The pipeline against the device's objects: a null or live layout, and every resource that the shaders'
 /// reflection lists is in that layout at its (group, binding), with the same type, visible to the stage
-/// that uses it; and every input of the vertex shader has a vertex attribute at its location whose format
+/// that uses it; push constants a shader reads lie within the layout's range, which is visible to its stage;
+/// and every input of the vertex shader has a vertex attribute at its location whose format
 /// it can read: float or normalized formats for float inputs, integer formats for integer inputs, with at
 /// least the input's components. Shaders that are not alive are left to the device.
 void validateGraphicsPipelineResources(const GraphicsPipelineDesc& desc, const ResourceLookup& objects);

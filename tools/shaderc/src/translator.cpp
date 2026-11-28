@@ -37,6 +37,10 @@ public:
         for (const spirv_cross::Resource& texture : resources.sampled_images) {
             addBinding(texture, BindingType::SampledTexture);
         }
+        // SPIR-V allows one push-constant block per entry point.
+        for (const spirv_cross::Resource& block : resources.push_constant_buffers) {
+            addPushConstants(block);
+        }
         if (m_stage == ShaderStage::Vertex) {
             for (const spirv_cross::Resource& input : resources.stage_inputs) {
                 addVertexInput(input);
@@ -67,6 +71,8 @@ public:
         options.es = false;
         options.vulkan_semantics = false;
         options.enable_420pack_extension = true; // keeps layout(binding = N)
+        // Push constants become a std140 uniform block at kPushConstantBinding, which the backend feeds.
+        options.emit_push_constant_as_uniform_buffer = true;
         // No clip-space fixup: the OpenGL backend uses glClipControl(GL_UPPER_LEFT, GL_ZERO_TO_ONE).
         options.vertex.fixup_clipspace = false;
         options.vertex.flip_vert_y = false;
@@ -98,8 +104,6 @@ private:
         reject(resources.atomic_counters, "an atomic counter, which v1 cannot bind");
         reject(resources.subpass_inputs, "a subpass input, which v1 cannot bind");
         reject(resources.acceleration_structures, "an acceleration structure, which v1 cannot bind");
-        reject(resources.push_constant_buffers,
-               "a push-constant block; push constants are not supported yet (#135)");
     }
 
     void addBinding(const spirv_cross::Resource& resource, BindingType type) {
@@ -133,6 +137,43 @@ private:
         // Only SPIRV-Cross's copy of the module changes: the blob keeps the original decorations.
         m_compiler.set_decoration(resource.id, spv::DecorationBinding, rhi::flatBinding(set, binding));
         m_compiler.unset_decoration(resource.id, spv::DecorationDescriptorSet);
+    }
+
+    // Vulkan lays push constants out as std430; OpenGL reads them as a std140 uniform block (the emulation in
+    // docs/architecture/rhi.md#push-constants), so arrays need the 16-byte stride both layouts give vec4s.
+    void addPushConstants(const spirv_cross::Resource& resource) {
+        const spirv_cross::SPIRType& block = m_compiler.get_type(resource.base_type_id);
+        const std::string& name = m_compiler.get_name(resource.base_type_id);
+        const auto size = static_cast<std::uint32_t>(m_compiler.get_declared_struct_size(block));
+        if (size > rhi::kMaxPushConstantSize) {
+            error("push-constant block '" + name + "' has " + std::to_string(size) + " bytes; the limit is " +
+                  std::to_string(rhi::kMaxPushConstantSize));
+            return;
+        }
+        for (std::uint32_t i = 0; i < block.member_types.size(); ++i) {
+            const spirv_cross::SPIRType& member = m_compiler.get_type(block.member_types[i]);
+            const std::string what =
+                "push-constant member '" + m_compiler.get_member_name(block.self, i) + "' of '" + name + "'";
+            if (!member.array.empty()) {
+                const std::uint32_t stride = m_compiler.type_struct_member_array_stride(block, i);
+                if (stride % 16 != 0) {
+                    error(
+                        what + " is an array with " + std::to_string(stride) +
+                        "-byte elements; OpenGL reads push constants with 16-byte array elements, so use an "
+                        "array of vec4 (or of 16-byte structs)");
+                }
+            } else if (member.basetype == spirv_cross::SPIRType::Struct) {
+                const std::size_t structSize = m_compiler.get_declared_struct_size(member);
+                if (structSize % 16 != 0) {
+                    error(
+                        what + " is a struct of " + std::to_string(structSize) +
+                        " bytes; OpenGL reads push constants with structs padded to 16 bytes, so pad it to a "
+                        "multiple of 16");
+                }
+            }
+        }
+        m_result.reflection.pushConstantSize = size;
+        m_compiler.set_decoration(resource.id, spv::DecorationBinding, rhi::kPushConstantBinding);
     }
 
     // The top-level members of a block that parameters can be set through; members that are structs are left

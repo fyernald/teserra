@@ -24,6 +24,9 @@ namespace teserra::rhi::opengl {
 
 namespace {
 
+// Bytes of the push-constant ring buffer: 256 changes of the largest range at the largest offset alignment.
+constexpr u64 kPushConstantRingSize = u64{64} * 1024;
+
 GLADapiproc loadFunction(void* context, const char* name) {
     return static_cast<platform::OpenGlContext*>(context)->getProcAddress(name);
 }
@@ -182,6 +185,9 @@ GlDevice::~GlDevice() {
         [&](SamplerHandle /*handle*/, const GlSampler& sampler) { m_gl.DeleteSamplers(1, &sampler.name); });
     m_buffers.forEach(
         [&](BufferHandle /*handle*/, const GlBuffer& buffer) { m_gl.DeleteBuffers(1, &buffer.name); });
+    if (m_pushConstantBuffer != 0) {
+        m_gl.DeleteBuffers(1, &m_pushConstantBuffer);
+    }
     m_pipelines.forEach([&](GraphicsPipelineHandle /*handle*/, const GlPipeline& pipeline) {
         m_gl.DeleteVertexArrays(1, &pipeline.vertexArray);
     });
@@ -240,11 +246,13 @@ Result<void> GlDevice::queryLimits() {
         std::string_view text;
         i32 minimum;
     };
-    // The flat binding scheme (setIndex * 8 + binding) needs 32 of each (docs/architecture/rhi.md), and a
-    // device never reports less than the DeviceLimits defaults.
+    // The flat binding scheme (setIndex * 8 + binding) needs 32 of each (docs/architecture/rhi.md), push
+    // constants one more uniform buffer binding, and a device never reports less than the DeviceLimits
+    // defaults.
     const DeviceLimits guaranteed{};
     const std::array minimums{
-        Minimum{GL_MAX_UNIFORM_BUFFER_BINDINGS, "GL_MAX_UNIFORM_BUFFER_BINDINGS", 32},
+        Minimum{GL_MAX_UNIFORM_BUFFER_BINDINGS, "GL_MAX_UNIFORM_BUFFER_BINDINGS",
+                static_cast<i32>(kPushConstantBinding + 1)},
         Minimum{GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS, "GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS", 32},
         Minimum{GL_MAX_TEXTURE_SIZE, "GL_MAX_TEXTURE_SIZE",
                 static_cast<i32>(guaranteed.maxTextureDimension2D)},
@@ -487,7 +495,7 @@ Result<PipelineLayoutHandle> GlDevice::createPipelineLayout(const PipelineLayout
     for (usize set = 0; set < desc.groups.size() && set < kMaxBindGroups; ++set) {
         layouts[set] = m_bindGroupLayouts.tryGet(desc.groups[set]);
     }
-    return m_pipelineLayouts.create(StoredPipelineLayout::from(desc.debugName, layouts));
+    return m_pipelineLayouts.create(StoredPipelineLayout::from(desc, layouts));
 }
 
 Result<BindGroupHandle> GlDevice::createBindGroup(const BindGroupDesc& desc) {
@@ -597,6 +605,7 @@ Result<GraphicsPipelineHandle> GlDevice::createGraphicsPipeline(const GraphicsPi
     }
     if (m_validate) {
         pipeline.layout.uniformBlocks = uniformBlocksOf(desc, GlLookup(*this));
+        pipeline.layout.pushConstantsRead = pushConstantsReadBy(desc, GlLookup(*this));
     }
     return m_pipelines.create(std::move(pipeline));
 }
@@ -998,6 +1007,13 @@ void GlDevice::replay(const CommandList& commands) {
             case CommandType::CopyTextureToBuffer:
                 copyTextureToBuffer(command.as<CopyTextureToBufferCommand>().copy);
                 break;
+            case CommandType::PushConstants: {
+                const auto& push = command.as<PushConstantsCommand>();
+                const std::span<const std::byte> data = command.pushConstantData();
+                std::ranges::copy(data, m_pushConstants.begin() + push.offset);
+                m_pushConstantsDirty = true;
+                break;
+            }
             default:
                 TESERRA_ASSERT(false, "The OpenGL backend cannot replay {} commands",
                                commandTypeName(command.type()));
@@ -1111,10 +1127,40 @@ bool GlDevice::flushVertexInput() {
     return true;
 }
 
+void GlDevice::flushPushConstants() {
+    // std140 blocks are bound in whole 16-byte rows; the range is at most kMaxPushConstantSize, a multiple.
+    const u64 size = (u64{m_passPipeline->layout.pushConstants.size} + 15) / 16 * 16;
+    if (size == 0 || (!m_pushConstantsDirty && size == m_pushConstantBoundSize)) {
+        return;
+    }
+    if (m_pushConstantBuffer == 0) {
+        // On first use, so devices without push constants have no ring. Written with glNamedBufferSubData,
+        // whose implicit synchronization keeps a slot that wraps around from changing under a draw that still
+        // reads it.
+        m_gl.CreateBuffers(1, &m_pushConstantBuffer);
+        m_gl.NamedBufferStorage(m_pushConstantBuffer, kPushConstantRingSize, nullptr, GL_DYNAMIC_STORAGE_BIT);
+        constexpr std::string_view kLabel = "Push constants";
+        m_gl.ObjectLabel(GL_BUFFER, m_pushConstantBuffer, static_cast<GLsizei>(kLabel.size()), kLabel.data());
+    }
+    const u64 alignment = m_limits.uniformBufferOffsetAlignment;
+    u64 offset = (m_pushConstantCursor + alignment - 1) / alignment * alignment;
+    if (offset + size > kPushConstantRingSize) {
+        offset = 0;
+    }
+    m_gl.NamedBufferSubData(m_pushConstantBuffer, static_cast<GLintptr>(offset),
+                            static_cast<GLsizeiptr>(size), m_pushConstants.data());
+    m_gl.BindBufferRange(GL_UNIFORM_BUFFER, kPushConstantBinding, m_pushConstantBuffer,
+                         static_cast<GLintptr>(offset), static_cast<GLsizeiptr>(size));
+    m_pushConstantCursor = offset + size;
+    m_pushConstantBoundSize = size;
+    m_pushConstantsDirty = false;
+}
+
 void GlDevice::draw(const DrawArgs& args) {
     if (!flushVertexInput()) {
         return;
     }
+    flushPushConstants();
     applyBaseInstance(args.firstInstance);
     m_gl.DrawArraysInstancedBaseInstance(m_passPipeline->primitiveMode, static_cast<GLint>(args.firstVertex),
                                          static_cast<GLsizei>(args.vertexCount),
@@ -1125,6 +1171,7 @@ void GlDevice::drawIndexed(const DrawIndexedArgs& args) {
     if (!flushVertexInput()) {
         return;
     }
+    flushPushConstants();
     applyBaseInstance(args.firstInstance);
     const bool wide = m_passIndexType == IndexType::Uint32;
     const u64 indexSize = wide ? 4 : 2;

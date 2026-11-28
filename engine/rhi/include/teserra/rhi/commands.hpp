@@ -122,10 +122,11 @@ enum class CommandType : u16 {
     CopyTextureToBuffer,
     PushDebugGroup,
     PopDebugGroup,
+    PushConstants,
 };
 
 /// Number of CommandType values.
-inline constexpr usize kCommandTypeCount = 15;
+inline constexpr usize kCommandTypeCount = 16;
 
 /// Name of a command type, e.g. "BeginRenderPass".
 [[nodiscard]] std::string_view commandTypeName(CommandType type) noexcept;
@@ -216,6 +217,13 @@ struct PushDebugGroupCommand {
     u32 labelLength;
 };
 
+/// Followed by the `size` bytes written to the push constants from `offset` on.
+struct PushConstantsCommand {
+    static constexpr CommandType kType = CommandType::PushConstants;
+    u32 offset;
+    u32 size;
+};
+
 /// A record payload: trivially copyable, no stricter alignment than the records, and naming its type.
 template <typename T>
 concept CommandPayload = std::is_trivially_copyable_v<T> && alignof(T) <= kCommandAlignment && requires {
@@ -268,6 +276,11 @@ public:
     /// The bindings of a BindVertexBuffers command, for consecutive slots from its firstSlot on.
     [[nodiscard]] std::span<const VertexBufferBinding> vertexBuffers() const {
         return trailing<BindVertexBuffersCommand, VertexBufferBinding>(as<BindVertexBuffersCommand>().count);
+    }
+
+    /// The bytes of a PushConstants command.
+    [[nodiscard]] std::span<const std::byte> pushConstantData() const {
+        return trailing<PushConstantsCommand, std::byte>(as<PushConstantsCommand>().size);
     }
 
     /// The label of a PushDebugGroup command.
