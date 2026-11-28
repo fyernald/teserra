@@ -17,7 +17,8 @@ Related: [ADR-0023 profiling](../adr/0023-profiling-tracy.md), [ADR-0019 ECS sto
 |---|---|---|
 | Engine lifetime (services, pools) | Normal allocation at startup, owned by `App` or the service | - |
 | Resource lifetime (textures, buffers, assets) | `HandlePool<T>` slot arrays with FIFO free lists | Per-type block allocators |
-| Per-frame transient (command streams, sort arrays, batch lists, extracted render data) | **Reused containers**: `clear()` keeps capacity; capacity grows during warm-up and then stays stable | `LinearArena` frame allocator implementing `std::pmr::memory_resource` (backlog, introduced when profiling shows container reuse is insufficient) |
+| Per-frame transient (command streams, sort arrays, batch lists, extracted render data) | **Reused containers**: `clear()` keeps capacity; capacity grows during warm-up and then stays stable | - |
+| Per-frame transient without a place to live between frames (lists built inside a system, nested lists whose number changes) | **`LinearArena`** frame arena with `std::pmr` containers, reset once per frame (see [frame arena](#frame-arena)) | Per-thread arenas when systems run in parallel |
 | GPU per-frame data (vertices, uniforms) | Upload ring buffer partitioned by frame slot | Same, plus staging for Vulkan |
 | Small fixed-size objects with churn | Object pool (`Pool<T>`) | - |
 
@@ -28,6 +29,28 @@ Rules:
 - Prefer `std::vector` + `reserve` over node-based containers (`std::map`, `std::list`) in engine code. Hash maps on hot paths need a profile showing they matter; then use an open-addressing map.
 - Avoid `std::function` on hot paths (allocation + indirect call); prefer templates or function pointers + context.
 - Strings: no per-frame `std::string` construction; use `std::string_view`, interned `StringId`s (hashed names) for lookups.
+
+### Frame arena
+
+`LinearArena` (`<teserra/core/linear_arena.hpp>`, #136) is a `std::pmr::memory_resource` that hands out memory by bumping a pointer. Deallocation does nothing; `reset()` takes everything back at once and keeps the memory. If a frame needed more than one block, `reset()` merges them into one block of the total size, so once the largest frame has run, frames make no upstream allocations. `std::pmr::monotonic_buffer_resource` is different: its `release()` returns the blocks, so every frame allocates them again.
+
+```cpp
+arena.reset(); // once per frame, before anything is built on it
+std::pmr::vector<std::pmr::vector<u32>> cells(kCells, &arena);
+```
+
+- **When to use it:** for transient containers that have nowhere to live between frames, such as lists built inside a gameplay system or nested lists whose count changes from frame to frame. Containers kept in their owner and cleared every frame remain the rule for engine code, because they are faster still (benchmark below).
+- **Lifetime:** nothing built on the arena may outlive the next `reset()`. Data that the GPU or a later frame still reads needs one arena per frame slot (`kMaxFramesInFlight`), each reset when its slot comes round again. The arena is not thread-safe, so parallel systems will need one arena per thread.
+- **Debug checks:** when `TESERRA_ENABLE_ASSERTS` is on, `reset()` fills the memory it takes back with `LinearArena::kPoison` (`0xDD`), and deallocating a pointer that was not handed out since the last reset asserts. That catches a container that outlived the reset when it grows or is destroyed. With AddressSanitizer the memory is also poisoned for ASan, so any access through a stale pointer stops the program (`sanitizers.arena_use_after_reset`).
+
+The benchmark is `benchmarks/core/linear_arena_bench.cpp`: 5,000 ids, Release, on the reference machine, 50 samples, mean.
+
+| Frame work | Fresh `std::vector` | Reused `std::vector` | `LinearArena` | `monotonic_buffer_resource` |
+|---|---|---|---|---|
+| Per-cell lists of a 32×32 grid | 252 µs | 10 µs | 58 µs | 56 µs |
+| Collect 2,500 ids and sort them | 20.7 µs | 18.6 µs | 21.9 µs | 23.2 µs |
+
+The arena is 4.4× faster than building fresh containers when a frame makes many small ones, and it allocates nothing after warm-up. Reused containers are 5.7× faster again, because their lists already have their capacity and never grow. For one list the sort dominates, and every variant costs about the same.
 
 ### Verifying the allocation rule
 

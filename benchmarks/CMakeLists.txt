@@ -7,3 +7,8 @@ add_executable(teserra_ecs_bench ecs/ecs_bench.cpp)
 target_link_libraries(teserra_ecs_bench PRIVATE teserra_ecs Catch2::Catch2WithMain)
 target_compile_features(teserra_ecs_bench PRIVATE cxx_std_20)
 teserra_set_warnings(teserra_ecs_bench)
+
+add_executable(teserra_core_bench core/linear_arena_bench.cpp)
+target_link_libraries(teserra_core_bench PRIVATE teserra_core Catch2::Catch2WithMain)
+target_compile_features(teserra_core_bench PRIVATE cxx_std_20)
+teserra_set_warnings(teserra_core_bench)

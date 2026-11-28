@@ -6,6 +6,7 @@ teserra_add_test(core
         config_test.cpp
         flags_test.cpp
         handle_test.cpp
+        linear_arena_test.cpp
         log_level_min_test.cpp
         log_test.cpp
         math_test.cpp

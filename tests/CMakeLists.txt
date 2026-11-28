@@ -11,6 +11,12 @@ if(TESERRA_ENABLE_SANITIZERS)
         SOURCE sanitizers/use_after_free.cpp
         EXPECT "heap-use-after-free"
     )
+    # LinearArena::reset() poisons the memory it takes back (#136).
+    teserra_add_abort_test(sanitizers.arena_use_after_reset
+        SOURCE sanitizers/arena_use_after_reset.cpp
+        EXPECT "use-after-poison"
+        DEPENDS core
+    )
 endif()
 
 # The example of docs/architecture/public-api.md must compile (#119).

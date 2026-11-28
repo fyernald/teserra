@@ -21,7 +21,7 @@ permissions:
 
 jobs:
   ecs:
-    name: ecs benchmarks
+    name: micro-benchmarks
     runs-on: windows-latest
     timeout-minutes: 45
     env:
@@ -73,9 +73,13 @@ jobs:
         run: |
           build/${{ env.PRESET }}/benchmarks/teserra_ecs_bench.exe "[ecs]" --benchmark-samples 50 --reporter console --out ecs-bench.txt
           Get-Content ecs-bench.txt
+          build/${{ env.PRESET }}/benchmarks/teserra_core_bench.exe "[arena]" --benchmark-samples 50 --reporter console --out core-bench.txt
+          Get-Content core-bench.txt
 
       - name: Upload results
         uses: actions/upload-artifact@v7
         with:
-          name: ecs-benchmarks
-          path: ecs-bench.txt
+          name: benchmarks
+          path: |
+            ecs-bench.txt
+            core-bench.txt
