@@ -11,3 +11,4 @@ add_subdirectory(tilemap)
 add_subdirectory(pixel_perfect)
 add_subdirectory(demo_game)
 add_subdirectory(sound)
+add_subdirectory(spike_text) # spike #137, never merged
