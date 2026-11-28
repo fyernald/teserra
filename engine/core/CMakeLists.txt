@@ -5,6 +5,7 @@ teserra_add_module(core LAYER 0
         include/teserra/core/flags.hpp
         include/teserra/core/handle.hpp
         include/teserra/core/handle_pool.hpp
+        include/teserra/core/linear_arena.hpp
         include/teserra/core/log.hpp
         include/teserra/core/math.hpp
         include/teserra/core/profile.hpp
@@ -12,6 +13,7 @@ teserra_add_module(core LAYER 0
         include/teserra/core/types.hpp
     SOURCES
         src/assert.cpp
+        src/linear_arena.cpp
         src/log.cpp
         src/version.cpp
 )
