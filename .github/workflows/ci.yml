@@ -279,13 +279,16 @@ jobs:
       matrix:
         include:
           - { os: ubuntu-26.04, compiler: gcc, cxx: g++ }
-          - { os: ubuntu-26.04, compiler: clang, cxx: clang++ }
+          - { os: ubuntu-26.04, compiler: clang, cxx: clang++, tidy: true }
           - { os: ubuntu-24.04, compiler: clang, cxx: clang++ }
     env:
       VCPKG_TRIPLET: x64-linux
       PRESET: ci-linux-${{ matrix.compiler }}
     steps:
+      # Depth 2: a PR's merge commit and its parents, so clang-tidy can compare with the base branch.
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 2
 
       # vcpkg's glfw3 builds on the system's X11 libraries and its own Wayland (platform-abstraction.md, GLFW
       # on Linux); Xvfb, Mesa and Weston run the GPU tests and the Wayland window tests.
@@ -332,6 +335,7 @@ jobs:
 
       # -k 0: keep going after a failure, so one run shows every error GCC or Clang finds.
       - name: Build
+        id: build
         run: cmake --build --preset "$PRESET" -- -k 0
 
       - name: Test on llvmpipe (X11)
@@ -378,6 +382,17 @@ jobs:
           echo "$log"
           if [ "$code" -ne 0 ]; then echo "::error::minimal_game exited with $code"; exit 1; fi
           if echo "$log" | grep -E "\[(error|critical)\]"; then echo "::error::minimal_game logged an error"; exit 1; fi
+
+      # clang-tidy on the lines a PR changes (#142), with this build's compile database and generated headers;
+      # also after failed tests, so one run reports both. The wheel is the 22.1 release nearest to the pinned
+      # clang-format and brings its own Clang headers. HEAD^1 is the base branch side of the merge commit.
+      - name: clang-tidy on changed lines
+        if: (success() || failure()) && steps.build.outcome == 'success' && matrix.tidy && github.event_name == 'pull_request'
+        run: |
+          python3 -m venv "$RUNNER_TEMP/tidy"
+          "$RUNNER_TEMP/tidy/bin/pip" install --quiet clang-tidy==22.1.8
+          echo "::add-matcher::.github/problem-matchers/clang-tidy.json"
+          python3 tools/scripts/check_tidy.py -p "build/$PRESET" --base HEAD^1 --clang-tidy "$RUNNER_TEMP/tidy/bin/clang-tidy"
 
       - name: Upload snapshot images
         if: failure() && hashFiles('tests/golden/_actual/**') != ''
