@@ -90,7 +90,7 @@ TEST_CASE("OpenGL backend: limits below what the RHI needs are unsupported", "[r
         const auto device = createOpenGl(window);
         REQUIRE_FALSE(device.has_value());
         CHECK(device.error().message ==
-              "GL_MAX_UNIFORM_BUFFER_BINDINGS is 24, but the OpenGL backend needs at least 32");
+              "GL_MAX_UNIFORM_BUFFER_BINDINGS is 24, but the OpenGL backend needs at least 33");
     }
     SECTION("texture size") {
         window.context.state.integers[GL_MAX_TEXTURE_SIZE] = 4096;

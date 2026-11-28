@@ -215,6 +215,14 @@ TEST_CASE("Shader blobs: reflection checks", "[rhi][shader_blob]") {
           "The reflection section of the shader blob is too short for 1000000 bindings and 2 vertex inputs");
 
     blob = sampleBlob();
+    setWord(blob, reflection + 8, 132);
+    CHECK(failure(blob) ==
+          "The shader blob reads 132 bytes of push constants; the size is a multiple of 4 up to 128");
+    setWord(blob, reflection + 8, 6);
+    CHECK(failure(blob) ==
+          "The shader blob reads 6 bytes of push constants; the size is a multiple of 4 up to 128");
+
+    blob = sampleBlob();
     setWord(blob, binding0, kMaxBindGroups);
     CHECK(failure(blob) ==
           "Binding 0 of the shader blob is at group 4, binding 0; the limits are 4 groups of 8");

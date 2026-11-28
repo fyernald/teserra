@@ -4,7 +4,8 @@
 // (docs/architecture/rhi.md#binding-model). A bind group layout is the shape of one group, a pipeline layout
 // the groups of a pipeline by set index, and a bind group the concrete resources of one group. Creation
 // copies what it needs from the layouts it names, so a layout may be destroyed while objects made from it
-// live.
+// live. Push constants are the small block of data a pipeline layout reserves for
+// CommandList::pushConstants() (docs/architecture/rhi.md#push-constants).
 
 #include <teserra/core/types.hpp>
 #include <teserra/rhi/handles.hpp>
@@ -55,11 +56,24 @@ struct BindGroupLayoutDesc {
     std::string_view debugName{};
 };
 
+/// The push constants of a pipeline layout: `size` bytes from offset 0, which shaders read as a
+/// `layout(push_constant) uniform` block.
+struct PushConstantRange {
+    /// A multiple of 4, at most kMaxPushConstantSize; 0 means no push constants.
+    u32 size = 0;
+    /// The stages that read them: Vertex, Fragment or both.
+    ShaderStage visibility = ShaderStage::Vertex | ShaderStage::Fragment;
+
+    friend bool operator==(const PushConstantRange&, const PushConstantRange&) = default;
+};
+
 /// Creation parameters of a pipeline layout.
 struct PipelineLayoutDesc {
     /// The layout of each group, indexed by set, at most kMaxBindGroups. A null handle leaves its set empty,
     /// so a pipeline can use sets 0 and 2 without 1. Only read during creation.
     std::span<const BindGroupLayoutHandle> groups{};
+    /// The push constants that pipelines with this layout read; none by default.
+    PushConstantRange pushConstants{};
     /// Shown in validation messages.
     std::string_view debugName{};
 };

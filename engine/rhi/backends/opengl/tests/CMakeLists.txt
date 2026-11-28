@@ -7,6 +7,7 @@ teserra_add_test(rhi_opengl
         opengl_draw_test.cpp
         opengl_gpu_test.cpp
         opengl_pipeline_test.cpp
+        opengl_push_constants_test.cpp
         opengl_sampler_test.cpp
         opengl_shader_test.cpp
         opengl_swapchain_test.cpp
@@ -23,7 +24,7 @@ teserra_add_header_check(rhi_opengl)
 
 # Shaders of the GPU tests, compiled and embedded: <rhi_opengl_tests/shaders.hpp> declares
 # teserra::test::shaders::kBindingSetsVert, kBindingSetsFrag, kInstanceIndexVert, kInstanceIndexFrag,
-# kSampledVert, kSampledFrag, kVertexColorVert and kVertexColorFrag.
+# kPushConstantsVert, kPushConstantsFrag, kSampledVert, kSampledFrag, kVertexColorVert and kVertexColorFrag.
 teserra_add_shaders(teserra_rhi_opengl_tests EMBED
     NAMESPACE teserra::test::shaders
     HEADER rhi_opengl_tests/shaders.hpp
@@ -32,6 +33,8 @@ teserra_add_shaders(teserra_rhi_opengl_tests EMBED
         shaders/binding_sets.frag
         shaders/instance_index.vert
         shaders/instance_index.frag
+        shaders/push_constants.vert
+        shaders/push_constants.frag
         shaders/sampled.vert
         shaders/sampled.frag
         shaders/vertex_color.vert

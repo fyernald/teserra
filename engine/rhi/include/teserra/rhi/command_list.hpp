@@ -15,6 +15,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <type_traits>
 #include <vector>
 
 namespace teserra::rhi {
@@ -25,6 +26,7 @@ namespace teserra::rhi {
 ///     cmd.pushDebugGroup("Main pass");
 ///     cmd.beginRenderPass({.colorAttachments = {{.texture = backbuffer, .loadOp = LoadOp::Clear}}});
 ///     cmd.bindPipeline(pipeline);
+///     cmd.pushConstants(DrawConstants{.color = red});
 ///     cmd.bindVertexBuffer(0, vertices);
 ///     cmd.draw({.vertexCount = 3});
 ///     cmd.endRenderPass();
@@ -67,6 +69,18 @@ public:
     void bindVertexBuffers(u32 firstSlot, std::span<const VertexBufferBinding> bindings);
     void bindVertexBuffer(u32 slot, BufferHandle buffer, u64 offset = 0);
     void bindIndexBuffer(BufferHandle buffer, IndexType indexType, u64 offset = 0);
+    /// Writes `data` to the push constants from byte `offset` on, which later draws read
+    /// (docs/architecture/rhi.md#push-constants). The offset and the size are multiples of 4, the size is
+    /// above 0 and the bytes end within kMaxPushConstantSize; the bound pipeline's layout must cover them,
+    /// which submit checks. Values last until changed, until the pass ends, or until a pipeline whose layout
+    /// has a different push-constant range is bound.
+    void pushConstants(u32 offset, std::span<const std::byte> data);
+    /// pushConstants() with the bytes of `value`, e.g. a struct laid out like the shader's block.
+    template <typename T>
+        requires std::is_trivially_copyable_v<T>
+    void pushConstants(const T& value, u32 offset = 0) {
+        pushConstants(offset, std::as_bytes(std::span(&value, 1)));
+    }
     /// Without a viewport or scissor, a render pass draws to its whole render area.
     void setViewport(const Viewport& viewport);
     void setScissor(const ScissorRect& scissor);

@@ -29,6 +29,10 @@ inline constexpr u32 kShaderBlobVersion = 1;
     return group * kMaxBindingsPerGroup + binding;
 }
 
+/// The uniform buffer binding of push constants on backends that emulate them (OpenGL): the first index
+/// above the flat bindings of the bind groups. The GLSL in a blob declares the push-constant block there.
+inline constexpr u32 kPushConstantBinding = flatBinding(kMaxBindGroups, 0);
+
 /// The component type of a vertex input.
 enum class ShaderScalarType : u8 {
     Float,
@@ -90,7 +94,8 @@ struct ShaderReflection {
     std::vector<ShaderBinding> bindings{};
     /// Sorted by location; empty except for vertex shaders.
     std::vector<ShaderVertexInput> vertexInputs{};
-    /// Size of the push-constant block; 0 in v1, which has no push constants.
+    /// Bytes of the push-constant block (`layout(push_constant)`), a multiple of 4 up to
+    /// kMaxPushConstantSize; 0 if the shader reads none.
     u32 pushConstantSize = 0;
 
     friend bool operator==(const ShaderReflection&, const ShaderReflection&) = default;

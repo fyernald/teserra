@@ -90,6 +90,29 @@ void checkReflection([[maybe_unused]] const GraphicsPipelineDesc& desc, const Sh
             desc.debugName, stageName(shader.stage), shader.debugName, used.name, used.group, used.binding,
             layout->debugName, stageName(shader.stage));
     }
+
+    [[maybe_unused]] const u32 pushed = shader.reflection->pushConstantSize;
+    if (pushed == 0) {
+        return;
+    }
+    TESERRA_ASSERT(
+        layout != nullptr,
+        "Graphics pipeline '{}': {} shader '{}' reads {} bytes of push constants, but the pipeline "
+        "has no layout",
+        desc.debugName, stageName(shader.stage), shader.debugName, pushed);
+    if (layout == nullptr) {
+        return;
+    }
+    TESERRA_ASSERT(pushed <= layout->pushConstants.size,
+                   "Graphics pipeline '{}': {} shader '{}' reads {} bytes of push constants, but layout '{}' "
+                   "has {}",
+                   desc.debugName, stageName(shader.stage), shader.debugName, pushed, layout->debugName,
+                   layout->pushConstants.size);
+    TESERRA_ASSERT(hasAll(layout->pushConstants.visibility, shader.stage),
+                   "Graphics pipeline '{}': {} shader '{}' reads push constants, which layout '{}' does not "
+                   "make visible to the {} stage",
+                   desc.debugName, stageName(shader.stage), shader.debugName, layout->debugName,
+                   stageName(shader.stage));
 }
 
 // The scalar type a vertex shader reads from an attribute of `format`: float formats and normalized
@@ -153,9 +176,12 @@ StoredBindGroupLayout StoredBindGroupLayout::from(const BindGroupLayoutDesc& des
 }
 
 StoredPipelineLayout
-StoredPipelineLayout::from(std::string_view debugName,
+StoredPipelineLayout::from(const PipelineLayoutDesc& desc,
                            const std::array<const StoredBindGroupLayout*, kMaxBindGroups>& layouts) {
-    StoredPipelineLayout stored{.groups = {}, .debugName = std::string(debugName), .uniformBlocks = {}};
+    StoredPipelineLayout stored{.groups = {},
+                                .debugName = std::string(desc.debugName),
+                                .uniformBlocks = {},
+                                .pushConstants = desc.pushConstants};
     for (usize set = 0; set < kMaxBindGroups; ++set) {
         if (layouts[set] != nullptr) {
             stored.groups[set] = layouts[set]->entries;
@@ -165,7 +191,11 @@ StoredPipelineLayout::from(std::string_view debugName,
 }
 
 PipelineLayoutInfo StoredPipelineLayout::info() const noexcept {
-    PipelineLayoutInfo result{.groups = {}, .debugName = debugName, .uniformBlocks = uniformBlocks};
+    PipelineLayoutInfo result{.groups = {},
+                              .debugName = debugName,
+                              .uniformBlocks = uniformBlocks,
+                              .pushConstants = pushConstants,
+                              .pushConstantsRead = pushConstantsRead};
     for (usize set = 0; set < kMaxBindGroups; ++set) {
         result.groups[set] = groups[set];
     }
@@ -356,6 +386,16 @@ void validatePipelineLayoutDesc(const PipelineLayoutDesc& desc, const ResourceLo
                        "Pipeline layout '{}': the layout of set {} ({}) is not alive", desc.debugName, set,
                        desc.groups[set]);
     }
+    [[maybe_unused]] const PushConstantRange& push = desc.pushConstants;
+    TESERRA_ASSERT(
+        push.size % 4 == 0 && push.size <= kMaxPushConstantSize,
+        "Pipeline layout '{}' has {} bytes of push constants; the size is a multiple of 4 up to {}",
+        desc.debugName, push.size, kMaxPushConstantSize);
+    TESERRA_ASSERT(push.size == 0 || (push.visibility != ShaderStage{} &&
+                                      hasAll(ShaderStage::Vertex | ShaderStage::Fragment, push.visibility)),
+                   "Pipeline layout '{}': its push constants must be visible to the vertex and/or fragment "
+                   "stage",
+                   desc.debugName);
 }
 
 void validateBindGroupDesc(const BindGroupDesc& desc, const ResourceLookup& objects,
@@ -478,6 +518,17 @@ std::vector<ShaderBinding> uniformBlocksOf(const GraphicsPipelineDesc& desc, con
     std::ranges::sort(blocks, {},
                       [](const ShaderBinding& block) { return std::pair{block.group, block.binding}; });
     return blocks;
+}
+
+u32 pushConstantsReadBy(const GraphicsPipelineDesc& desc, const ResourceLookup& objects) {
+    u32 read = 0;
+    for (const ShaderModuleHandle handle : {desc.vertexShader, desc.fragmentShader}) {
+        if (const std::optional<ShaderModuleInfo> shader =
+                handle.isNull() ? std::nullopt : objects.shaderModule(handle)) {
+            read = std::max(read, shader->reflection->pushConstantSize);
+        }
+    }
+    return read;
 }
 
 void validateGraphicsPipelineResources(const GraphicsPipelineDesc& desc, const ResourceLookup& objects) {

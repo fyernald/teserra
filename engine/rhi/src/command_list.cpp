@@ -13,7 +13,7 @@ namespace teserra::rhi {
 
 namespace {
 
-static_assert(static_cast<usize>(CommandType::PopDebugGroup) + 1 == kCommandTypeCount,
+static_assert(static_cast<usize>(CommandType::PushConstants) + 1 == kCommandTypeCount,
               "kCommandTypeCount must count every CommandType");
 // The stream's storage comes from operator new, which aligns at least this much.
 static_assert(__STDCPP_DEFAULT_NEW_ALIGNMENT__ >= kCommandAlignment);
@@ -191,6 +191,10 @@ void describeCommand(Output out, const Command command) {
         case CommandType::PushDebugGroup:
             std::format_to(out, " \"{}\"", command.debugLabel());
             break;
+        case CommandType::PushConstants:
+            std::format_to(out, " offset={} size={}", command.as<PushConstantsCommand>().offset,
+                           command.as<PushConstantsCommand>().size);
+            break;
     }
 }
 
@@ -228,6 +232,8 @@ std::string_view commandTypeName(CommandType type) noexcept {
             return "PushDebugGroup";
         case CommandType::PopDebugGroup:
             return "PopDebugGroup";
+        case CommandType::PushConstants:
+            return "PushConstants";
     }
     return "Unknown";
 }
@@ -330,6 +336,20 @@ void CommandList::bindIndexBuffer(BufferHandle buffer, IndexType indexType, u64 
 
     append(BindIndexBufferCommand{.buffer = buffer, .indexType = indexType, .offset = offset});
     m_indexBufferBound = true;
+}
+
+void CommandList::pushConstants(u32 offset, std::span<const std::byte> data) {
+    requireInsideRenderPass("pushConstants");
+    TESERRA_ASSERT(!data.empty() && offset % 4 == 0 && data.size() % 4 == 0,
+                   "pushConstants of {} bytes at offset {}; both must be multiples of 4 and the size above 0",
+                   data.size(), offset);
+    TESERRA_ASSERT(offset <= kMaxPushConstantSize && data.size() <= kMaxPushConstantSize - offset,
+                   "pushConstants of {} bytes at offset {} ends past the {} bytes of push constants",
+                   data.size(), offset, kMaxPushConstantSize);
+
+    std::byte* trailing =
+        append(PushConstantsCommand{.offset = offset, .size = static_cast<u32>(data.size())}, data.size());
+    std::memcpy(trailing, data.data(), data.size());
 }
 
 void CommandList::setViewport(const Viewport& viewport) {

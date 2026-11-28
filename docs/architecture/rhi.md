@@ -8,8 +8,9 @@ The RHI is the only way the engine talks to the GPU. It is shaped like Vulkan, D
 
 | v1 (v0.1) | Future |
 |---|---|
-| Graphics pipelines (vertex + fragment), buffers, 2D/2D-array textures, samplers, bind groups, render passes with load/store ops, swapchain, fences, uploads, readback, debug markers | Compute pipelines and storage textures, push constants, MSAA resolve, texture views, cube/3D textures in practice, timestamp queries, multiple queues, bindless resources, explicit barriers / render graph integration, multithreaded recording |
+| Graphics pipelines (vertex + fragment), buffers, 2D/2D-array textures, samplers, bind groups, render passes with load/store ops, swapchain, fences, uploads, readback, debug markers | Compute pipelines and storage textures, MSAA resolve, texture views, cube/3D textures in practice, timestamp queries, multiple queues, bindless resources, explicit barriers / render graph integration, multithreaded recording |
 | Backends: OpenGL 4.5, null | Vulkan 1.3, possibly Metal / D3D12 |
+| Since v0.3: [push constants](#push-constants) | |
 
 v1 *defines* some future concepts (3D texture dimension, depth formats, perspective-ready pipeline state, instance step rate) so that adding them later does not change existing signatures. Every v1 feature must still be exercised by an example or a test.
 
@@ -69,7 +70,7 @@ classDiagram
 | `Sampler` | Filtering and addressing state | No |
 | `ShaderModule` | One compiled shader stage (`.tshader` blob) | No |
 | `BindGroupLayout` | Shape of a resource group (≈ `VkDescriptorSetLayout`) | No |
-| `PipelineLayout` | Ordered list of bind group layouts (+ push constants, future) | No |
+| `PipelineLayout` | Ordered list of bind group layouts + a push-constant range | No |
 | `GraphicsPipeline` | Shaders + vertex layout + all fixed-function state + target formats | No |
 | `BindGroup` | Concrete resources matching a layout (≈ `VkDescriptorSet`) | No (create a new one) |
 | `CommandList` | Recorded GPU work for one submission | Reset per frame |
@@ -204,7 +205,7 @@ Shaders declare resources as `layout(set = S, binding = B)`. The RHI mirrors thi
 
 - A `BindGroupLayout` lists entries `{binding, type, visibility (stage mask)}`.
   v1 types: `UniformBuffer` (optionally with dynamic offset), `StorageBuffer` (read-only), `SampledTexture` (a **combined** texture + sampler).
-- A `PipelineLayout` is an ordered list of up to **4** bind group layouts (`kMaxBindGroups`), plus a push-constant range (future; size 0 in v1).
+- A `PipelineLayout` is an ordered list of up to **4** bind group layouts (`kMaxBindGroups`), plus a [push-constant range](#push-constants) (none by default).
 - A `BindGroup` binds concrete resources (buffer ranges, texture + sampler pairs) to a layout. Bind groups are immutable and cheap to create; create new ones instead of mutating.
 - `cmd.bindGroup(index, group, dynamicOffsets)` binds a group at a set index, with one offset per binding that has a dynamic offset, in binding order.
 
@@ -216,7 +217,9 @@ struct BindGroupLayoutEntry {
     bool hasDynamicOffset = false;                                       // uniform buffers only
 };
 struct BindGroupLayoutDesc { std::span<const BindGroupLayoutEntry> entries{}; std::string_view debugName{}; };
-struct PipelineLayoutDesc  { std::span<const BindGroupLayoutHandle> groups{}; std::string_view debugName{}; };  // by set; null = empty
+struct PushConstantRange   { u32 size = 0; ShaderStage visibility = ShaderStage::Vertex | ShaderStage::Fragment; };
+struct PipelineLayoutDesc  { std::span<const BindGroupLayoutHandle> groups{}; PushConstantRange pushConstants{};
+                             std::string_view debugName{}; };  // groups by set; null = empty
 
 struct BufferBinding  { BufferHandle buffer{}; u64 offset = 0; u64 size = 0; };  // size 0 = to the end
 struct BindGroupEntry { u32 binding = 0; BufferBinding buffer{}; TextureHandle texture{}; SamplerHandle sampler{}; };
@@ -240,6 +243,30 @@ struct BindGroupDesc  { BindGroupLayoutHandle layout{}; std::span<const BindGrou
 
 v1 limits (validated, also exposed through `DeviceLimits::maxBindGroups` and `maxBindingsPerGroup`, which every v1 device reports as exactly these values): 4 groups, 8 bindings per group, binding numbers `0..7`. Combined texture+sampler is the only texture binding type in v1 because it maps directly onto every target API; separate samplers are a future extension.
 
+### Push constants
+
+Push constants (#135) are a small block of per-draw data, such as a model matrix, a color or an index, set with a command instead of a uniform buffer and a dynamic offset. They are Vulkan's push constants, emulated on OpenGL ([mapping](#opengl-backend-mapping)); the same `.tshader` blob works on both.
+
+```cpp
+const PipelineLayoutHandle layout = device.createPipelineLayout({
+    .groups = groups,
+    .pushConstants = {.size = sizeof(DrawConstants)},  // visible to both stages by default
+});
+cmd.bindPipeline(pipeline);
+cmd.pushConstants(DrawConstants{.model = model, .color = color});  // or pushConstants(offset, bytes)
+cmd.draw({.vertexCount = 6});
+```
+
+```glsl
+layout(push_constant) uniform Draw { mat4 model; vec4 color; } draw;
+```
+
+- **One range per layout**, from offset 0: `PushConstantRange{size, visibility}`. The size is a multiple of 4 up to `kMaxPushConstantSize` (128 bytes, Vulkan's guaranteed minimum, which holds a mat4 and 64 bytes more); the visibility is Vertex, Fragment or both. A Vulkan backend maps it to `VkPushConstantRange{visibility, 0, size}`.
+- **Writing:** `cmd.pushConstants(offset, bytes)` inside a render pass, with offset and size multiples of 4 that end within 128 bytes (recording asserts), or `pushConstants(value, offset = 0)` with the bytes of a trivially copyable value laid out like the block. Partial writes update part of the block.
+- **Lifetime** (Vulkan's): values last until changed. `beginRenderPass` discards them, as it unbinds groups, and so does binding a pipeline whose layout has a different range (size or visibility). A pipeline with the same range keeps them.
+- **Shaders:** one block per stage; `ShaderReflection::pushConstantSize` is its size. Vulkan lays push constants out as std430 and OpenGL reads them as a std140 block, so `teserra_shaderc` rejects members that the two lay out differently: arrays need 16-byte elements (vec4s, or 16-byte structs), and structs a size that is a multiple of 16. Scalars, vectors and matrices lay out the same in both.
+- **Validation:** the range's size and visibility; at pipeline creation, each shader's block fits the layout's range, which is visible to its stage; at submit, `pushConstants` needs a bound pipeline whose range covers the bytes, and a draw needs every 4-byte word that its shaders read to have been written since the pass began or the range changed.
+
 ## Shaders
 
 - Authored once in GLSL 450 (Vulkan dialect). Compiled at build time by `teserra_shaderc` into `.tshader` blobs that contain SPIR-V, backend-specific translations, and reflection data ([ADR-0017](../adr/0017-shader-pipeline.md)).
@@ -259,7 +286,7 @@ v1 limits (validated, also exposed through `DeviceLimits::maxBindGroups` and `ma
 - **Reflection** (`ShaderReflection`):
   - **Bindings**, sorted by `(group, binding)`: group, binding, `BindingType` and name. For uniform buffers the size is the std140 size rounded up to 16 bytes, the smallest range that can be bound; for storage buffers it is the size without a runtime-sized array.
   - **Vertex inputs**, sorted by location: location, scalar type, components and name.
-  - **Push-constant size:** 0 in v1.
+  - **Push-constant size:** the bytes of the stage's `layout(push_constant)` block, a multiple of 4 up to `kMaxPushConstantSize`; 0 without one. The reader rejects other values. In the GLSL, the block is a std140 uniform block at `rhi::kPushConstantBinding` (32, the first binding above the flat range), which the OpenGL backend feeds ([push constants](#push-constants)).
 
 `rhi::flatBinding(group, binding) = group * kMaxBindingsPerGroup + binding` is the binding index of backends without bind groups. The emitted GLSL and the OpenGL backend both use it, so they always agree.
 
@@ -405,7 +432,7 @@ This list is checked in review and partly by CI ([build-and-ci](../guides/build-
 
 1. **No backend headers, types, enums or function names** in `engine/rhi/include/` or any module above the RHI. No `GLuint`, `GLenum`, `VkImage`, no backend object IDs in any public struct, not even as `u32`.
 2. **No "current state" semantics.** No `setBlendMode()`, `enableDepthTest()`, `bindTexture(unit)`, implicit "current program" or "current framebuffer". State is in pipelines, resources are in bind groups.
-3. **No per-uniform setters** (`setUniform("u_color", ...)`, uniform locations). All shader parameters flow through buffers in bind groups (and push constants later).
+3. **No per-uniform setters** (`setUniform("u_color", ...)`, uniform locations). All shader parameters flow through buffers in bind groups and through push constants.
 4. **No backend-specific shader source** above the RHI. The renderer passes `.tshader` blobs.
 5. **No global/thread-local device or context.** The `Device` is passed explicitly.
 6. **No backend coordinate conventions.** Only the [RHI contract](#conventions).
@@ -443,7 +470,8 @@ Planned mapping, to keep v1 decisions honest:
 | `RenderPassDesc` | Dynamic rendering (`vkCmdBeginRendering`); no `VkRenderPass` objects |
 | `GraphicsPipeline` | `VkPipeline` (dynamic rendering formats from `targets`), pipeline cache on disk |
 | `BindGroupLayout` / `BindGroup` | `VkDescriptorSetLayout` / `VkDescriptorSet` from per-frame descriptor pools |
-| `PipelineLayout` | `VkPipelineLayout` (+ push-constant range) |
+| `PipelineLayout` | `VkPipelineLayout` (+ `VkPushConstantRange{visibility, 0, size}`) |
+| Push constants | `vkCmdPushConstants(layout, visibility, offset, size, data)` |
 | Uploads | Staging ring buffer + copy commands |
 | `Fence` | `VkFence` per frame slot (timeline semaphores later) |
 | NDC +Y up | Negative viewport height |
@@ -454,17 +482,17 @@ This is the **only** section of the engine documentation where OpenGL specifics 
 
 | RHI concept | OpenGL 4.5 core (DSA) implementation |
 |---|---|
-| Device creation | `rhi::opengl::backendFactory()` (`<teserra/rhi_opengl/opengl_backend.hpp>`). Context provided by `platform::OpenGlContext` of the window, which must outlive the device; no window or no context → `Unsupported`. Functions loaded with glad in MX mode via `getProcAddress`: the device owns its function table (`GladGLContext`), there are no global GL function pointers. A context below 4.5 → `Unsupported` naming the version and renderer. `GL_MAX_UNIFORM_BUFFER_BINDINGS` and `GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS` ≥ 32 and the `DeviceLimits` minimums are checked, then `DeviceLimits` is filled from the driver. With `enableBackendDebug`, synchronous `KHR_debug` output is routed to `TESERRA_LOG_*` (category `Rhi`): errors and high severity → Error; medium, deprecated and undefined behavior → Warn; low → Info; notifications → Debug. `glClipControl(GL_UPPER_LEFT, GL_ZERO_TO_ONE)` set once ([ADR-0024](../adr/0024-coordinate-conventions.md)) |
+| Device creation | `rhi::opengl::backendFactory()` (`<teserra/rhi_opengl/opengl_backend.hpp>`). Context provided by `platform::OpenGlContext` of the window, which must outlive the device; no window or no context → `Unsupported`. Functions loaded with glad in MX mode via `getProcAddress`: the device owns its function table (`GladGLContext`), there are no global GL function pointers. A context below 4.5 → `Unsupported` naming the version and renderer. `GL_MAX_UNIFORM_BUFFER_BINDINGS` ≥ 33 (the flat range and push constants), `GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS` ≥ 32 and the `DeviceLimits` minimums are checked, then `DeviceLimits` is filled from the driver. With `enableBackendDebug`, synchronous `KHR_debug` output is routed to `TESERRA_LOG_*` (category `Rhi`): errors and high severity → Error; medium, deprecated and undefined behavior → Warn; low → Info; notifications → Debug. `glClipControl(GL_UPPER_LEFT, GL_ZERO_TO_ONE)` set once ([ADR-0024](../adr/0024-coordinate-conventions.md)) |
 | Buffer | `glCreateBuffers` + `glNamedBufferStorage` (immutable storage) + `glObjectLabel`. `GpuOnly` → `GL_DYNAMIC_STORAGE_BIT` so `writeBuffer` can use `glNamedBufferSubData`; `Upload` → `GL_MAP_WRITE_BIT \| GL_MAP_PERSISTENT_BIT \| GL_MAP_COHERENT_BIT`, mapped once with `glMapNamedBufferRange`; `Readback` → `GL_MAP_READ_BIT \| GL_MAP_PERSISTENT_BIT \| GL_MAP_COHERENT_BIT` plus `GL_CLIENT_STORAGE_BIT` (cached memory for CPU reads). Coherent mappings need no `glMemoryBarrier`: GPU writes are visible once the commands have completed. `GL_OUT_OF_MEMORY` → `ErrorCode::OutOfMemory`, a failed mapping → `DeviceFailure`. `destroy` → `glDeleteBuffers` at once (GL keeps the storage while submitted commands use it); `copyBuffer` → `glCopyNamedBufferSubData` |
 | Texture | `glCreateTextures(GL_TEXTURE_2D / GL_TEXTURE_2D_ARRAY)` + `glTextureStorage2D/3D` (immutable storage for the resolved mip count) + `glObjectLabel`; `GL_OUT_OF_MEMORY` → `OutOfMemory`; `Tex3D`, `Cube` and multisampled textures → `Unsupported` in v1. `glInternalFormat()` maps formats; BGRA formats share the RGBA storage. `writeTexture` → `GL_UNPACK_ALIGNMENT` 1, `GL_UNPACK_ROW_LENGTH` = `bytesPerRow / texel size`, `glTextureSubImage2D/3D` with the client layout of `glPixelFormat()` (`GL_BGRA` for BGRA formats, which GL converts). No flip: GL's first row in memory is the top under the upper-left clip origin. `copyBufferToTexture` → the same from a bound `GL_PIXEL_UNPACK_BUFFER` (offset as the pointer), unbound afterwards. `copyTextureToBuffer` → `GL_PACK_ALIGNMENT` 1, `GL_PACK_ROW_LENGTH` = `bytesPerRow / texel size`, `glGetTextureSubImage` into a bound `GL_PIXEL_PACK_BUFFER` (layers as the z range of array textures), unbound afterwards; rows come out top row first, with no flip. `generateMipmaps` → `glGenerateTextureMipmap`, which filters sRGB textures in linear space (checked by a GPU test against the reference values). `destroy` → `glDeleteTextures` and the cached framebuffers that use it |
 | Sampler | `glCreateSamplers` + `glSamplerParameteri` for every parameter, so nothing depends on GL's defaults: `GL_TEXTURE_MIN_FILTER` combines `minFilter` and `mipmapMode` (`GL_{NEAREST,LINEAR}_MIPMAP_{NEAREST,LINEAR}`), `GL_TEXTURE_MAG_FILTER`, `GL_TEXTURE_WRAP_S/T/R`; `compare` → `GL_COMPARE_REF_TO_TEXTURE` and its function. `maxAnisotropy` is clamped to `DeviceLimits::maxSamplerAnisotropy` and set with `glSamplerParameterf(GL_TEXTURE_MAX_ANISOTROPY)` only above 1, which needs `EXT_texture_filter_anisotropic`. `glObjectLabel(GL_SAMPLER)`; `destroy` → `glDeleteSamplers` |
 | ShaderModule | The GLSL section of the `.tshader` blob, read with `readShaderModuleBlob()` and its errors ([Shaders](#shaders)); a blob without GLSL is `Unsupported`. The GLSL is compiled with `glCreateShader`/`glShaderSource`/`glCompileShader` and labeled with `glObjectLabel(GL_SHADER)`. The entry point must be `main`. A failed compile deletes the shader and returns `CompilationFailed` with the info log, which keeps the driver's line numbers (`0(12)` on NVIDIA, `0:12:` on Intel and AMD, `0:12(5)` with the column on Mesa). Pipelines link programs from the shader objects (#34) |
 | GraphicsPipeline | Linked program, cached by shader pair and shared by the pipelines that use it (deleted with the last one; shaders are detached after linking; a link failure → `CompilationFailed` with the info log, logged at Error) + a VAO per pipeline built with `glCreateVertexArrays`, `glVertexArrayAttribFormat` (`…IFormat` for integer formats), `glVertexArrayAttribBinding`, `glVertexArrayBindingDivisor`, with the buffer strides kept for binding vertex buffers + a captured `GlPipelineState` (raster, depth, blend per target, as GL values). `depthWrite` without `depthTest` enables the test with `GL_ALWAYS`, since GL writes no depth with the test off. `DepthBias::clamp` needs GL 4.6 and is ignored with a warning. `FrontFace::CounterClockwise` → `GL_CCW` under the upper-left clip origin, in one function (`glWinding`), checked by the winding test of #35 |
 | Pipeline binding | `GlStateCache` is the only code that changes pipeline state. It is reset to known defaults when the device is created, then diffs each bound pipeline against what it last set and issues only the changed calls: binding the same pipeline twice issues none. Program and VAO deletion unbind them first. Clears restore the color masks of their targets through the cache, because GL masks clears too |
-| Binding model | Flat GL binding = `setIndex * 8 + binding` for uniform buffers (`glBindBufferRange`) and combined textures (`glBindTextureUnit` + `glBindSampler`). It is `rhi::flatBinding()`, which `teserra_shaderc` also uses when emitting GL GLSL, so shaders and backend always agree ([.tshader blobs](#tshader-blobs)). Only `shader_blob.hpp`, the OpenGL backend and `tools/shaderc` may use it, which the leak check enforces. Device creation verifies `GL_MAX_UNIFORM_BUFFER_BINDINGS` and `GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS` are ≥ 32 |
+| Binding model | Flat GL binding = `setIndex * 8 + binding` for uniform buffers (`glBindBufferRange`) and combined textures (`glBindTextureUnit` + `glBindSampler`). It is `rhi::flatBinding()`, which `teserra_shaderc` also uses when emitting GL GLSL, so shaders and backend always agree ([.tshader blobs](#tshader-blobs)). Only `shader_blob.hpp`, the OpenGL backend and `tools/shaderc` may use it, which the leak check enforces. Device creation verifies that `GL_MAX_UNIFORM_BUFFER_BINDINGS` is ≥ 33 and `GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS` ≥ 32 |
 | Bind groups | No GL object: the device keeps the `StoredBindGroup` copies. Replaying `bindGroup(set, group, offsets)` calls `glBindBufferRange(GL_UNIFORM_BUFFER, flatBinding(set, binding), buffer, offset, size)` for each uniform buffer (size 0 → the rest of the buffer). The buffer's GL name is looked up at replay, never stored, because GL reuses the names of deleted buffers. Binding points are context state, so groups stay bound across pipelines as the RHI defines. Each `SampledTexture` binding binds its texture and sampler to the texture unit `flatBinding(set, binding)` with `glBindTextureUnit` + `glBindSampler`, where the GLSL's `sampler2D` reads them. Texture and sampler names are looked up at replay too. Layouts with storage buffers → `Unsupported` until #190 |
 | Dynamic offsets | Added to the entry's offset in `glBindBufferRange`, paired with the dynamic bindings in binding order; validated against `GL_UNIFORM_BUFFER_OFFSET_ALIGNMENT` (exposed as `DeviceLimits::uniformBufferOffsetAlignment`) |
-| Push constants (future) | Emulated by a reserved uniform buffer binding (above the flat range) updated from a ring buffer |
+| Push constants | A std140 uniform block at `kPushConstantBinding` (32, above the flat range), which `teserra_shaderc` emits with SPIRV-Cross's `emit_push_constant_as_uniform_buffer`. Replay copies `pushConstants` records into a 128-byte copy of the values. Before a draw that follows a change, or whose pipeline's range is larger than the bound slot, it writes the range, rounded up to 16 bytes, to the next slot aligned to `GL_UNIFORM_BUFFER_OFFSET_ALIGNMENT` of a 64 KiB ring buffer (`glNamedBufferSubData`), and binds the slot there (`glBindBufferRange`). Draws without a change upload nothing. The ring is created on first use and wraps around at its end; SubData's implicit synchronization keeps a reused slot from changing under a draw that still reads it, in or outside frames |
 | Render pass | Framebuffer objects cached by attachment set (texture handle, mip, layer; `glCreateFramebuffers`, `glNamedFramebufferTexture`, or `glNamedFramebufferTextureLayer` for a layer of an array texture), deleted with their textures; every attachment handle is looked up at submit and a stale one asserts. At the start of a pass: bind the framebuffer, scissor test off, viewport and depth range = the render area (the first attachment's size). `LoadOp::Clear` → `glClearNamedFramebuffer*` with the linear clear color (`GL_FRAMEBUFFER_SRGB` is enabled once, so sRGB targets get it encoded); `LoadOp::DontCare` / `StoreOp::DontCare` → `glInvalidateNamedFramebufferData` at the start / end. A depth-stencil attachment goes to `GL_DEPTH_ATTACHMENT`, or `GL_DEPTH_STENCIL_ATTACHMENT` for formats with stencil; without color attachments it sets the render area. Its clears: `glClearNamedFramebufferfi(GL_DEPTH_STENCIL)` when both aspects clear, otherwise `…fv(GL_DEPTH)` / `…iv(GL_STENCIL)`, with the depth write mask opened through the state cache first (GL masks depth clears). Depth and stencil load and store ops apply to their aspect alone (`GL_DEPTH_ATTACHMENT` / `GL_STENCIL_ATTACHMENT`) |
 | Viewport / scissor | `glViewportIndexedf` + `glDepthRangef` / `glScissor` + `GL_SCISSOR_TEST`. With `glClipControl(GL_UPPER_LEFT, ...)`, window y counts from row 0, the top, so the RHI's top-left rectangles map **unchanged** |
 | Swapchain | The default framebuffer is never rendered to directly. The swapchain owns an internal color texture of the framebuffer size that render passes target; its handle lives in the device's texture pool like any texture. Formats: `Rgba8Srgb` (default), `Rgba8Unorm`, `Rgb10A2Unorm`, `Rgba16Float` as asked; `Bgra8*` → `Rgba8*` of the same encoding; anything else → `Rgba8Srgb` (`format()` tells which). `present()` blits it to framebuffer 0 with a **vertical flip** (`glBlitNamedFramebuffer`, swapped Y coordinates) and `GL_FRAMEBUFFER_SRGB` disabled, so the encoded bytes are copied unchanged, then calls `OpenGlContext::swapBuffers()`. Present mode → swap interval (`Fifo` = 1, `Immediate` = 0). A resize to a new size replaces the image with a **new handle** (the old one becomes stale, its cached framebuffers are deleted); 0×0 (minimized) leaves no image until the next resize |

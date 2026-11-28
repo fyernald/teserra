@@ -233,7 +233,7 @@ Result<PipelineLayoutHandle> NullDevice::createPipelineLayout(const PipelineLayo
         const Object<BindGroupLayoutDesc>* layout = m_bindGroupLayouts.tryGet(desc.groups[set]);
         layouts[set] = layout != nullptr ? &(*layout)->layout : nullptr;
     }
-    object->pipelineLayout = StoredPipelineLayout::from(desc.debugName, layouts);
+    object->pipelineLayout = StoredPipelineLayout::from(desc, layouts);
     object->groupLayouts.assign(desc.groups.begin(), desc.groups.end());
     object->desc.groups = object->groupLayouts;
     return m_pipelineLayouts.create(std::move(object));
@@ -267,6 +267,7 @@ Result<GraphicsPipelineHandle> NullDevice::createGraphicsPipeline(const Graphics
     }
     if (m_validate) {
         object->pipelineLayout.uniformBlocks = uniformBlocksOf(desc, NullLookup(*this));
+        object->pipelineLayout.pushConstantsRead = pushConstantsReadBy(desc, NullLookup(*this));
     }
     return m_pipelines.create(std::move(object));
 }

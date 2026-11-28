@@ -11,7 +11,10 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <array>
+#include <cstddef>
+#include <cstring>
 #include <iterator>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -168,6 +171,33 @@ TEST_CASE("CommandList: payloads and trailing arrays read back in place", "[rhi]
     CHECK(bufferCopy.size == 128);
     CHECK(commands[13].as<CopyBufferToTextureCommand>().copy.bytesPerRow == 1024);
     CHECK(commands[14].as<CopyTextureToBufferCommand>().copy.y == 32);
+}
+
+TEST_CASE("CommandList: push constants keep their bytes", "[rhi][command_list]") {
+    struct Constants {
+        std::array<f32, 4> color{0.25F, 0.5F, 0.75F, 1.0F};
+        u32 index = 7;
+        u32 padding = 0;
+    };
+    CommandList cmd;
+    cmd.beginRenderPass(kClearPass);
+    cmd.bindPipeline(kPipeline);
+    cmd.pushConstants(Constants{});
+    const std::array<u32, 2> tail{9, 10};
+    cmd.pushConstants(120, std::as_bytes(std::span(tail)));
+    cmd.endRenderPass();
+
+    const std::vector<Command> commands(cmd.commands().begin(), cmd.commands().end());
+    REQUIRE(commands.size() == 5);
+    CHECK(commands[2].as<PushConstantsCommand>().offset == 0);
+    REQUIRE(commands[2].pushConstantData().size() == sizeof(Constants));
+    Constants read{};
+    std::memcpy(&read, commands[2].pushConstantData().data(), sizeof(read));
+    CHECK(read.color[2] == 0.75F);
+    CHECK(read.index == 7);
+    CHECK(commands[3].as<PushConstantsCommand>().offset == 120);
+    CHECK(commands[3].as<PushConstantsCommand>().size == 8);
+    CHECK(describeCommands(cmd).find("\n  PushConstants offset=120 size=8\n") != std::string::npos);
 }
 
 TEST_CASE("CommandList: several vertex buffers and dynamic offsets", "[rhi][command_list]") {
@@ -380,6 +410,7 @@ TEST_CASE("CommandList validation: bindings belong in a render pass", "[rhi][com
           "setViewport outside a render pass");
     CHECK(failureOf([&] { cmd.setScissor({.width = 1, .height = 1}); }) ==
           "setScissor outside a render pass");
+    CHECK(failureOf([&] { cmd.pushConstants(u32{1}); }) == "pushConstants outside a render pass");
 }
 
 TEST_CASE("CommandList validation: binding arguments", "[rhi][command_list][validation]") {
@@ -407,6 +438,18 @@ TEST_CASE("CommandList validation: binding arguments", "[rhi][command_list][vali
     CHECK(failureOf([&] { cmd.setViewport({.width = 1, .height = 1, .maxDepth = 2}); }) ==
           "setViewport depth range [0, 2] is outside [0, 1]");
     CHECK(failureOf([&] { cmd.setScissor({.width = 16}); }) == "setScissor with an empty rectangle (16x0)");
+
+    const std::array<std::byte, 8> eight{};
+    CHECK(failureOf([&] { cmd.pushConstants(2, eight); }) ==
+          "pushConstants of 8 bytes at offset 2; both must be multiples of 4 and the size above 0");
+    CHECK(failureOf([&] { cmd.pushConstants(0, std::span(eight).first(6)); }) ==
+          "pushConstants of 6 bytes at offset 0; both must be multiples of 4 and the size above 0");
+    CHECK(failureOf([&] { cmd.pushConstants(0, std::span<const std::byte>{}); }) ==
+          "pushConstants of 0 bytes at offset 0; both must be multiples of 4 and the size above 0");
+    CHECK(failureOf([&] { cmd.pushConstants(124, eight); }) ==
+          "pushConstants of 8 bytes at offset 124 ends past the 128 bytes of push constants");
+    CHECK(failureOf([&] { cmd.pushConstants(std::array<u32, 33>{}); }) ==
+          "pushConstants of 132 bytes at offset 0 ends past the 128 bytes of push constants");
 
     // A failed check records nothing.
     CHECK(cmd.commandCount() == 1);
